@@ -6,3 +6,6 @@ content-packs/*
 !.gitkeep
 .env
 *.log
+__pycache__/
+*.pyc
+python/__pycache__/
