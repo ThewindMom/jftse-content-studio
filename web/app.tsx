@@ -759,7 +759,10 @@ function App() {
   );
 }
 
-const root = document.getElementById("root");
-if (root) {
-  createRoot(root).render(<App />);
+const rootElement = document.getElementById("root");
+if (rootElement) {
+  const existing = (rootElement as HTMLElement & { __studioRoot?: ReturnType<typeof createRoot> }).__studioRoot;
+  const root = existing ?? createRoot(rootElement);
+  (rootElement as HTMLElement & { __studioRoot?: ReturnType<typeof createRoot> }).__studioRoot = root;
+  root.render(<App />);
 }
