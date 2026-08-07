@@ -347,6 +347,33 @@ const server = Bun.serve({
     "/api/mesh-studio/list": {
       GET: async () => safeBridge(() => runBridge(["mesh-list"])),
     },
+    "/api/item-mesh/resolve": {
+      GET: async (req) => {
+        const url = new URL(req.url);
+        const meshIndex = url.searchParams.get("meshIndex") ?? "";
+        const char = url.searchParams.get("char") ?? "NIKI";
+        if (!meshIndex) return bad("MESH_INDEX_REQUIRED");
+        const metaOnly = url.searchParams.get("metaOnly") === "1";
+        const args = [
+          "item-mesh-resolve",
+          "--mesh-index",
+          meshIndex,
+          "--char",
+          char,
+        ];
+        if (metaOnly) args.push("--meta-only");
+        return safeBridge(() => runBridge(args));
+      },
+    },
+    "/api/stage-set/decrypt": {
+      GET: async (req) => {
+        const url = new URL(req.url);
+        const member = url.searchParams.get("member") ?? "1_Emerald_Beach.set";
+        return safeBridge(() =>
+          runBridge(["stage-set-decrypt", "--member", member]),
+        );
+      },
+    },
     "/api/mesh-studio/parse": {
       GET: async (req) => {
         const url = new URL(req.url);

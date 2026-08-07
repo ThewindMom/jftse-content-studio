@@ -798,6 +798,44 @@ def cmd_mesh_list(_: argparse.Namespace) -> dict[str, Any]:
     return {"ok": True, "meshes": items, "count": len(items)}
 
 
+def cmd_item_mesh_resolve(args: argparse.Namespace) -> dict[str, Any]:
+    """Resolve shop mesh index → Player Item*.res DAT via AES-decrypted Info_Item_Mesh."""
+    from item_mesh import resolve_item_mesh_path
+    from mesh_codec import decode_member, decoded_to_dict
+
+    client = _client_root(_jftse_root())
+    mesh_index = str(getattr(args, "mesh_index", "") or "")
+    char = str(getattr(args, "char", "") or "NIKI")
+    if not mesh_index:
+        return {"ok": False, "error": "MESH_INDEX_REQUIRED"}
+    resolved = resolve_item_mesh_path(client, mesh_index, char=char)
+    if not resolved:
+        return {"ok": False, "error": "ITEM_MESH_NOT_FOUND"}
+    include_geometry = not bool(getattr(args, "meta_only", False))
+    mesh = decode_member(client, resolved["archive"], resolved["member"])
+    payload = decoded_to_dict(mesh, include_geometry=include_geometry)
+    return {"ok": True, "resolved": resolved, "mesh": payload}
+
+
+def cmd_stage_set_decrypt(args: argparse.Namespace) -> dict[str, Any]:
+    """Decrypt stage .set from Info.res (AES TIMOTEI_ZION) to plaintext fields."""
+    from client_crypto import decrypt_set_file
+
+    client = _client_root(_jftse_root())
+    member = str(getattr(args, "member", "") or "1_Emerald_Beach.set")
+    with zipfile.ZipFile(client / "Res" / "Stage" / "Info.res") as archive:
+        raw = archive.read(member)
+    plain = decrypt_set_file(raw).decode("utf-8", errors="replace")
+    fields: dict[str, str] = {}
+    for line in plain.splitlines():
+        line = line.strip()
+        if not line or line.startswith("[") or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        fields[key.strip()] = val.strip().strip('"')
+    return {"ok": True, "member": member, "fields": fields, "text": plain[:4000]}
+
+
 def cmd_mesh_parse(args: argparse.Namespace) -> dict[str, Any]:
     client = _client_root(_jftse_root())
     mesh = decode_member(client, args.archive, args.member)
@@ -1040,6 +1078,14 @@ def main() -> None:
     p_mesh_parse.add_argument("--member", required=True)
     p_mesh_parse.add_argument("--meta-only", action="store_true")
 
+    p_item_mesh = sub.add_parser("item-mesh-resolve")
+    p_item_mesh.add_argument("--mesh-index", required=True)
+    p_item_mesh.add_argument("--char", default="NIKI")
+    p_item_mesh.add_argument("--meta-only", action="store_true")
+
+    p_stage_set = sub.add_parser("stage-set-decrypt")
+    p_stage_set.add_argument("--member", default="1_Emerald_Beach.set")
+
     p_mesh_export = sub.add_parser("mesh-export")
     p_mesh_export.add_argument("--archive", required=True)
     p_mesh_export.add_argument("--member", required=True)
@@ -1080,6 +1126,8 @@ def main() -> None:
         "map-studio-export-pack": cmd_map_studio_export_pack,
         "list-items": cmd_list_items,
         "mesh-list": cmd_mesh_list,
+        "item-mesh-resolve": cmd_item_mesh_resolve,
+        "stage-set-decrypt": cmd_stage_set_decrypt,
         "mesh-parse": cmd_mesh_parse,
         "mesh-export": cmd_mesh_export,
         "mesh-transform": cmd_mesh_transform,

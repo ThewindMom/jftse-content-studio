@@ -483,6 +483,40 @@ describe("content studio production API", () => {
     expect(lines[1]!.trim()).toBe("1");
   }, 120000);
 
+  test("mesh index recovery increases BF_Court01 solid topology coverage", async () => {
+    // RE: first-long u16 run was sparse (~322 tris / 15% verts); area-scored buffer ~580 tris / 39%.
+    const response = await fetch(
+      `${base}/api/mesh-studio/parse?archive=${encodeURIComponent("Res/Stage/Mesh01.res")}&member=${encodeURIComponent("BF_Court01.dat")}&metaOnly=1`,
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.mesh.confidence.nonDegenerateTriangles).toBeGreaterThan(500);
+    expect(body.mesh.confidence.solidArea).toBeGreaterThan(300_000);
+  }, 120000);
+
+  test("item mesh resolve maps Dragon Slayer mesh 214 to PlayerA racket DAT", async () => {
+    const response = await fetch(
+      `${base}/api/item-mesh/resolve?meshIndex=214&char=NIKI&metaOnly=1`,
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.resolved.member).toMatch(/Racket/i);
+    expect(body.resolved.path).toContain("PlayerA");
+    expect(body.mesh.vertexCount).toBeGreaterThan(50);
+  }, 120000);
+
+  test("stage set AES decrypt exposes Emerald Beach WorldFile", async () => {
+    const response = await fetch(
+      `${base}/api/stage-set/decrypt?member=${encodeURIComponent("1_Emerald_Beach.set")}`,
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(String(body.fields.WorldFile)).toContain("BF_Court01.dat");
+    expect(String(body.fields.SkyFile)).toContain("BF_Sky");
+  }, 60000);
+
   test("mesh parse exposes planar UVs and stage texture for BF_Court01", async () => {
     const response = await fetch(
       `${base}/api/mesh-studio/parse?archive=${encodeURIComponent("Res/Stage/Mesh01.res")}&member=${encodeURIComponent("BF_Court01.dat")}`,

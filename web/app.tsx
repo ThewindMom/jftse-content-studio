@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { EquipmentMeshPreview } from "./EquipmentMeshPreview";
 import { createRoot } from "react-dom/client";
 import { MapStudio } from "./MapStudio.tsx";
 import { MeshStudio } from "./MeshStudio.tsx";
@@ -1398,6 +1399,9 @@ function App() {
                   : undefined
               }
             />
+            {selectedItem?.mesh && (
+              <EquipmentMeshPreview meshIndex={selectedItem.mesh} char="NIKI" />
+            )}
             {slotFields && (
               <div>
                 <strong>Live Ice_Smoke02 slot</strong>

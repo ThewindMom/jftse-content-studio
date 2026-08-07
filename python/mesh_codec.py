@@ -244,17 +244,34 @@ def find_vertex_run(
     return best_offset, best_run, best_stride
 
 
-def find_u16_indices(data: bytes, vertex_count: int, start: int) -> list[int]:
+def find_u16_indices(
+    data: bytes,
+    vertex_count: int,
+    start: int,
+    *,
+    positions: list[list[float]] | list[tuple[float, float, float]] | None = None,
+) -> list[int]:
+    """Recover u16 triangle indices; prefer max solid-area × coverage (RE 2026-08).
+
+    First-long-run heuristic often locks onto a sparse false buffer. Scanning from
+    the vertex block and scoring by non-degenerate triangle area recovers denser
+    topology (e.g. BF_Court01: 322 → ~580 solid tris, ~15% → ~39% vert coverage).
+    """
     if start >= len(data) - 6 or vertex_count < 3:
         return []
-    best: list[int] = []
-    limit = min(len(data) - 2, start + min(2_000_000, vertex_count * 12 + 200_000))
+    limit = len(data) - 2
     cursor = start if start % 2 == 0 else start + 1
+    best: list[int] = []
+    best_score = -1.0
+    min_len = max(48, vertex_count // 8)
+    max_vals = min(vertex_count * 8, 24_000)
+    # Coarse then fine: step 4 then refine winners ±8 — full step-2 is O(file*verts).
+    candidates: list[tuple[float, int, list[int]]] = []
     while cursor + 6 <= limit:
         values: list[int] = []
         bad = 0
         pos = cursor
-        while pos + 2 <= limit and len(values) < vertex_count * 6:
+        while pos + 2 <= limit and len(values) < max_vals:
             value = struct.unpack_from("<H", data, pos)[0]
             if value >= vertex_count:
                 bad += 1
@@ -264,10 +281,54 @@ def find_u16_indices(data: bytes, vertex_count: int, start: int) -> list[int]:
                 values.append(value)
                 bad = 0
             pos += 2
-        if len(values) >= max(96, vertex_count // 4) and len(values) > len(best):
-            best = values
-            break
-        cursor += 2
+        if len(values) >= min_len:
+            tri = values[: len(values) // 3 * 3]
+            if positions is not None and len(positions) == vertex_count:
+                valid, _degen, area, filtered = _triangle_stats(positions, tri)
+                if valid >= 24:
+                    used = len(set(filtered))
+                    cov = used / max(vertex_count, 1)
+                    score = float(area) * (0.35 + 0.65 * cov) * math.log10(valid + 1)
+                    if score > best_score:
+                        best_score = score
+                        best = filtered
+                        candidates.append((score, cursor, filtered))
+            elif len(tri) > len(best):
+                best = tri
+        cursor += 4  # coarse stride; refine below
+    if positions is not None and candidates:
+        # Refine around top coarse hits with step-2.
+        top = sorted(candidates, key=lambda t: -t[0])[:6]
+        for _sc, off, _filt in top:
+            for delta in range(-6, 8, 2):
+                c2 = off + delta
+                if c2 < start or c2 + 6 > limit:
+                    continue
+                values = []
+                bad = 0
+                pos = c2
+                while pos + 2 <= limit and len(values) < max_vals:
+                    value = struct.unpack_from("<H", data, pos)[0]
+                    if value >= vertex_count:
+                        bad += 1
+                        if bad > 8:
+                            break
+                    else:
+                        values.append(value)
+                        bad = 0
+                    pos += 2
+                if len(values) < min_len:
+                    continue
+                tri = values[: len(values) // 3 * 3]
+                valid, _degen, area, filtered = _triangle_stats(positions, tri)
+                if valid < 24:
+                    continue
+                used = len(set(filtered))
+                cov = used / max(vertex_count, 1)
+                score = float(area) * (0.35 + 0.65 * cov) * math.log10(valid + 1)
+                if score > best_score:
+                    best_score = score
+                    best = filtered
     if len(best) < 3:
         return []
     return best[: len(best) // 3 * 3]
@@ -287,7 +348,13 @@ def decode_mesh_bytes(
         raise ValueError("NO_VERTEX_RUN")
     # Indices usually trail the vertex block; stride-aware end offset.
     index_start = offset - (offset % 2) + max(len(run) * stride, len(run) * 12)
-    indices = find_u16_indices(data, len(run), min(index_start, len(data) - 6))
+    positions_probe = [[float(x), float(y), float(z)] for x, y, z in run]
+    indices = find_u16_indices(
+        data,
+        len(run),
+        min(index_start, len(data) - 6),
+        positions=positions_probe,
+    )
     had_indices = bool(indices)
     if not indices:
         indices = []
@@ -296,9 +363,10 @@ def decode_mesh_bytes(
             indices.extend([i, i + 1, i + 2])
     if len(run) > max_vertices:
         run = run[:max_vertices]
+        positions_probe = positions_probe[:max_vertices]
         indices = [i for i in indices if i < max_vertices]
         indices = indices[: len(indices) // 3 * 3]
-    positions = [[float(x), float(y), float(z)] for x, y, z in run]
+    positions = positions_probe
     _valid, _degen, _area, indices = _triangle_stats(positions, indices)
     mode = f"indexed-s{stride}" if had_indices else f"triangle-soup-s{stride}"
     xs = [v[0] for v in positions]

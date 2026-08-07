@@ -7,7 +7,17 @@ export type BridgeResult = Record<string, unknown>;
 export async function runBridge(args: string[]): Promise<BridgeResult> {
   mkdirSync(config.tmpDir, { recursive: true });
   const proc = Bun.spawn(
-    ["uv", "run", "--with", "pillow", "python", config.pythonBridge, ...args],
+    [
+      "uv",
+      "run",
+      "--with",
+      "pillow",
+      "--with",
+      "cryptography",
+      "python",
+      config.pythonBridge,
+      ...args,
+    ],
     {
     cwd: config.jftseRoot,
     env: bridgeEnv(),
