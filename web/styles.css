@@ -403,6 +403,25 @@ button:disabled,
   cursor: not-allowed;
 }
 
+.mesh-workspace .panel {
+  min-height: 640px;
+}
+
+.mesh-viewport {
+  width: 100%;
+  height: 360px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  background: #090e1a;
+}
+
+.mesh-viewport canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     scroll-behavior: auto !important;

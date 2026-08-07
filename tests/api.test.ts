@@ -302,6 +302,41 @@ describe("content studio production API", () => {
     expect(body.error).toBe("STAGE_SCRIPT_MISSING");
   });
 
+  test("mesh studio lists and parses court mesh", async () => {
+    const list = await fetch(`${base}/api/mesh-studio/list`).then((r) => r.json());
+    expect(list.ok).toBe(true);
+    expect(list.meshes.length).toBeGreaterThan(0);
+    const court =
+      list.meshes.find((row: { member: string }) => /court/i.test(row.member)) ??
+      list.meshes[0];
+    const parsed = await fetch(
+      `${base}/api/mesh-studio/parse?archive=${encodeURIComponent(court.archive)}&member=${encodeURIComponent(court.member)}&metaOnly=1`,
+    ).then((r) => r.json());
+    expect(parsed.ok).toBe(true);
+    expect(parsed.mesh.vertexCount).toBeGreaterThan(10);
+    expect(parsed.mesh.bounds.min.length).toBe(3);
+  }, 120000);
+
+  test("mesh studio export writes obj and gltf", async () => {
+    const list = await fetch(`${base}/api/mesh-studio/list`).then((r) => r.json());
+    const court =
+      list.meshes.find((row: { member: string }) => row.member === "BF_Court01.dat") ??
+      list.meshes.find((row: { member: string }) => /court/i.test(row.member)) ??
+      list.meshes[0];
+    const response = await fetch(`${base}/api/mesh-studio/export`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ archive: court.archive, member: court.member }),
+    });
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(await Bun.file(body.obj).exists()).toBe(true);
+    expect(await Bun.file(body.gltf).exists()).toBe(true);
+    const obj = await Bun.file(body.obj).text();
+    expect(obj).toContain("\nv ");
+  }, 120000);
+
   test("map studio export pack writes relational SQL bundle", async () => {
     const response = await fetch(`${base}/api/map-studio/export-pack`, {
       method: "POST",

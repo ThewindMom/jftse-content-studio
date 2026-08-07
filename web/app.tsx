@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { MapStudio } from "./MapStudio.tsx";
+import { MeshStudio } from "./MeshStudio.tsx";
 
-type WorkspaceMode = "items" | "maps";
+type WorkspaceMode = "items" | "maps" | "meshes";
 type StepId = "item" | "effect" | "export" | "install" | "playtest";
 
 type Atlas = {
@@ -501,7 +502,7 @@ function App() {
       <header className="topbar">
         <div className="brand">
           <strong>JFTSE Content Studio</strong>
-          <span>Items workflow · Map Studio · stock-safe export</span>
+          <span>Items · Maps · Meshes · stock-safe export</span>
         </div>
         <nav className="tabs" aria-label="Workspace modes">
           <button
@@ -519,6 +520,14 @@ function App() {
             onClick={() => setWorkspace("maps")}
           >
             Map Studio
+          </button>
+          <button
+            className="tab"
+            type="button"
+            aria-selected={workspace === "meshes"}
+            onClick={() => setWorkspace("meshes")}
+          >
+            Mesh Studio
           </button>
         </nav>
         {workspace === "items" && (
@@ -544,6 +553,8 @@ function App() {
 
       {workspace === "maps" ? (
         <MapStudio />
+      ) : workspace === "meshes" ? (
+        <MeshStudio />
       ) : (
       <main className="workspace">
         <section className="panel" aria-label="Library">
@@ -1106,7 +1117,9 @@ function App() {
         <span>
           {workspace === "maps"
             ? "Map Studio: catalog → stage validate → relational SQL pack (geometry stays stock-bound)"
-            : "Items: stock racket → preset → verify export → local install → Equipment QA"}
+            : workspace === "meshes"
+              ? "Mesh Studio: decode Stage/Sky/Collision DAT → view/transform → export OBJ/glTF"
+              : "Items: stock racket → preset → verify export → local install → Equipment QA"}
         </span>
         <span className="mono">{healthDetail}</span>
       </footer>

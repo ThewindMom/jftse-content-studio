@@ -4,6 +4,9 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path as _BridgePath
+import sys as _sys
+_sys.path.insert(0, str(_BridgePath(__file__).resolve().parent))
 import json
 import os
 import re
@@ -12,6 +15,16 @@ import zipfile
 from io import BytesIO
 from pathlib import Path
 from typing import Any
+
+from mesh_codec import (
+    apply_transform,
+    decode_member,
+    decoded_to_dict,
+    list_mesh_members,
+    mesh_to_gltf,
+    mesh_to_obj,
+    write_positions_into_dat,
+)
 
 
 def _jftse_root() -> Path:
@@ -752,6 +765,74 @@ def cmd_map_studio_export_pack(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+
+def cmd_mesh_list(_: argparse.Namespace) -> dict[str, Any]:
+    client = _client_root(_jftse_root())
+    items = list_mesh_members(client)
+    return {"ok": True, "meshes": items, "count": len(items)}
+
+
+def cmd_mesh_parse(args: argparse.Namespace) -> dict[str, Any]:
+    client = _client_root(_jftse_root())
+    mesh = decode_member(client, args.archive, args.member)
+    include_geometry = not bool(args.meta_only)
+    payload = decoded_to_dict(mesh, include_geometry=include_geometry)
+    return {"ok": True, "mesh": payload}
+
+
+def cmd_mesh_export(args: argparse.Namespace) -> dict[str, Any]:
+    client = _client_root(_jftse_root())
+    mesh = decode_member(client, args.archive, args.member)
+    out = Path(args.out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    stem = Path(args.member).stem
+    obj_path = out / f"{stem}.obj"
+    gltf_path = out / f"{stem}.gltf"
+    meta_path = out / f"{stem}.meta.json"
+    obj_path.write_text(mesh_to_obj(mesh), encoding="utf-8")
+    gltf_path.write_text(json.dumps(mesh_to_gltf(mesh)), encoding="utf-8")
+    meta_path.write_text(json.dumps(decoded_to_dict(mesh, include_geometry=False), indent=2), encoding="utf-8")
+    return {
+        "ok": True,
+        "obj": str(obj_path),
+        "gltf": str(gltf_path),
+        "meta": str(meta_path),
+        "vertexCount": mesh.vertexCount,
+        "indexCount": mesh.indexCount,
+        "decodeMode": mesh.decodeMode,
+    }
+
+
+def cmd_mesh_transform(args: argparse.Namespace) -> dict[str, Any]:
+    client = _client_root(_jftse_root())
+    payload = json.loads(Path(args.payload).read_text(encoding="utf-8"))
+    archive = str(payload["archive"])
+    member = str(payload["member"])
+    translate = tuple(float(v) for v in payload.get("translate", [0, 0, 0]))
+    scale = tuple(float(v) for v in payload.get("scale", [1, 1, 1]))
+    rotate = tuple(float(v) for v in payload.get("rotateDeg", [0, 0, 0]))
+    mesh = decode_member(client, archive, member)
+    transformed = apply_transform(mesh.positions, translate=translate, scale=scale, rotate_deg=rotate)
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(client / archive) as handle:
+        original = handle.read(member)
+    rewritten = write_positions_into_dat(original, mesh.vertexOffset, transformed)
+    dat_path = out_dir / member
+    dat_path.write_bytes(rewritten)
+    mesh.positions = transformed
+    obj_path = out_dir / f"{Path(member).stem}.transformed.obj"
+    obj_path.write_text(mesh_to_obj(mesh), encoding="utf-8")
+    return {
+        "ok": True,
+        "dat": str(dat_path),
+        "obj": str(obj_path),
+        "byteLength": len(rewritten),
+        "sameSize": len(rewritten) == len(original),
+        "vertexCount": len(transformed),
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="studio_bridge")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -791,6 +872,22 @@ def main() -> None:
     p_map_pack.add_argument("--payload", required=True)
     p_map_pack.add_argument("--out-file", required=True)
 
+    sub.add_parser("mesh-list")
+
+    p_mesh_parse = sub.add_parser("mesh-parse")
+    p_mesh_parse.add_argument("--archive", required=True)
+    p_mesh_parse.add_argument("--member", required=True)
+    p_mesh_parse.add_argument("--meta-only", action="store_true")
+
+    p_mesh_export = sub.add_parser("mesh-export")
+    p_mesh_export.add_argument("--archive", required=True)
+    p_mesh_export.add_argument("--member", required=True)
+    p_mesh_export.add_argument("--out-dir", required=True)
+
+    p_mesh_transform = sub.add_parser("mesh-transform")
+    p_mesh_transform.add_argument("--payload", required=True)
+    p_mesh_transform.add_argument("--out-dir", required=True)
+
     p_items = sub.add_parser("list-items")
     p_items.add_argument("--part", default="")
     p_items.add_argument("--limit", type=int, default=50)
@@ -808,6 +905,10 @@ def main() -> None:
         "map-studio-validate": cmd_map_studio_validate,
         "map-studio-export-pack": cmd_map_studio_export_pack,
         "list-items": cmd_list_items,
+        "mesh-list": cmd_mesh_list,
+        "mesh-parse": cmd_mesh_parse,
+        "mesh-export": cmd_mesh_export,
+        "mesh-transform": cmd_mesh_transform,
     }
     result = handlers[args.command](args)
     print(json.dumps(result))

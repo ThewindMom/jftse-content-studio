@@ -198,6 +198,71 @@ const server = Bun.serve({
         );
       },
     },
+    "/api/mesh-studio/list": {
+      GET: async () => safeBridge(() => runBridge(["mesh-list"])),
+    },
+    "/api/mesh-studio/parse": {
+      GET: async (req) => {
+        const url = new URL(req.url);
+        const archive = url.searchParams.get("archive");
+        const member = url.searchParams.get("member");
+        if (!archive || !member) return bad("ARCHIVE_AND_MEMBER_REQUIRED");
+        const metaOnly = url.searchParams.get("metaOnly") === "1";
+        const args = ["mesh-parse", "--archive", archive, "--member", member];
+        if (metaOnly) args.push("--meta-only");
+        return safeBridge(() => runBridge(args));
+      },
+    },
+    "/api/mesh-studio/export": {
+      POST: async (req) => {
+        let body: Record<string, unknown>;
+        try {
+          body = (await req.json()) as Record<string, unknown>;
+        } catch {
+          return bad("INVALID_JSON");
+        }
+        const archive = String(body.archive ?? "");
+        const member = String(body.member ?? "");
+        if (!archive || !member) return bad("ARCHIVE_AND_MEMBER_REQUIRED");
+        const outDir = join(config.exportsDir, `mesh-${Date.now()}`);
+        return safeBridge(() =>
+          runBridge([
+            "mesh-export",
+            "--archive",
+            archive,
+            "--member",
+            member,
+            "--out-dir",
+            outDir,
+          ]),
+        );
+      },
+    },
+    "/api/mesh-studio/transform": {
+      POST: async (req) => {
+        let body: Record<string, unknown>;
+        try {
+          body = (await req.json()) as Record<string, unknown>;
+        } catch {
+          return bad("INVALID_JSON");
+        }
+        const payloadPath = join(
+          config.tmpDir,
+          `mesh-transform-${crypto.randomUUID()}.json`,
+        );
+        const outDir = join(config.exportsDir, `mesh-edit-${Date.now()}`);
+        await Bun.write(payloadPath, JSON.stringify(body, null, 2));
+        return safeBridge(() =>
+          runBridge([
+            "mesh-transform",
+            "--payload",
+            payloadPath,
+            "--out-dir",
+            outDir,
+          ]),
+        );
+      },
+    },
     "/api/map-studio/export-pack": {
       POST: async (req) => {
         let body: Record<string, unknown>;
