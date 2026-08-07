@@ -143,10 +143,40 @@ describe("content studio production API", () => {
     expect(body.verification).toBeDefined();
     expect(body.verification.sharedRacket001Identical).toBe(true);
     expect(body.verification.sharedRacket002Identical).toBe(true);
-    expect(body.verification.changedMembers).toEqual(["Ice_Smoke02.set"]);
+    // Stock may already carry the soft wind slot (idempotent rebuild → []).
+    // Only Ice_Smoke02.set may appear in changedMembers.
+    expect(
+      body.verification.changedMembers.every(
+        (name: string) => name === "Ice_Smoke02.set",
+      ),
+    ).toBe(true);
     expect(body.verification.fields.TexturePath).toContain("A_feather");
     expect(body.verification.fields.PQ_Quantity).toBe("18");
     expect(body.verification.archiveSizeBytes).toBeGreaterThan(0);
+  }, 120000);
+
+  test("soft effect build is idempotent when stock slot already matches", async () => {
+    const first = await fetch(`${base}/api/effects/preview-build`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(softPayload),
+    }).then((r) => r.json());
+    expect(first.ok).toBe(true);
+    const second = await fetch(`${base}/api/effects/preview-build`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(softPayload),
+    });
+    const body = await second.json();
+    expect(second.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.verification.fields.TexturePath).toContain("A_feather");
+    expect(body.verification.fields.PQ_Quantity).toBe("18");
+    expect(
+      body.verification.changedMembers.every(
+        (name: string) => name === "Ice_Smoke02.set",
+      ),
+    ).toBe(true);
   }, 120000);
 
   test("install refuses stock client path", async () => {

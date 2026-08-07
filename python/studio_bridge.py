@@ -223,6 +223,10 @@ def cmd_build_effect(args: argparse.Namespace) -> dict[str, Any]:
         particle_out,
         member_name=member_name,
         wind_assets=wind_assets,
+        expected_texture_path=str(
+            payload.get("texturePath", "Res/Effect/EftB/A_feather")
+        ),
+        expected_quantity=str(int(payload.get("quantity", 18))),
     )
     if not verification.get("ok"):
         return verification
@@ -256,6 +260,8 @@ def _verify_particle_archive(
     *,
     member_name: str,
     wind_assets: Any,
+    expected_texture_path: str | None = None,
+    expected_quantity: str | None = None,
 ) -> dict[str, Any]:
     source_bytes = source_particle.read_bytes()
     result_bytes = particle_out.read_bytes()
@@ -269,13 +275,32 @@ def _verify_particle_archive(
             for name in source_names
             if source.read(name) != result.read(name)
         ]
-        if changed != [member_name]:
+        # Allow idempotent rebuilds (no byte delta) when stock already matches payload.
+        # Only the target member may change; any other mutation is fatal.
+        unexpected = [name for name in changed if name != member_name]
+        if unexpected:
             return {
                 "ok": False,
                 "error": "UNEXPECTED_MEMBER_MUTATION",
                 "changedMembers": changed,
             }
+        if member_name not in result_names:
+            return {"ok": False, "error": "TARGET_MEMBER_MISSING"}
         fields = _parse_fields(wind_assets.decrypt_set(result.read(member_name)))
+        texture = fields.get("TexturePath", "")
+        quantity = fields.get("PQ_Quantity", "")
+        if expected_texture_path and expected_texture_path not in texture:
+            return {
+                "ok": False,
+                "error": "PATCH_FIELDS_MISMATCH",
+                "fields": {"TexturePath": texture, "PQ_Quantity": quantity},
+            }
+        if expected_quantity is not None and quantity != str(expected_quantity):
+            return {
+                "ok": False,
+                "error": "PATCH_FIELDS_MISMATCH",
+                "fields": {"TexturePath": texture, "PQ_Quantity": quantity},
+            }
         return {
             "ok": True,
             "sharedRacket001Identical": source.read("Racket_001.set")
@@ -283,12 +308,13 @@ def _verify_particle_archive(
             "sharedRacket002Identical": source.read("Racket_002.set")
             == result.read("Racket_002.set"),
             "changedMembers": changed,
+            "idempotent": changed == [],
             "memberOrderIdentical": source_names == result_names,
             "archiveSizeBytes": len(result_bytes),
             "archiveSizeUnchanged": len(source_bytes) == len(result_bytes),
             "fields": {
-                "TexturePath": fields.get("TexturePath", ""),
-                "PQ_Quantity": fields.get("PQ_Quantity", ""),
+                "TexturePath": texture,
+                "PQ_Quantity": quantity,
                 "Color": fields.get("Color", "").replace("\t", ""),
                 "PS_Size": fields.get("PS_Size", ""),
                 "SubTexSize": fields.get("SubTexSize", ""),
