@@ -409,6 +409,48 @@ const server = Bun.serve({
         );
       },
     },
+    "/api/mesh-studio/texture": {
+      GET: async (req) => {
+        const url = new URL(req.url);
+        const meshMember = url.searchParams.get("meshMember") ?? "";
+        const archive = url.searchParams.get("archive") ?? "";
+        const member = url.searchParams.get("member") ?? "";
+        if (!meshMember && (!archive || !member)) {
+          return bad("MESH_MEMBER_OR_TEXTURE_REQUIRED");
+        }
+        const outDir = join(config.tmpDir, `mesh-tex-${crypto.randomUUID()}`);
+        const args = ["mesh-texture", "--out-dir", outDir];
+        if (meshMember) args.push("--mesh-member", meshMember);
+        if (archive) args.push("--archive", archive);
+        if (member) args.push("--member", member);
+        try {
+          const body = (await runBridge(args)) as {
+            ok?: boolean;
+            png?: string;
+            error?: string;
+            source?: string;
+          };
+          if (!body.ok || !body.png) {
+            return bad(String(body.error ?? "TEXTURE_FAILED"));
+          }
+          return new Response(Bun.file(body.png), {
+            headers: {
+              "content-type": "image/png",
+              "cache-control": "public, max-age=3600",
+              "x-jftse-texture-source": body.source ?? "unknown",
+            },
+          });
+        } catch (error) {
+          return json(
+            {
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            500,
+          );
+        }
+      },
+    },
     "/api/map-studio/export-pack": {
       POST: async (req) => {
         let body: Record<string, unknown>;

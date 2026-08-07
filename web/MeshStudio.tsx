@@ -19,6 +19,10 @@ type MeshPayload = {
   bounds: { min: number[]; max: number[] };
   positions: number[][];
   indices: number[];
+  uvs?: number[][];
+  uvMode?: string;
+  hasUvs?: boolean;
+  texture?: { archive: string; member: string; source: string } | null;
   vertexOffset: number;
   byteLength: number;
   header?: Record<string, number>;
@@ -116,6 +120,8 @@ function MeshViewport({
   useEffect(() => {
     const state = stateRef.current;
     if (!state.scene) return;
+    let cancelled = false;
+    let texture: THREE.Texture | undefined;
     if (state.object) {
       state.scene.remove(state.object);
       state.object.traverse((child) => {
@@ -131,25 +137,33 @@ function MeshViewport({
     const geometry = new THREE.BufferGeometry();
     const positions = new Float32Array(mesh.positions.length * 3);
     mesh.positions.forEach((p, i) => {
-      positions[i * 3] = p[0];
-      positions[i * 3 + 1] = p[1];
-      positions[i * 3 + 2] = p[2];
+      positions[i * 3] = p[0]!;
+      positions[i * 3 + 1] = p[1]!;
+      positions[i * 3 + 2] = p[2]!;
     });
     geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    if (mesh.uvs && mesh.uvs.length === mesh.positions.length) {
+      const uvs = new Float32Array(mesh.uvs.length * 2);
+      mesh.uvs.forEach((uv, i) => {
+        uvs[i * 2] = uv[0]!;
+        uvs[i * 2 + 1] = uv[1]!;
+      });
+      geometry.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
+    }
     if (mesh.indices.length >= 3) {
       geometry.setIndex(mesh.indices);
     }
     geometry.computeVertexNormals();
     geometry.computeBoundingSphere();
     const material = new THREE.MeshStandardMaterial({
-      color: 0x7ad7ff,
-      emissive: 0x16324d,
-      metalness: 0.08,
-      roughness: 0.55,
+      color: 0xffffff,
+      emissive: 0x0a1520,
+      metalness: 0.05,
+      roughness: 0.75,
       side: THREE.DoubleSide,
       wireframe,
       transparent: true,
-      opacity: wireframe ? 0.98 : 0.95,
+      opacity: wireframe ? 0.98 : 1,
     });
     const object = new THREE.Mesh(geometry, material);
     state.scene.add(object);
@@ -161,12 +175,10 @@ function MeshViewport({
       const size = new THREE.Vector3();
       box.getCenter(center);
       box.getSize(size);
-      // Prefer horizontal footprint for framing so tall sparse outliers do not zoom out to a pinhead.
       const horiz = Math.max(size.x, size.z, 1);
       const radius = Math.max(horiz, size.y * 0.55, 1);
       state.controls.target.copy(center);
       const distance = radius * 1.45;
-      // Near-planar courts need a higher camera so the surface reads as a pad, not an edge.
       const planar = size.y < Math.max(size.x, size.z) * 0.25;
       if (planar) {
         state.camera.position.set(
@@ -186,6 +198,37 @@ function MeshViewport({
       state.camera.updateProjectionMatrix();
       state.controls.update();
     }
+    // Stock stage albedo (restool XOR .tex → PNG). Fallback keeps cyan recovery look.
+    const texUrl = `/api/mesh-studio/texture?meshMember=${encodeURIComponent(mesh.member)}`;
+    const loader = new THREE.TextureLoader();
+    loader.load(
+      texUrl,
+      (map) => {
+        if (cancelled) {
+          map.dispose();
+          return;
+        }
+        map.colorSpace = THREE.SRGBColorSpace;
+        map.wrapS = THREE.RepeatWrapping;
+        map.wrapT = THREE.RepeatWrapping;
+        texture = map;
+        material.map = map;
+        material.color.set(0xffffff);
+        material.emissive.set(0x000000);
+        material.needsUpdate = true;
+      },
+      undefined,
+      () => {
+        // Keep untextured cyan when stock albedo missing.
+        material.color.set(0x7ad7ff);
+        material.emissive.set(0x16324d);
+        material.needsUpdate = true;
+      },
+    );
+    return () => {
+      cancelled = true;
+      texture?.dispose();
+    };
   }, [mesh, wireframe]);
 
   return <div className="mesh-viewport" ref={mountRef} aria-label="Mesh viewport" />;
@@ -474,6 +517,9 @@ triangles=${mesh.confidence?.triangleCount ?? Math.floor(mesh.indexCount / 3)}
 solidTris=${mesh.confidence?.nonDegenerateTriangles ?? "?"}
 solidArea=${mesh.confidence?.solidArea ?? "?"}
 footprintXZ=${mesh.confidence?.footprintXZ ?? "?"}
+uvMode=${mesh.uvMode ?? "none"}
+hasUvs=${mesh.hasUvs ?? false}
+texture=${mesh.texture ? `${mesh.texture.archive}/${mesh.texture.member}` : "n/a"}
 boundsMin=${mesh.bounds.min.join(", ")}
 boundsMax=${mesh.bounds.max.join(", ")}
 header=${mesh.header ? JSON.stringify(mesh.header) : "n/a"}`}

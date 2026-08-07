@@ -57,6 +57,9 @@ class DecodedMesh:
     bounds: dict[str, list[float]]
     decodeMode: str
     vertexStride: int = 12
+    uvs: list[list[float]] | None = None
+    uvMode: str = "none"
+    texture: dict[str, str] | None = None
 
 
 def parse_header(data: bytes) -> MeshHeader:
@@ -564,9 +567,12 @@ def decoded_to_dict(mesh: DecodedMesh, *, include_geometry: bool = True) -> dict
     payload = asdict(mesh)
     payload["header"] = asdict(mesh.header)
     payload["confidence"] = decode_confidence(mesh)
+    payload["hasUvs"] = bool(mesh.uvs) and len(mesh.uvs) == mesh.vertexCount
+    payload["uvMode"] = mesh.uvMode
     if not include_geometry:
         payload.pop("positions", None)
         payload.pop("indices", None)
+        payload.pop("uvs", None)
     return payload
 
 
@@ -643,4 +649,19 @@ def decode_member(client_root: Path, archive_rel: str, member: str) -> DecodedMe
     archive_path = client_root / archive_rel
     with zipfile.ZipFile(archive_path) as archive:
         data = archive.read(member)
-    return decode_mesh_bytes(data, name=member, archive=archive_rel, member=member)
+    mesh = decode_mesh_bytes(data, name=member, archive=archive_rel, member=member)
+    # Late import avoids circular import: mesh_texture depends on decrypt_tex_to_dds.
+    from mesh_texture import attach_uvs_and_texture_meta
+
+    meta = attach_uvs_and_texture_meta(
+        client_root=client_root,
+        data=data,
+        member=member,
+        positions=mesh.positions,
+        vertex_offset=mesh.vertexOffset,
+        vertex_stride=mesh.vertexStride,
+    )
+    mesh.uvs = meta["uvs"]
+    mesh.uvMode = meta["uvMode"]
+    mesh.texture = meta["texture"]
+    return mesh

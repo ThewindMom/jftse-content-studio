@@ -806,6 +806,38 @@ def cmd_mesh_parse(args: argparse.Namespace) -> dict[str, Any]:
     return {"ok": True, "mesh": payload}
 
 
+def cmd_mesh_texture(args: argparse.Namespace) -> dict[str, Any]:
+    """Resolve + decrypt stock stage .tex → PNG path for mesh preview materials."""
+    from mesh_texture import load_stage_texture_png, resolve_stage_texture
+
+    client = _client_root(_jftse_root())
+    archive = str(getattr(args, "archive", "") or "")
+    member = str(getattr(args, "member", "") or "")
+    mesh_member = str(getattr(args, "mesh_member", "") or "")
+    if mesh_member and (not archive or not member):
+        resolved = resolve_stage_texture(client, mesh_member)
+        if not resolved:
+            return {"ok": False, "error": "TEXTURE_NOT_RESOLVED"}
+        archive, member = resolved["archive"], resolved["member"]
+        source = resolved["source"]
+    else:
+        source = "explicit"
+    if not archive or not member:
+        return {"ok": False, "error": "ARCHIVE_AND_MEMBER_REQUIRED"}
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    png_path = out_dir / f"{Path(member).stem}.png"
+    png_path.write_bytes(load_stage_texture_png(client, archive, member))
+    return {
+        "ok": True,
+        "archive": archive,
+        "member": member,
+        "png": str(png_path),
+        "source": source,
+        "bytes": png_path.stat().st_size,
+    }
+
+
 def cmd_mesh_export(args: argparse.Namespace) -> dict[str, Any]:
     client = _client_root(_jftse_root())
     mesh = decode_member(client, args.archive, args.member)
@@ -1017,6 +1049,12 @@ def main() -> None:
     p_mesh_transform.add_argument("--payload", required=True)
     p_mesh_transform.add_argument("--out-dir", required=True)
 
+    p_mesh_texture = sub.add_parser("mesh-texture")
+    p_mesh_texture.add_argument("--mesh-member", default="")
+    p_mesh_texture.add_argument("--archive", default="")
+    p_mesh_texture.add_argument("--member", default="")
+    p_mesh_texture.add_argument("--out-dir", required=True)
+
     p_items = sub.add_parser("list-items")
     p_items.add_argument("--part", default="")
     p_items.add_argument("--limit", type=int, default=50)
@@ -1045,6 +1083,7 @@ def main() -> None:
         "mesh-parse": cmd_mesh_parse,
         "mesh-export": cmd_mesh_export,
         "mesh-transform": cmd_mesh_transform,
+        "mesh-texture": cmd_mesh_texture,
         "effect-slot-fields": cmd_effect_slot_fields,
         "playtest-status": cmd_playtest_status,
     }

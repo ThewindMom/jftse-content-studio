@@ -47,6 +47,8 @@ export function StageMeshPreview({
           mesh: {
             positions: number[][];
             indices: number[];
+            uvs?: number[][];
+            uvMode?: string;
             vertexCount: number;
             confidence?: { score: number };
           };
@@ -55,7 +57,7 @@ export function StageMeshPreview({
         );
         if (cancelled) return;
         setInfo(
-          `${parsed.member} · ${result.mesh.vertexCount} verts · conf ${result.mesh.confidence?.score ?? "?"}`,
+          `${parsed.member} · ${result.mesh.vertexCount} verts · uv ${result.mesh.uvMode ?? "?"} · conf ${result.mesh.confidence?.score ?? "?"}`,
         );
         const mount = mountRef.current;
         if (!mount) return;
@@ -86,16 +88,46 @@ export function StageMeshPreview({
           positions[i * 3 + 2] = p[2]!;
         });
         geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+        if (result.mesh.uvs && result.mesh.uvs.length === result.mesh.positions.length) {
+          const uvs = new Float32Array(result.mesh.uvs.length * 2);
+          result.mesh.uvs.forEach((uv, i) => {
+            uvs[i * 2] = uv[0]!;
+            uvs[i * 2 + 1] = uv[1]!;
+          });
+          geometry.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
+        }
         if (result.mesh.indices.length >= 3) geometry.setIndex(result.mesh.indices);
         geometry.computeVertexNormals();
         geometry.computeBoundingBox();
         const material = new THREE.MeshStandardMaterial({
-          color: 0x7ad7ff,
-          emissive: 0x10263d,
+          color: 0xffffff,
+          emissive: 0x0a1520,
           metalness: 0.05,
-          roughness: 0.55,
+          roughness: 0.75,
           side: THREE.DoubleSide,
         });
+        let mapTex: THREE.Texture | undefined;
+        new THREE.TextureLoader().load(
+          `/api/mesh-studio/texture?meshMember=${encodeURIComponent(parsed.member)}`,
+          (map) => {
+            if (cancelled) {
+              map.dispose();
+              return;
+            }
+            map.colorSpace = THREE.SRGBColorSpace;
+            map.wrapS = THREE.RepeatWrapping;
+            map.wrapT = THREE.RepeatWrapping;
+            mapTex = map;
+            material.map = map;
+            material.needsUpdate = true;
+          },
+          undefined,
+          () => {
+            material.color.set(0x7ad7ff);
+            material.emissive.set(0x10263d);
+            material.needsUpdate = true;
+          },
+        );
         scene.add(new THREE.Mesh(geometry, material));
         if (geometry.boundingBox) {
           const center = new THREE.Vector3();
@@ -137,6 +169,7 @@ export function StageMeshPreview({
           renderer.dispose();
           geometry.dispose();
           material.dispose();
+          mapTex?.dispose();
           mount.replaceChildren();
         };
       } catch (err) {

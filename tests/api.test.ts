@@ -483,6 +483,39 @@ describe("content studio production API", () => {
     expect(lines[1]!.trim()).toBe("1");
   }, 120000);
 
+  test("mesh parse exposes planar UVs and stage texture for BF_Court01", async () => {
+    const response = await fetch(
+      `${base}/api/mesh-studio/parse?archive=${encodeURIComponent("Res/Stage/Mesh01.res")}&member=${encodeURIComponent("BF_Court01.dat")}`,
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.mesh.hasUvs).toBe(true);
+    expect(body.mesh.uvMode).toMatch(/planar|interleaved/);
+    expect(body.mesh.uvs.length).toBe(body.mesh.vertexCount);
+    const [u0, v0] = body.mesh.uvs[0] as number[];
+    expect(u0).toBeGreaterThanOrEqual(0);
+    expect(u0).toBeLessThanOrEqual(1);
+    expect(v0).toBeGreaterThanOrEqual(0);
+    expect(v0).toBeLessThanOrEqual(1);
+    expect(body.mesh.texture).toBeDefined();
+    expect(String(body.mesh.texture.member)).toMatch(/\.tex$/i);
+  }, 120000);
+
+  test("mesh studio texture endpoint returns PNG for BF_Court01 lawn", async () => {
+    const response = await fetch(
+      `${base}/api/mesh-studio/texture?meshMember=${encodeURIComponent("BF_Court01.dat")}`,
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("image/png");
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    // PNG signature
+    expect(bytes[0]).toBe(0x89);
+    expect(bytes[1]).toBe(0x50);
+    expect(bytes[2]).toBe(0x4e);
+    expect(bytes[3]).toBe(0x47);
+    expect(bytes.length).toBeGreaterThan(1000);
+  }, 120000);
+
   test("mesh decode prefers solid stage geometry over UV/normal false runs for BF_Court01", async () => {
     // Prior multi-stride scorer rewarded ultra-flat s20 UV/normal channels → ~485 solid area, nearly invisible pad.
     const response = await fetch(
