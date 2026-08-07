@@ -71,8 +71,31 @@ bun test
 
 See `DESIGN.md`.
 
+## Production safety
+
+Verified before an export is returned:
+
+- only `Ice_Smoke02.set` changed
+- `Racket_001.set` / `Racket_002.set` byte-identical to stock
+- member order preserved
+- archive size unchanged
+- decoded TexturePath / quantity / color fields match the request
+
+Install endpoint:
+
+```bash
+POST /api/effects/install
+```
+
+- **refuses** `JFTSE_STOCK_CLIENT`
+- **allows** `JFTSE_LOCAL_CLIENT`, `/tmp/**`, and `exports/`
+
+Default UI build is particle-only (fast). Optional Item/ETC Dragon Slayer binding archives take ~1–2 minutes because they rebuild encrypted catalogs.
+
 ## Honest limits
 
 - Browser particle preview is approximate.
 - Final racket look must be checked in Equipment via the game client.
+- Item library is currently read/browse + proven Dragon Slayer binding export, not a full free-form new-mesh authoring suite.
 - Custom map **geometry** is not authored here yet — only server map metadata + stock stage script binding.
+- Treat permanent-client install as deliberate: point `JFTSE_LOCAL_CLIENT` at your isolated client only.

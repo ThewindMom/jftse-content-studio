@@ -58,7 +58,7 @@ const defaultEffect = (): EffectDraft => ({
   subTexSize: "STS_64",
   subTexCount: 8,
   allowBannedAtlas: false,
-  includeItemBinding: true,
+  includeItemBinding: false,
 });
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -76,14 +76,16 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 function useHealth() {
   const [state, setState] = useState<"loading" | "ok" | "bad">("loading");
   const [detail, setDetail] = useState("checking bridge");
+  const [localClientPath, setLocalClientPath] = useState("");
   useEffect(() => {
     let alive = true;
-    api<{ ok: boolean; stockClient?: string; error?: string }>("/api/health")
+    api<{ ok: boolean; stockClient?: string; localClient?: string; error?: string }>("/api/health")
       .then((data) => {
         if (!alive) return;
         if (data.ok) {
           setState("ok");
-          setDetail(data.stockClient ?? "bridge ready");
+          setDetail(data.localClient ?? data.stockClient ?? "bridge ready");
+          setLocalClientPath(data.localClient ?? "");
         } else {
           setState("bad");
           setDetail(data.error ?? "bridge failed");
@@ -98,7 +100,7 @@ function useHealth() {
       alive = false;
     };
   }, []);
-  return { state, detail };
+  return { state, detail, localClientPath };
 }
 
 function ParticlePreview({ draft }: { draft: EffectDraft }) {
@@ -195,6 +197,7 @@ function ParticlePreview({ draft }: { draft: EffectDraft }) {
 
 function App() {
   const health = useHealth();
+  const localClient = health.localClientPath;
   const [mode, setMode] = useState<Mode>("effects");
   const [atlases, setAtlases] = useState<Atlas[]>([]);
   const [items, setItems] = useState<Item[]>([]);
@@ -205,6 +208,7 @@ function App() {
   const [effect, setEffect] = useState<EffectDraft>(defaultEffect);
   const [status, setStatus] = useState("Ready");
   const [lastExport, setLastExport] = useState("");
+  const [lastVerification, setLastVerification] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -261,6 +265,7 @@ function App() {
         particleArchive?: string;
         itemArchive?: string;
         effectArchive?: string;
+        verification?: Record<string, unknown>;
         error?: string;
       }>("/api/effects/preview-build", {
         method: "POST",
@@ -275,10 +280,37 @@ function App() {
           .filter(Boolean)
           .join("\n"),
       );
-      setStatus("Effect pack built");
+      setLastVerification(JSON.stringify(result.verification ?? {}, null, 2));
+      setStatus("Effect pack built and verified");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setStatus("Build failed");
+    }
+  };
+
+  const installEffect = async () => {
+    setError("");
+    if (!lastExport) {
+      setError("Build an export pack first");
+      return;
+    }
+    const particleArchive = lastExport.split("\n")[0];
+    setStatus("Installing to local client…");
+    try {
+      const result = await api<{ ok: boolean; installed?: Record<string, string>; error?: string }>(
+        "/api/effects/install",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            particleArchive,
+            targetClient: localClient,
+          }),
+        },
+      );
+      setStatus(`Installed: ${result.installed?.particle ?? "ok"}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setStatus("Install failed");
     }
   };
 
@@ -613,6 +645,9 @@ function App() {
                   <button className="btn primary" type="button" onClick={() => void buildEffect()}>
                     Build export pack
                   </button>
+                  <button className="btn" type="button" onClick={() => void installEffect()}>
+                    Install to local client
+                  </button>
                   <button className="btn" type="button" onClick={() => void savePack()}>
                     Save content pack
                   </button>
@@ -696,6 +731,18 @@ function App() {
               <div>
                 <strong>Last export</strong>
                 <div className="mono">{lastExport}</div>
+              </div>
+            )}
+            {lastVerification && (
+              <div>
+                <strong>Verification</strong>
+                <div className="mono">{lastVerification}</div>
+              </div>
+            )}
+            {localClient && (
+              <div>
+                <strong>Install target</strong>
+                <div className="mono">{localClient}</div>
               </div>
             )}
           </div>

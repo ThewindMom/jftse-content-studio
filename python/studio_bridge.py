@@ -150,8 +150,6 @@ def cmd_build_effect(args: argparse.Namespace) -> dict[str, Any]:
     member_name = "Ice_Smoke02.set"
     with zipfile.ZipFile(source_particle) as source:
         encrypted = source.read(member_name)
-        racket_001 = source.read("Racket_001.set")
-        racket_002 = source.read("Racket_002.set")
     plaintext = wind_assets.decrypt_set(encrypted)
 
     replacements: dict[bytes, bytes] = {
@@ -207,18 +205,14 @@ def cmd_build_effect(args: argparse.Namespace) -> dict[str, Any]:
         item_out = None
         etc_out = None
 
-    with zipfile.ZipFile(particle_out) as result:
-        assert result.read("Racket_001.set") == racket_001
-        assert result.read("Racket_002.set") == racket_002
-        only = {
-            name: result.read(name)
-            for name in result.namelist()
-            if name not in {"Racket_001.set", "Racket_002.set", member_name}
-        }
-    with zipfile.ZipFile(source_particle) as source:
-        for name, content in only.items():
-            if source.read(name) != content:
-                return {"ok": False, "error": "UNEXPECTED_MEMBER_MUTATION", "member": name}
+    verification = _verify_particle_archive(
+        source_particle,
+        particle_out,
+        member_name=member_name,
+        wind_assets=wind_assets,
+    )
+    if not verification.get("ok"):
+        return verification
 
     return {
         "ok": True,
@@ -227,7 +221,114 @@ def cmd_build_effect(args: argparse.Namespace) -> dict[str, Any]:
         "effectArchive": None if etc_out is None else str(etc_out),
         "slot": member_name,
         "texturePath": payload.get("texturePath"),
+        "verification": verification,
     }
+
+
+def _parse_fields(plaintext: bytes) -> dict[str, str]:
+    fields: dict[str, str] = {}
+    for line in plaintext.splitlines():
+        if b"=" not in line:
+            continue
+        key, value = line.split(b"=", 1)
+        fields[key.strip().decode("ascii", errors="replace")] = (
+            value.strip().strip(b'"').decode("ascii", errors="replace")
+        )
+    return fields
+
+
+def _verify_particle_archive(
+    source_particle: Path,
+    particle_out: Path,
+    *,
+    member_name: str,
+    wind_assets: Any,
+) -> dict[str, Any]:
+    source_bytes = source_particle.read_bytes()
+    result_bytes = particle_out.read_bytes()
+    with zipfile.ZipFile(source_particle) as source, zipfile.ZipFile(particle_out) as result:
+        source_names = source.namelist()
+        result_names = result.namelist()
+        if source_names != result_names:
+            return {"ok": False, "error": "MEMBER_LIST_CHANGED"}
+        changed = [
+            name
+            for name in source_names
+            if source.read(name) != result.read(name)
+        ]
+        if changed != [member_name]:
+            return {
+                "ok": False,
+                "error": "UNEXPECTED_MEMBER_MUTATION",
+                "changedMembers": changed,
+            }
+        fields = _parse_fields(wind_assets.decrypt_set(result.read(member_name)))
+        return {
+            "ok": True,
+            "sharedRacket001Identical": source.read("Racket_001.set")
+            == result.read("Racket_001.set"),
+            "sharedRacket002Identical": source.read("Racket_002.set")
+            == result.read("Racket_002.set"),
+            "changedMembers": changed,
+            "memberOrderIdentical": source_names == result_names,
+            "archiveSizeBytes": len(result_bytes),
+            "archiveSizeUnchanged": len(source_bytes) == len(result_bytes),
+            "fields": {
+                "TexturePath": fields.get("TexturePath", ""),
+                "PQ_Quantity": fields.get("PQ_Quantity", ""),
+                "Color": fields.get("Color", "").replace("\t", ""),
+                "PS_Size": fields.get("PS_Size", ""),
+                "SubTexSize": fields.get("SubTexSize", ""),
+            },
+        }
+
+
+def cmd_install(args: argparse.Namespace) -> dict[str, Any]:
+    jftse = _jftse_root()
+    stock = _client_root(jftse).resolve()
+    target = Path(args.target_client).expanduser().resolve()
+    if target == stock:
+        return {"ok": False, "error": "REFUSE_STOCK_CLIENT"}
+
+    local_client = os.environ.get("JFTSE_LOCAL_CLIENT", "").strip()
+    allow_prefix = os.environ.get("JFTSE_INSTALL_ALLOW_PREFIX", "").strip()
+    allowed = False
+    if local_client and target == Path(local_client).expanduser().resolve():
+        allowed = True
+    if allow_prefix and str(target).startswith(
+        str(Path(allow_prefix).expanduser().resolve())
+    ):
+        allowed = True
+    if str(target).startswith("/tmp/") or "/tmp/" in str(target):
+        allowed = True
+    if not allowed:
+        return {"ok": False, "error": "TARGET_NOT_ALLOWLISTED"}
+
+    particle_src = Path(args.particle_archive).resolve()
+    if not particle_src.is_file():
+        return {"ok": False, "error": "PARTICLE_ARCHIVE_MISSING"}
+
+    dest_particle = target / "Res" / "Effect" / "Particle.res"
+    dest_particle.parent.mkdir(parents=True, exist_ok=True)
+    dest_particle.write_bytes(particle_src.read_bytes())
+    installed: dict[str, str] = {"particle": str(dest_particle)}
+
+    if args.item_archive:
+        item_src = Path(args.item_archive).resolve()
+        if item_src.is_file():
+            dest_item = target / "Res" / "Script" / "Item.res"
+            dest_item.parent.mkdir(parents=True, exist_ok=True)
+            dest_item.write_bytes(item_src.read_bytes())
+            installed["item"] = str(dest_item)
+    if args.effect_archive:
+        effect_src = Path(args.effect_archive).resolve()
+        if effect_src.is_file():
+            dest_effect = target / "Res" / "Script" / "ETC.res"
+            dest_effect.parent.mkdir(parents=True, exist_ok=True)
+            dest_effect.write_bytes(effect_src.read_bytes())
+            installed["effect"] = str(dest_effect)
+
+    return {"ok": True, "targetClient": str(target), "installed": installed}
 
 
 def _color_bytes(value: str) -> bytes:
@@ -353,6 +454,12 @@ def main() -> None:
     p_build.add_argument("--payload", required=True)
     p_build.add_argument("--out-dir", required=True)
 
+    p_install = sub.add_parser("install")
+    p_install.add_argument("--target-client", required=True)
+    p_install.add_argument("--particle-archive", required=True)
+    p_install.add_argument("--item-archive", default="")
+    p_install.add_argument("--effect-archive", default="")
+
     sub.add_parser("list-maps")
 
     p_items = sub.add_parser("list-items")
@@ -365,6 +472,7 @@ def main() -> None:
         "list-atlases": cmd_list_atlases,
         "atlas-preview": cmd_atlas_preview,
         "build-effect": cmd_build_effect,
+        "install": cmd_install,
         "list-maps": cmd_list_maps,
         "list-items": cmd_list_items,
     }

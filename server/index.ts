@@ -1,7 +1,7 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import index from "../web/index.html";
-import { buildEffect, runBridge } from "./bridge.ts";
+import { buildEffect, installEffect, runBridge } from "./bridge.ts";
 import { config } from "./config.ts";
 
 mkdirSync(config.exportsDir, { recursive: true });
@@ -16,32 +16,48 @@ function bad(error: string, status = 400): Response {
   return json({ ok: false, error }, status);
 }
 
+async function safeBridge(
+  work: () => Promise<Record<string, unknown>>,
+): Promise<Response> {
+  try {
+    const result = await work();
+    if (result.ok === false) {
+      return bad(String(result.error ?? "BRIDGE_FAILED"));
+    }
+    return json(result);
+  } catch (error) {
+    return json(
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      500,
+    );
+  }
+}
+
 const server = Bun.serve({
   port: config.port,
   routes: {
     "/": index,
     "/api/health": {
-      GET: async () => {
-        try {
+      GET: async () =>
+        safeBridge(async () => {
           const health = await runBridge(["health"]);
-          return json({ ok: true, ...health, port: config.port });
-        } catch (error) {
-          return json(
-            {
-              ok: false,
-              error: error instanceof Error ? error.message : String(error),
-            },
-            500,
-          );
-        }
-      },
+          return {
+            ok: true,
+            ...health,
+            port: config.port,
+            localClient: config.localClient,
+            stockClient: config.stockClient,
+          };
+        }),
     },
     "/api/atlases": {
       GET: async (req) => {
         const url = new URL(req.url);
         const limit = url.searchParams.get("limit") ?? "0";
-        const result = await runBridge(["list-atlases", "--limit", limit]);
-        return json(result);
+        return safeBridge(() => runBridge(["list-atlases", "--limit", limit]));
       },
     },
     "/api/items": {
@@ -49,21 +65,13 @@ const server = Bun.serve({
         const url = new URL(req.url);
         const part = url.searchParams.get("part") ?? "RACKET";
         const limit = url.searchParams.get("limit") ?? "40";
-        const result = await runBridge([
-          "list-items",
-          "--part",
-          part,
-          "--limit",
-          limit,
-        ]);
-        return json(result);
+        return safeBridge(() =>
+          runBridge(["list-items", "--part", part, "--limit", limit]),
+        );
       },
     },
     "/api/maps": {
-      GET: async () => {
-        const result = await runBridge(["list-maps"]);
-        return json(result);
-      },
+      GET: async () => safeBridge(() => runBridge(["list-maps"])),
     },
     "/api/effects/preview-build": {
       POST: async (req) => {
@@ -73,21 +81,34 @@ const server = Bun.serve({
         } catch {
           return bad("INVALID_JSON");
         }
+        return safeBridge(() => buildEffect(payload));
+      },
+    },
+    "/api/effects/install": {
+      POST: async (req) => {
+        let body: Record<string, unknown>;
         try {
-          const result = await buildEffect(payload);
-          if (result.ok === false) {
-            return bad(String(result.error ?? "BUILD_FAILED"));
-          }
-          return json(result);
-        } catch (error) {
-          return json(
-            {
-              ok: false,
-              error: error instanceof Error ? error.message : String(error),
-            },
-            500,
-          );
+          body = (await req.json()) as Record<string, unknown>;
+        } catch {
+          return bad("INVALID_JSON");
         }
+        const particleArchive = String(body.particleArchive ?? "");
+        const targetClient = String(body.targetClient ?? config.localClient);
+        if (!particleArchive) {
+          return bad("PARTICLE_ARCHIVE_REQUIRED");
+        }
+        return safeBridge(() =>
+          installEffect({
+            particleArchive,
+            targetClient,
+            itemArchive:
+              typeof body.itemArchive === "string" ? body.itemArchive : undefined,
+            effectArchive:
+              typeof body.effectArchive === "string"
+                ? body.effectArchive
+                : undefined,
+          }),
+        );
       },
     },
     "/api/packs": {
@@ -115,11 +136,12 @@ const server = Bun.serve({
         const path = join(config.packsDir, `${name}.json`);
         const pack = {
           name,
-          version: 2,
+          version: 3,
           savedAt: new Date().toISOString(),
           item: body.item ?? null,
           effect: body.effect ?? null,
           map: body.map ?? null,
+          export: body.export ?? null,
         };
         writeFileSync(path, JSON.stringify(pack, null, 2));
         return json({ ok: true, path, pack });

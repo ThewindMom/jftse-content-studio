@@ -4,22 +4,15 @@ import { bridgeEnv, config } from "./config.ts";
 
 export type BridgeResult = Record<string, unknown>;
 
-export async function runBridge(
-  args: string[],
-  options: { stdinJson?: unknown } = {},
-): Promise<BridgeResult> {
+export async function runBridge(args: string[]): Promise<BridgeResult> {
   mkdirSync(config.tmpDir, { recursive: true });
   const proc = Bun.spawn(["uv", "run", "python", config.pythonBridge, ...args], {
     cwd: config.jftseRoot,
     env: bridgeEnv(),
     stdout: "pipe",
     stderr: "pipe",
-    stdin: options.stdinJson === undefined ? "ignore" : "pipe",
+    stdin: "ignore",
   });
-  if (options.stdinJson !== undefined && proc.stdin) {
-    proc.stdin.write(JSON.stringify(options.stdinJson));
-    proc.stdin.end();
-  }
   const stdout = await new Response(proc.stdout).text();
   const stderr = await new Response(proc.stderr).text();
   const code = await proc.exited;
@@ -37,7 +30,7 @@ export async function buildEffect(
   const destination =
     outDir ?? join(config.exportsDir, `effect-${Date.now()}`);
   mkdirSync(destination, { recursive: true });
-  const payloadPath = join(config.tmpDir, `payload-${Date.now()}.json`);
+  const payloadPath = join(config.tmpDir, `payload-${crypto.randomUUID()}.json`);
   await Bun.write(payloadPath, JSON.stringify(payload, null, 2));
   return runBridge([
     "build-effect",
@@ -46,4 +39,26 @@ export async function buildEffect(
     "--out-dir",
     destination,
   ]);
+}
+
+export async function installEffect(input: {
+  particleArchive: string;
+  targetClient: string;
+  itemArchive?: string;
+  effectArchive?: string;
+}): Promise<BridgeResult> {
+  const args = [
+    "install",
+    "--target-client",
+    input.targetClient,
+    "--particle-archive",
+    input.particleArchive,
+  ];
+  if (input.itemArchive) {
+    args.push("--item-archive", input.itemArchive);
+  }
+  if (input.effectArchive) {
+    args.push("--effect-archive", input.effectArchive);
+  }
+  return runBridge(args);
 }
