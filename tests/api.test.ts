@@ -79,6 +79,47 @@ describe("content studio production API", () => {
     expect(body.particleRes).toBe(true);
   });
 
+  test("health exposes designer setup readiness checklist", async () => {
+    const response = await fetch(`${base}/api/health`);
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.setup).toBeDefined();
+    expect(typeof body.setup.ready).toBe("boolean");
+    expect(typeof body.setup.stockClient).toBe("string");
+    expect(typeof body.setup.localClient).toBe("string");
+    expect(typeof body.setup.stockExists).toBe("boolean");
+    expect(typeof body.setup.localExists).toBe("boolean");
+    expect(typeof body.setup.particleRes).toBe("boolean");
+    expect(typeof body.setup.installReady).toBe("boolean");
+    expect(Array.isArray(body.setup.checklist)).toBe(true);
+    expect(body.setup.checklist.length).toBeGreaterThan(0);
+    expect(body.setup.checklist[0]).toHaveProperty("id");
+    expect(body.setup.checklist[0]).toHaveProperty("ok");
+    expect(body.setup.checklist[0]).toHaveProperty("label");
+  });
+
+  test("exports library lists recent studio artifacts", async () => {
+    const build = await fetch(`${base}/api/effects/preview-build`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(softPayload),
+    }).then((r) => r.json());
+    expect(build.ok).toBe(true);
+    const response = await fetch(`${base}/api/exports?limit=20`);
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(Array.isArray(body.exports)).toBe(true);
+    expect(body.exports.length).toBeGreaterThan(0);
+    const hit = body.exports.find(
+      (row: { path?: string }) => row.path === build.particleArchive,
+    );
+    expect(hit).toBeDefined();
+    expect(hit.kind).toBe("effect");
+    expect(typeof hit.name).toBe("string");
+    expect(typeof hit.bytes).toBe("number");
+    expect(typeof hit.mtimeMs).toBe("number");
+  }, 120000);
+
   test("maps list is non-empty", async () => {
     const response = await fetch(`${base}/api/maps`);
     const body = await response.json();

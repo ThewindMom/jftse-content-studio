@@ -86,7 +86,8 @@ Topology/materials/UVs are **not** fully solved. Treat Mesh Studio as a producti
 
 | Area | Endpoints |
 |---|---|
-| Health | `GET /api/health` |
+| Health | `GET /api/health` (includes `setup` checklist) |
+| Exports library | `GET /api/exports?limit=&kind=` |
 | Items/effects | `/api/items`, `/api/atlases`, `/api/presets`, `/api/effects/preview-build`, `/api/effects/install` |
 | Maps | `/api/map-studio/catalog`, `/api/map-studio/validate`, `/api/map-studio/export-pack` |
 | Meshes | `/api/mesh-studio/list`, `/api/mesh-studio/parse`, `/api/mesh-studio/export`, `/api/mesh-studio/transform` |
@@ -102,6 +103,36 @@ Topology/materials/UVs are **not** fully solved. Treat Mesh Studio as a producti
 - Banned particle atlases (spaak/cloud classes) fail closed unless explicitly overridden  
 
 ---
+
+## Day-1 designer runbook
+
+1. **Configure**
+   ```bash
+   export JFTSE_ROOT=/path/to/JFTSE
+   export JFTSE_STOCK_CLIENT=$JFTSE_ROOT/.jftse-client-linux/client
+   export JFTSE_LOCAL_CLIENT=$JFTSE_ROOT/FantaTennis-Local-Client/client
+   bun run dev
+   ```
+   Open `http://127.0.0.1:4310`. Confirm **Bridge online** and that the setup checklist is green (or expand **Setup incomplete** and fix env paths).
+
+2. **Items → aura**
+   - Items workspace → pick **Dragon Slayer(Black)** (or any stock racket)
+   - Effect → **Soft full-racket wind** (or another preset) + atlas thumbs
+   - Export → **Build & verify export** (only `Ice_Smoke02.set` may change)
+   - Install → **Install to local client** → **Confirm install**
+   - Playtest → **Copy launch command** → run the local client and check Equipment
+
+3. **Map Studio**
+   - Open a map (e.g. Emerald Beach) → **Validate stage assets** → **Export SQL map pack** → optional **Save map pack**
+
+4. **Mesh Studio**
+   - Select a court `.dat` → confirm the 3D viewport is not blank → **Export OBJ + glTF**
+
+5. **Find artifacts**
+   - Items Export step lists **Recent exports** (also `GET /api/exports`)
+   - Files land under `exports/` and `content-packs/`
+
+The in-app **Getting started** banner repeats this path and can be dismissed (stored in `localStorage`).
 
 ## Development
 
@@ -124,12 +155,18 @@ DESIGN.md         Visual/product language
 
 ---
 
-## Honest limits
+## Honest limits / intentionally out of scope
+
+| In scope now | Out of scope (for now) |
+|---|---|
+| Soft particle export + local install | Pixel-true in-browser game renderer |
+| Map metadata + stage validation + SQL packs | Full terrain/sculpt DCC |
+| Mesh DAT decode, transform, OBJ/glTF | Blender-parity materials/UVs/skinning |
+| Setup checklist, exports library, guided day-1 UX | Multi-user auth / cloud collab |
 
 - Browser particle preview ≠ final Equipment look  
-- Map Studio does not author brand-new court meshes  
-- Mesh Studio recovers geometry from proprietary DATs; full native material/skinning round-trip is unfinished research  
 - Always use an isolated local client for installs  
+- Stock client writes are refused by design  
 
 ---
 

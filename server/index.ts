@@ -4,8 +4,9 @@ import {
   readFileSync,
   writeFileSync,
   existsSync,
+  statSync,
 } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import index from "../web/index.html";
 import { buildEffect, installEffect, runBridge } from "./bridge.ts";
 import { config } from "./config.ts";
@@ -22,6 +23,137 @@ function json(data: unknown, status = 200): Response {
 
 function bad(error: string, status = 400): Response {
   return json({ ok: false, error }, status);
+}
+
+type SetupCheck = { id: string; ok: boolean; label: string };
+
+function buildSetup(health: Record<string, unknown>) {
+  const stockExists = existsSync(config.stockClient);
+  const localExists = existsSync(config.localClient);
+  const particleRes = Boolean(health.particleRes);
+  const itemRes = Boolean(health.itemRes);
+  const stageInfo = Boolean(health.stageInfo);
+  const localParticle = existsSync(
+    join(config.localClient, "Res/Effect/Particle.res"),
+  );
+  const installReady = localExists || Boolean(process.env.JFTSE_LOCAL_CLIENT);
+  const checklist: SetupCheck[] = [
+    {
+      id: "jftse-root",
+      ok: existsSync(config.jftseRoot),
+      label: `JFTSE_ROOT → ${config.jftseRoot}`,
+    },
+    {
+      id: "stock-client",
+      ok: stockExists,
+      label: `Stock client readable → ${config.stockClient}`,
+    },
+    {
+      id: "particle-res",
+      ok: particleRes,
+      label: "Stock Particle.res available for soft exports",
+    },
+    {
+      id: "item-res",
+      ok: itemRes,
+      label: "Stock Item.res available for racket catalog",
+    },
+    {
+      id: "stage-info",
+      ok: stageInfo,
+      label: "Stage/Info.res available for Map Studio",
+    },
+    {
+      id: "local-client",
+      ok: installReady,
+      label: installReady
+        ? `Local install target → ${config.localClient}`
+        : "Set JFTSE_LOCAL_CLIENT to an allowlisted local client path",
+    },
+    {
+      id: "local-particle",
+      ok: !installReady || localParticle || localExists,
+      label: localParticle
+        ? "Local client has Res/Effect/Particle.res"
+        : "Local Particle.res will be created on first install",
+    },
+  ];
+  const ready = checklist
+    .filter((row) => row.id !== "local-particle")
+    .every((row) => row.ok);
+  return {
+    ready,
+    stockClient: config.stockClient,
+    localClient: config.localClient,
+    jftseRoot: config.jftseRoot,
+    stockExists,
+    localExists,
+    particleRes,
+    itemRes,
+    stageInfo,
+    installReady,
+    checklist,
+  };
+}
+
+type ExportRow = {
+  kind: string;
+  name: string;
+  path: string;
+  relativePath: string;
+  bytes: number;
+  mtimeMs: number;
+};
+
+function listExports(limit = 30): ExportRow[] {
+  if (!existsSync(config.exportsDir)) return [];
+  const rows: ExportRow[] = [];
+  const top = readdirSync(config.exportsDir, { withFileTypes: true });
+  for (const entry of top) {
+    const full = join(config.exportsDir, entry.name);
+    if (entry.isFile()) {
+      const st = statSync(full);
+      const kind = entry.name.startsWith("map-pack-")
+        ? "map"
+        : entry.name.startsWith("maps-")
+          ? "map"
+          : entry.name.includes("Particle")
+            ? "effect"
+            : "file";
+      rows.push({
+        kind,
+        name: entry.name,
+        path: full,
+        relativePath: entry.name,
+        bytes: st.size,
+        mtimeMs: st.mtimeMs,
+      });
+      continue;
+    }
+    if (!entry.isDirectory()) continue;
+    const kind = entry.name.startsWith("effect-")
+      ? "effect"
+      : entry.name.startsWith("mesh-")
+        ? "mesh"
+        : entry.name.startsWith("map")
+          ? "map"
+          : "other";
+    for (const child of readdirSync(full, { withFileTypes: true })) {
+      if (!child.isFile()) continue;
+      const childPath = join(full, child.name);
+      const st = statSync(childPath);
+      rows.push({
+        kind,
+        name: child.name,
+        path: childPath,
+        relativePath: relative(config.exportsDir, childPath),
+        bytes: st.size,
+        mtimeMs: st.mtimeMs,
+      });
+    }
+  }
+  rows.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  return rows.slice(0, Math.max(1, Math.min(limit, 100)));
 }
 
 async function safeBridge(
@@ -52,6 +184,7 @@ const server = Bun.serve({
       GET: async () =>
         safeBridge(async () => {
           const health = await runBridge(["health"]);
+          const setup = buildSetup(health);
           return {
             ok: true,
             ...health,
@@ -59,8 +192,21 @@ const server = Bun.serve({
             localClient: config.localClient,
             stockClient: config.stockClient,
             launchHint: `cd ${join(config.jftseRoot, "FantaTennis-Local-Client")} && ./START-FANTA-TENNIS.sh`,
+            setup,
           };
         }),
+    },
+    "/api/exports": {
+      GET: (req) => {
+        const url = new URL(req.url);
+        const limit = Number(url.searchParams.get("limit") ?? "30");
+        const kind = (url.searchParams.get("kind") ?? "").toLowerCase();
+        let exports = listExports(Number.isFinite(limit) ? limit : 30);
+        if (kind) {
+          exports = exports.filter((row) => row.kind === kind);
+        }
+        return json({ ok: true, exports, count: exports.length });
+      },
     },
     "/api/presets": {
       GET: () => json({ presets: EFFECT_PRESETS }),

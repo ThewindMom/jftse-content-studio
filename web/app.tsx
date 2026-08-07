@@ -60,6 +60,33 @@ type PackSummary = {
   savedAt?: string;
 };
 
+type SetupCheck = { id: string; ok: boolean; label: string };
+
+type SetupInfo = {
+  ready: boolean;
+  stockClient: string;
+  localClient: string;
+  jftseRoot: string;
+  stockExists: boolean;
+  localExists: boolean;
+  particleRes: boolean;
+  itemRes: boolean;
+  stageInfo: boolean;
+  installReady: boolean;
+  checklist: SetupCheck[];
+};
+
+type ExportRow = {
+  kind: string;
+  name: string;
+  path: string;
+  relativePath: string;
+  bytes: number;
+  mtimeMs: number;
+};
+
+const GS_KEY = "studio.gettingStarted.dismissed";
+
 const STEPS: Array<{ id: StepId; title: string; detail: string }> = [
   { id: "item", title: "1 · Item", detail: "Pick a stock racket base" },
   { id: "effect", title: "2 · Effect", detail: "Preset + atlas + emitter" },
@@ -219,6 +246,38 @@ function App() {
   const [mapSqlPath, setMapSqlPath] = useState("");
   const [packName, setPackName] = useState(`designer-${Date.now()}`);
   const [notes, setNotes] = useState("");
+  const [setup, setSetup] = useState<SetupInfo | null>(null);
+  const [exportsList, setExportsList] = useState<ExportRow[]>([]);
+  const [showGettingStarted, setShowGettingStarted] = useState(() => {
+    try {
+      return localStorage.getItem(GS_KEY) !== "1";
+    } catch {
+      return true;
+    }
+  });
+  const [installConfirmOpen, setInstallConfirmOpen] = useState(false);
+  const [toast, setToast] = useState("");
+
+  const pushToast = (message: string) => {
+    setToast(message);
+    window.setTimeout(() => setToast((current) => (current === message ? "" : current)), 3200);
+  };
+
+  const copyText = async (value: string, label: string) => {
+    if (!value) return;
+    await navigator.clipboard.writeText(value);
+    pushToast(`${label} copied`);
+    setStatus(`${label} copied`);
+  };
+
+  const refreshExports = async () => {
+    try {
+      const data = await api<{ exports: ExportRow[] }>("/api/exports?limit=12");
+      setExportsList(data.exports ?? []);
+    } catch {
+      /* non-fatal */
+    }
+  };
 
   useEffect(() => {
     void (async () => {
@@ -228,16 +287,24 @@ function App() {
           localClient?: string;
           launchHint?: string;
           stockClient?: string;
+          setup?: SetupInfo;
         }>("/api/health");
         setHealthOk(Boolean(health.ok));
         setLocalClient(health.localClient ?? "");
         setLaunchHint(health.launchHint ?? "");
-        setHealthDetail(health.localClient ?? health.stockClient ?? "ready");
+        setSetup(health.setup ?? null);
+        setHealthDetail(
+          health.setup?.ready
+            ? (health.localClient ?? health.stockClient ?? "ready")
+            : "Setup incomplete — expand checklist",
+        );
       } catch (err) {
         setHealthOk(false);
+        setSetup(null);
         setHealthDetail(err instanceof Error ? err.message : String(err));
       }
     })();
+    void refreshExports();
   }, []);
 
   useEffect(() => {
@@ -364,6 +431,8 @@ function App() {
       setVerification(JSON.stringify(result.verification ?? {}, null, 2));
       setStatus("Export verified. Continue to Install.");
       setStep("install");
+      pushToast("Effect pack built and verified");
+      void refreshExports();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setStatus("Export failed");
@@ -372,18 +441,24 @@ function App() {
     }
   };
 
+  const requestInstall = () => {
+    if (!lastExport.particleArchive) {
+      setError("Build an export first");
+      return;
+    }
+    if (!localClient) {
+      setError("Local client is not configured");
+      return;
+    }
+    setInstallConfirmOpen(true);
+  };
+
   const installLocal = async () => {
     if (!lastExport.particleArchive) {
       setError("Build an export first");
       return;
     }
-    if (
-      !window.confirm(
-        `Install verified Particle.res into local client?\n\n${localClient}\n\nStock client is never written.`,
-      )
-    ) {
-      return;
-    }
+    setInstallConfirmOpen(false);
     setBusy(true);
     setError("");
     setStatus("Installing to local client…");
@@ -403,6 +478,7 @@ function App() {
       setInstalledPath(result.installed?.particle ?? localClient);
       setStatus("Installed. Continue to Playtest.");
       setStep("playtest");
+      pushToast("Installed to local client");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setStatus("Install failed");
@@ -546,10 +622,86 @@ function App() {
             ))}
           </nav>
         )}
-        <div className={`chip ${healthOk ? "ok" : "bad"}`} title={healthDetail}>
-          {healthOk ? "Bridge online" : "Bridge down"}
+        <div className={`chip ${healthOk && setup?.ready !== false ? "ok" : "bad"}`} title={healthDetail}>
+          {!healthOk
+            ? "Bridge down"
+            : setup && !setup.ready
+              ? "Setup incomplete"
+              : "Bridge online"}
         </div>
+        <button
+          className="btn"
+          type="button"
+          onClick={() => setShowGettingStarted(true)}
+          aria-label="Open getting started guide"
+        >
+          Getting started
+        </button>
       </header>
+
+      {toast && (
+        <div className="toast" role="status" aria-live="polite">
+          {toast}
+        </div>
+      )}
+
+      {showGettingStarted && (
+        <section className="banner panel-lite" aria-label="Getting started">
+          <div className="banner-copy">
+            <strong>Day-1 designer path</strong>
+            <ol>
+              <li>
+                <strong>Items</strong> — pick Dragon Slayer → soft wind preset → Build &amp; verify →
+                Install to local client → copy launch command and check Equipment.
+              </li>
+              <li>
+                <strong>Map Studio</strong> — open a map → Validate stage assets → Export SQL map pack.
+              </li>
+              <li>
+                <strong>Mesh Studio</strong> — select a court DAT → confirm 3D view → Export OBJ + glTF.
+              </li>
+            </ol>
+            <p className="empty">
+              Browser particle preview is approximate. The live game client is the authority for aura look.
+              Custom terrain sculpting and Blender-parity mesh editing stay out of scope.
+            </p>
+          </div>
+          <button
+            className="btn primary"
+            type="button"
+            onClick={() => {
+              try {
+                localStorage.setItem(GS_KEY, "1");
+              } catch {
+                /* ignore */
+              }
+              setShowGettingStarted(false);
+              pushToast("Getting started dismissed");
+            }}
+          >
+            Dismiss guide
+          </button>
+        </section>
+      )}
+
+      {setup && !setup.ready && (
+        <section className="banner panel-lite warn" aria-label="Setup checklist">
+          <div className="banner-copy">
+            <strong>Finish environment setup</strong>
+            <ul className="validation">
+              {setup.checklist.map((row) => (
+                <li key={row.id} className={row.ok ? "ok" : "bad"}>
+                  {row.ok ? "PASS" : "TODO"} — {row.label}
+                </li>
+              ))}
+            </ul>
+            <p className="empty">
+              Export <code>JFTSE_ROOT</code>, <code>JFTSE_STOCK_CLIENT</code>, and{" "}
+              <code>JFTSE_LOCAL_CLIENT</code>, then restart <code>bun run dev</code>.
+            </p>
+          </div>
+        </section>
+      )}
 
       {workspace === "maps" ? (
         <MapStudio />
@@ -958,8 +1110,39 @@ function App() {
                   </button>
                 </div>
                 {lastExport.particleArchive && (
-                  <div className="mono">{lastExport.particleArchive}</div>
+                  <div className="path-row">
+                    <div className="mono">{lastExport.particleArchive}</div>
+                    <button
+                      className="btn"
+                      type="button"
+                      onClick={() => void copyText(lastExport.particleArchive ?? "", "Export path")}
+                    >
+                      Copy path
+                    </button>
+                  </div>
                 )}
+                <div className="exports-block">
+                  <strong>Recent exports</strong>
+                  {exportsList.length === 0 ? (
+                    <p className="empty">No exports yet — build a pack to populate this library.</p>
+                  ) : (
+                    <ul className="export-list">
+                      {exportsList.slice(0, 6).map((row) => (
+                        <li key={`${row.path}-${row.mtimeMs}`}>
+                          <button
+                            type="button"
+                            className="export-item"
+                            onClick={() => void copyText(row.path, row.name)}
+                            title={row.path}
+                          >
+                            <span className="chip tiny">{row.kind}</span>
+                            <span>{row.relativePath}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </>
             )}
 
@@ -969,13 +1152,24 @@ function App() {
                   Install writes only the allowlisted local client. Stock client installs are
                   rejected by the API.
                 </p>
-                <div className="mono">{localClient || "local client not configured"}</div>
+                <div className="path-row">
+                  <div className="mono">{localClient || "local client not configured"}</div>
+                  {localClient && (
+                    <button
+                      className="btn"
+                      type="button"
+                      onClick={() => void copyText(localClient, "Local client path")}
+                    >
+                      Copy path
+                    </button>
+                  )}
+                </div>
                 <div className="actions">
                   <button
                     className="btn primary"
                     type="button"
                     disabled={busy || !lastExport.particleArchive}
-                    onClick={() => void installLocal()}
+                    onClick={requestInstall}
                   >
                     {busy ? "Installing…" : "Install to local client"}
                   </button>
@@ -983,7 +1177,40 @@ function App() {
                     Back to export
                   </button>
                 </div>
-                {installedPath && <div className="mono">{installedPath}</div>}
+                {installedPath && (
+                  <div className="path-row">
+                    <div className="mono">{installedPath}</div>
+                    <button
+                      className="btn"
+                      type="button"
+                      onClick={() => void copyText(installedPath, "Installed path")}
+                    >
+                      Copy path
+                    </button>
+                  </div>
+                )}
+                <div className="exports-block" aria-label="Recent exports">
+                  <strong>Recent exports</strong>
+                  {exportsList.length === 0 ? (
+                    <p className="empty">No exports yet.</p>
+                  ) : (
+                    <ul className="export-list">
+                      {exportsList.slice(0, 6).map((row) => (
+                        <li key={`install-${row.path}-${row.mtimeMs}`}>
+                          <button
+                            type="button"
+                            className="export-item"
+                            onClick={() => void copyText(row.path, row.name)}
+                            title={row.path}
+                          >
+                            <span className="chip tiny">{row.kind}</span>
+                            <span>{row.relativePath}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </>
             )}
 
@@ -998,10 +1225,7 @@ function App() {
                   <button
                     className="btn primary"
                     type="button"
-                    onClick={async () => {
-                      await navigator.clipboard.writeText(launchHint);
-                      setStatus("Launch command copied");
-                    }}
+                    onClick={() => void copyText(launchHint, "Launch command")}
                   >
                     Copy launch command
                   </button>
@@ -1111,6 +1335,50 @@ function App() {
           </div>
         </section>
       </main>
+      )}
+
+      {installConfirmOpen && (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={() => !busy && setInstallConfirmOpen(false)}
+        >
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="install-confirm-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 id="install-confirm-title">Install to local client?</h3>
+            <p className="empty">
+              Writes verified <code>Particle.res</code> into the allowlisted local client only. The
+              stock client path is refused by the API.
+            </p>
+            <div className="mono">{localClient}</div>
+            {lastExport.particleArchive && (
+              <div className="mono">{lastExport.particleArchive}</div>
+            )}
+            <div className="actions">
+              <button
+                className="btn primary"
+                type="button"
+                disabled={busy}
+                onClick={() => void installLocal()}
+              >
+                Confirm install
+              </button>
+              <button
+                className="btn"
+                type="button"
+                disabled={busy}
+                onClick={() => setInstallConfirmOpen(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <footer className="footer">
