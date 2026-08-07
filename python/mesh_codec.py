@@ -56,6 +56,7 @@ class DecodedMesh:
     indices: list[int]
     bounds: dict[str, list[float]]
     decodeMode: str
+    vertexStride: int = 12
 
 
 def parse_header(data: bytes) -> MeshHeader:
@@ -316,6 +317,7 @@ def decode_mesh_bytes(
             "max": [max(xs), max(ys), max(zs)],
         },
         decodeMode=mode,
+        vertexStride=stride,
     )
 
 
@@ -521,10 +523,27 @@ def apply_transform(
     return out
 
 
-def write_positions_into_dat(data: bytes, vertex_offset: int, positions: list[list[float]]) -> bytes:
+def write_positions_into_dat(
+    data: bytes,
+    vertex_offset: int,
+    positions: list[list[float]],
+    *,
+    stride: int = 12,
+) -> bytes:
+    """Write float3 positions back using the decode stride (not always tightly packed 12).
+
+    Multi-stride courts (s16/s20/s24/s32) interleave normals/UVs between positions.
+    Packing at *12 overwrites those channels and desyncs subsequent verts.
+    """
+    if stride < 12:
+        raise ValueError(f"INVALID_VERTEX_STRIDE:{stride}")
     buf = bytearray(data)
+    end = len(buf)
     for index, (x, y, z) in enumerate(positions):
-        struct.pack_into("<fff", buf, vertex_offset + index * 12, float(x), float(y), float(z))
+        pos = vertex_offset + index * stride
+        if pos + 12 > end:
+            break
+        struct.pack_into("<fff", buf, pos, float(x), float(y), float(z))
     return bytes(buf)
 
 

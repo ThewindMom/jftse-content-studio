@@ -428,6 +428,61 @@ describe("content studio production API", () => {
     expect(body.mesh.vertexCount).toBeGreaterThan(100);
   }, 120000);
 
+  test("mesh transform rewrites BF_Court01 with stride-aware vertex packing", async () => {
+    // Multi-stride decode (s16) must not pack positions at *12 or interleaved channels corrupt.
+    const list = await fetch(`${base}/api/mesh-studio/list`).then((r) => r.json());
+    const court =
+      list.meshes.find((row: { member: string }) => row.member === "BF_Court01.dat") ??
+      list.meshes[0];
+    const before = await fetch(
+      `${base}/api/mesh-studio/parse?archive=${encodeURIComponent(court.archive)}&member=${encodeURIComponent(court.member)}`,
+    ).then((r) => r.json());
+    expect(before.ok).toBe(true);
+    const stride = Number(before.mesh.vertexStride ?? 12);
+    const offset = Number(before.mesh.vertexOffset);
+    expect(stride).toBeGreaterThan(12);
+    const p0 = before.mesh.positions[0] as number[];
+    const response = await fetch(`${base}/api/mesh-studio/transform`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        archive: court.archive,
+        member: court.member,
+        translate: [3, 0, 0],
+        scale: [1, 1, 1],
+        rotateDeg: [0, 0, 0],
+      }),
+    });
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.sameSize).toBe(true);
+    // float3 at vertexOffset is translated; interleave bytes between verts unchanged.
+    const check = Bun.spawnSync(
+      [
+        "python3",
+        "-c",
+        [
+          "import struct,zipfile",
+          "from pathlib import Path",
+          `orig=zipfile.ZipFile(Path(${JSON.stringify(stockClient)})/'Res/Stage/Mesh01.res').read('BF_Court01.dat')`,
+          `rew=open(${JSON.stringify(body.dat)},'rb').read()`,
+          `off,stride=${offset},${stride}`,
+          "x,y,z=struct.unpack_from('<fff', rew, off)",
+          "print(x,y,z)",
+          "gap=all(rew[off+12+i*stride:off+stride+i*stride]==orig[off+12+i*stride:off+stride+i*stride] for i in range(50))",
+          "print(int(gap))",
+        ].join(";"),
+      ],
+      { cwd: join(import.meta.dir, "..") },
+    );
+    expect(check.exitCode).toBe(0);
+    const lines = check.stdout.toString().trim().split("\n");
+    const xyz = lines[0]!.trim().split(/\s+/).map(Number);
+    expect(Math.abs(xyz[0]! - (p0[0]! + 3))).toBeLessThan(0.05);
+    expect(lines[1]!.trim()).toBe("1");
+  }, 120000);
+
   test("mesh decode prefers solid stage geometry over UV/normal false runs for BF_Court01", async () => {
     // Prior multi-stride scorer rewarded ultra-flat s20 UV/normal channels → ~485 solid area, nearly invisible pad.
     const response = await fetch(

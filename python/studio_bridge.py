@@ -843,7 +843,12 @@ def cmd_mesh_transform(args: argparse.Namespace) -> dict[str, Any]:
     out_dir.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(client / archive) as handle:
         original = handle.read(member)
-    rewritten = write_positions_into_dat(original, mesh.vertexOffset, transformed)
+    rewritten = write_positions_into_dat(
+        original,
+        mesh.vertexOffset,
+        transformed,
+        stride=getattr(mesh, "vertexStride", 12) or 12,
+    )
     dat_path = out_dir / member
     dat_path.write_bytes(rewritten)
     mesh.positions = transformed
