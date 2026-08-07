@@ -171,13 +171,79 @@ def decode_mesh_bytes(
     )
 
 
+def compute_vertex_normals(
+    positions: list[list[float]], indices: list[int]
+) -> list[list[float]]:
+    normals = [[0.0, 0.0, 0.0] for _ in positions]
+    for i in range(0, len(indices) - 2, 3):
+        ia, ib, ic = indices[i], indices[i + 1], indices[i + 2]
+        if max(ia, ib, ic) >= len(positions):
+            continue
+        ax, ay, az = positions[ia]
+        bx, by, bz = positions[ib]
+        cx, cy, cz = positions[ic]
+        ux, uy, uz = bx - ax, by - ay, bz - az
+        vx, vy, vz = cx - ax, cy - ay, cz - az
+        nx = uy * vz - uz * vy
+        ny = uz * vx - ux * vz
+        nz = ux * vy - uy * vx
+        for idx in (ia, ib, ic):
+            normals[idx][0] += nx
+            normals[idx][1] += ny
+            normals[idx][2] += nz
+    out: list[list[float]] = []
+    for nx, ny, nz in normals:
+        length = math.sqrt(nx * nx + ny * ny + nz * nz)
+        if length < 1e-12:
+            out.append([0.0, 1.0, 0.0])
+        else:
+            out.append([nx / length, ny / length, nz / length])
+    return out
+
+
+def decode_confidence(mesh: DecodedMesh) -> dict[str, Any]:
+    tri = max(0, mesh.indexCount // 3)
+    density = mesh.vertexCount / max(mesh.byteLength, 1)
+    score = 0.2
+    if mesh.vertexCount >= 3:
+        score += 0.25
+    if mesh.decodeMode == "indexed" and tri >= 1:
+        score += 0.35
+    elif tri >= 1:
+        score += 0.15
+    if 0.001 <= density <= 0.2:
+        score += 0.1
+    bounds = mesh.bounds
+    extent = [
+        bounds["max"][i] - bounds["min"][i] for i in range(3)
+    ] if bounds.get("max") and bounds.get("min") else [0, 0, 0]
+    if max(extent) > 1.0:
+        score += 0.1
+    return {
+        "score": round(min(score, 0.99), 3),
+        "triangleCount": tri,
+        "bytesPerVertex": round(mesh.byteLength / max(mesh.vertexCount, 1), 3),
+        "extent": extent,
+        "hasIndices": mesh.decodeMode == "indexed",
+    }
+
+
 def mesh_to_obj(mesh: DecodedMesh) -> str:
-    lines = [f"# JFTSE Content Studio mesh export: {mesh.name}", f"# mode={mesh.decodeMode}"]
+    normals = compute_vertex_normals(mesh.positions, mesh.indices)
+    lines = [
+        f"# JFTSE Content Studio mesh export: {mesh.name}",
+        f"# mode={mesh.decodeMode}",
+        f"# confidence={decode_confidence(mesh)['score']}",
+    ]
     for x, y, z in mesh.positions:
         lines.append(f"v {x:.6f} {y:.6f} {z:.6f}")
+    for nx, ny, nz in normals:
+        lines.append(f"vn {nx:.6f} {ny:.6f} {nz:.6f}")
     for i in range(0, len(mesh.indices), 3):
         a, b, c = mesh.indices[i], mesh.indices[i + 1], mesh.indices[i + 2]
-        lines.append(f"f {a + 1} {b + 1} {c + 1}")
+        lines.append(
+            f"f {a + 1}//{a + 1} {b + 1}//{b + 1} {c + 1}//{c + 1}"
+        )
     return "\n".join(lines) + "\n"
 
 
@@ -188,13 +254,23 @@ def mesh_to_gltf(mesh: DecodedMesh) -> dict[str, Any]:
     positions = array.array("f")
     for x, y, z in mesh.positions:
         positions.extend([x, y, z])
+    normals = array.array("f")
+    for nx, ny, nz in compute_vertex_normals(mesh.positions, mesh.indices):
+        normals.extend([nx, ny, nz])
     indices = array.array("H", [i for i in mesh.indices if i < 65535])
     if len(indices) >= 3 and len(indices) % 3:
         indices = indices[: len(indices) // 3 * 3]
     pos_bytes = positions.tobytes()
+    nrm_bytes = normals.tobytes()
     idx_bytes = indices.tobytes()
-    blob = idx_bytes + pos_bytes
+    # Align buffer views to 4-byte boundaries for glTF accessors.
+    pad0 = (4 - (len(idx_bytes) % 4)) % 4
+    pad1 = (4 - (len(pos_bytes) % 4)) % 4
+    blob = idx_bytes + (b"\x00" * pad0) + pos_bytes + (b"\x00" * pad1) + nrm_bytes
     b64 = base64.b64encode(blob).decode("ascii")
+    idx_off = 0
+    pos_off = len(idx_bytes) + pad0
+    nrm_off = pos_off + len(pos_bytes) + pad1
     return {
         "asset": {"version": "2.0", "generator": "jftse-content-studio-mesh"},
         "scenes": [{"nodes": [0]}],
@@ -204,7 +280,7 @@ def mesh_to_gltf(mesh: DecodedMesh) -> dict[str, Any]:
                 "name": mesh.name,
                 "primitives": [
                     {
-                        "attributes": {"POSITION": 1},
+                        "attributes": {"POSITION": 1, "NORMAL": 2},
                         "indices": 0,
                         "mode": 4,
                     }
@@ -226,13 +302,30 @@ def mesh_to_gltf(mesh: DecodedMesh) -> dict[str, Any]:
                 "max": mesh.bounds["max"],
                 "min": mesh.bounds["min"],
             },
+            {
+                "bufferView": 2,
+                "componentType": 5126,
+                "count": len(mesh.positions),
+                "type": "VEC3",
+            },
         ],
         "bufferViews": [
-            {"buffer": 0, "byteOffset": 0, "byteLength": len(idx_bytes), "target": 34963},
             {
                 "buffer": 0,
-                "byteOffset": len(idx_bytes),
+                "byteOffset": idx_off,
+                "byteLength": len(idx_bytes),
+                "target": 34963,
+            },
+            {
+                "buffer": 0,
+                "byteOffset": pos_off,
                 "byteLength": len(pos_bytes),
+                "target": 34962,
+            },
+            {
+                "buffer": 0,
+                "byteOffset": nrm_off,
+                "byteLength": len(nrm_bytes),
                 "target": 34962,
             },
         ],
@@ -242,6 +335,7 @@ def mesh_to_gltf(mesh: DecodedMesh) -> dict[str, Any]:
                 "uri": f"data:application/octet-stream;base64,{b64}",
             }
         ],
+        "extras": {"jftseConfidence": decode_confidence(mesh)},
     }
 
 
@@ -276,10 +370,25 @@ def write_positions_into_dat(data: bytes, vertex_offset: int, positions: list[li
 def decoded_to_dict(mesh: DecodedMesh, *, include_geometry: bool = True) -> dict[str, Any]:
     payload = asdict(mesh)
     payload["header"] = asdict(mesh.header)
+    payload["confidence"] = decode_confidence(mesh)
     if not include_geometry:
         payload.pop("positions", None)
         payload.pop("indices", None)
     return payload
+
+
+def client_dat_path_to_ref(path: str) -> dict[str, str] | None:
+    """Convert stage script paths like Res/Stage/Mesh01/BF_Court01.dat to archive/member."""
+    cleaned = path.replace("\\", "/").strip().strip('"')
+    if not cleaned.lower().endswith(".dat"):
+        return None
+    parts = [p for p in cleaned.split("/") if p]
+    if len(parts) < 2:
+        return None
+    member = parts[-1]
+    parent = "/".join(parts[:-1])
+    archive = f"{parent}.res"
+    return {"archive": archive, "member": member, "sourcePath": cleaned}
 
 
 def list_mesh_members(client_root: Path) -> list[dict[str, Any]]:

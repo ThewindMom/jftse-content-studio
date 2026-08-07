@@ -859,6 +859,104 @@ def cmd_mesh_transform(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def cmd_effect_slot_fields(args: argparse.Namespace) -> dict[str, Any]:
+    """Read decoded fields from the dormant Ice_Smoke02 particle slot (stock or export)."""
+    jftse = _jftse_root()
+    wind_assets = _load_wind_assets()
+    member_name = str(getattr(args, "member", "") or "Ice_Smoke02.set")
+    source = Path(args.particle_archive).expanduser() if getattr(args, "particle_archive", "") else None
+    if source is None or not str(source):
+        client = _client_root(jftse)
+        source = client / "Res" / "Effect" / "Particle.res"
+    if not source.is_file():
+        return {"ok": False, "error": "PARTICLE_ARCHIVE_MISSING", "path": str(source)}
+    with zipfile.ZipFile(source) as archive:
+        if member_name not in archive.namelist():
+            return {"ok": False, "error": "SLOT_MISSING", "member": member_name}
+        plain = wind_assets.decrypt_set(archive.read(member_name))
+    fields = _parse_fields(plain)
+    return {
+        "ok": True,
+        "path": str(source),
+        "member": member_name,
+        "fields": {
+            "TexturePath": fields.get("TexturePath", ""),
+            "PQ_Quantity": fields.get("PQ_Quantity", ""),
+            "Color": fields.get("Color", "").replace("\t", ""),
+            "PM_Speed": fields.get("PM_Speed", ""),
+            "PT_Life": fields.get("PT_Life", ""),
+            "PS_Size": fields.get("PS_Size", ""),
+            "SubTexSize": fields.get("SubTexSize", ""),
+            "SubTexCount": fields.get("SubTexCount", ""),
+            "SubPlayTime": fields.get("SubPlayTime", ""),
+            "SubPlayBack": fields.get("SubPlayBack", ""),
+            "SRCBlend": fields.get("SRCBlend", ""),
+            "DESTBlend": fields.get("DESTBlend", ""),
+        },
+    }
+
+
+def cmd_playtest_status(args: argparse.Namespace) -> dict[str, Any]:
+    jftse = _jftse_root()
+    local = Path(os.environ.get("JFTSE_LOCAL_CLIENT", "")).expanduser()
+    if not str(local):
+        local = jftse / "FantaTennis-Local-Client" / "client"
+    particle = local / "Res" / "Effect" / "Particle.res"
+    launch_sh = jftse / "FantaTennis-Local-Client" / "START-FANTA-TENNIS.sh"
+    launch_alt = jftse / "FantaTennis-Local-Client" / "client" / "START-FANTA-TENNIS.sh"
+    launch = launch_sh if launch_sh.is_file() else launch_alt
+    export_path = Path(args.export_archive).expanduser() if getattr(args, "export_archive", "") else None
+    export_matches = None
+    if export_path and export_path.is_file() and particle.is_file():
+        export_matches = export_path.read_bytes() == particle.read_bytes()
+    checklist = [
+        {
+            "id": "local-client",
+            "ok": local.is_dir(),
+            "label": f"Local client dir → {local}",
+        },
+        {
+            "id": "particle-installed",
+            "ok": particle.is_file(),
+            "label": f"Particle.res present → {particle}",
+        },
+        {
+            "id": "launch-script",
+            "ok": launch.is_file(),
+            "label": f"Launch script → {launch}",
+        },
+        {
+            "id": "export-match",
+            "ok": export_matches is not False,
+            "label": (
+                "Installed particle matches last export"
+                if export_matches
+                else (
+                    "No export compared (optional)"
+                    if export_matches is None
+                    else "Installed particle differs from last export"
+                )
+            ),
+        },
+    ]
+    ready = all(row["ok"] for row in checklist if row["id"] != "export-match") and (
+        export_matches is not False
+    )
+    # ready requires local+particle+launch; export match soft-fails only when compared and unequal
+    hard_ready = all(row["ok"] for row in checklist if row["id"] in {"local-client", "particle-installed", "launch-script"})
+    return {
+        "ok": True,
+        "ready": hard_ready,
+        "installPresent": particle.is_file(),
+        "launchScriptExists": launch.is_file(),
+        "localClient": str(local),
+        "particlePath": str(particle),
+        "launchScript": str(launch),
+        "exportMatches": export_matches,
+        "checklist": checklist,
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="studio_bridge")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -918,6 +1016,13 @@ def main() -> None:
     p_items.add_argument("--part", default="")
     p_items.add_argument("--limit", type=int, default=50)
 
+    p_slot = sub.add_parser("effect-slot-fields")
+    p_slot.add_argument("--particle-archive", default="")
+    p_slot.add_argument("--member", default="Ice_Smoke02.set")
+
+    p_play = sub.add_parser("playtest-status")
+    p_play.add_argument("--export-archive", default="")
+
     args = parser.parse_args()
     handlers = {
         "health": cmd_health,
@@ -935,6 +1040,8 @@ def main() -> None:
         "mesh-parse": cmd_mesh_parse,
         "mesh-export": cmd_mesh_export,
         "mesh-transform": cmd_mesh_transform,
+        "effect-slot-fields": cmd_effect_slot_fields,
+        "playtest-status": cmd_playtest_status,
     }
     result = handlers[args.command](args)
     print(json.dumps(result))

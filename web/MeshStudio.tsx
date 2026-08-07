@@ -21,6 +21,14 @@ type MeshPayload = {
   indices: number[];
   vertexOffset: number;
   byteLength: number;
+  header?: Record<string, number>;
+  confidence?: {
+    score: number;
+    triangleCount: number;
+    bytesPerVertex: number;
+    extent: number[];
+    hasIndices: boolean;
+  };
 };
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -71,7 +79,12 @@ function MeshViewport({
     const hemi = new THREE.HemisphereLight(0xbdd7ff, 0x1a2033, 1.1);
     const dir = new THREE.DirectionalLight(0xffffff, 0.85);
     dir.position.set(40, 80, 20);
-    scene.add(hemi, dir, new THREE.GridHelper(200, 20, 0x2a3654, 0x1a243d));
+    scene.add(
+      hemi,
+      dir,
+      new THREE.GridHelper(200, 20, 0x2a3654, 0x1a243d),
+      new THREE.AxesHelper(40),
+    );
     stateRef.current = { renderer, scene, camera, controls };
     let frame = 0;
     const tick = () => {
@@ -163,7 +176,11 @@ function MeshViewport({
   return <div className="mesh-viewport" ref={mountRef} aria-label="Mesh viewport" />;
 }
 
-export function MeshStudio() {
+export function MeshStudio({
+  focus = null,
+}: {
+  focus?: { archive: string; member: string } | null;
+}) {
   const [rows, setRows] = useState<MeshRow[]>([]);
   const [query, setQuery] = useState("court");
   const [selected, setSelected] = useState<MeshRow | null>(null);
@@ -188,6 +205,16 @@ export function MeshStudio() {
       .then((data) => {
         setRows(data.meshes);
         setStatus(`Loaded ${data.count} mesh DAT members from stock client`);
+        if (focus) {
+          const hit =
+            data.meshes.find(
+              (row) => row.archive === focus.archive && row.member === focus.member,
+            ) ?? null;
+          if (hit) {
+            void loadMesh(hit);
+            return;
+          }
+        }
         const preferred =
           data.meshes.find((row) => /court/i.test(row.member)) ?? data.meshes[0] ?? null;
         if (preferred) void loadMesh(preferred);
@@ -197,6 +224,13 @@ export function MeshStudio() {
         setStatus("Failed to load mesh catalog");
       });
   }, []);
+
+  useEffect(() => {
+    if (!focus || rows.length === 0) return;
+    const hit =
+      rows.find((row) => row.archive === focus.archive && row.member === focus.member) ?? null;
+    if (hit) void loadMesh(hit);
+  }, [focus?.archive, focus?.member, rows]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -417,8 +451,11 @@ indices=${mesh.indexCount}
 mode=${mesh.decodeMode}
 vertexOffset=${mesh.vertexOffset}
 bytes=${mesh.byteLength}
+confidence=${mesh.confidence?.score ?? "?"}
+triangles=${mesh.confidence?.triangleCount ?? Math.floor(mesh.indexCount / 3)}
 boundsMin=${mesh.bounds.min.join(", ")}
-boundsMax=${mesh.bounds.max.join(", ")}`}
+boundsMax=${mesh.bounds.max.join(", ")}
+header=${mesh.header ? JSON.stringify(mesh.header) : "n/a"}`}
             </div>
           )}
           {exportInfo && (

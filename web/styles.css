@@ -547,6 +547,17 @@ button:disabled,
   padding: 0.1rem 0.4rem;
 }
 
+.stage-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.stage-viewport {
+  min-height: 220px;
+  height: 240px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     scroll-behavior: auto !important;

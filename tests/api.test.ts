@@ -406,7 +406,61 @@ describe("content studio production API", () => {
     expect(await Bun.file(body.gltf).exists()).toBe(true);
     const obj = await Bun.file(body.obj).text();
     expect(obj).toContain("\nv ");
+    expect(obj).toContain("\nvn ");
+    const gltf = await Bun.file(body.gltf).json();
+    expect(gltf.meshes[0].primitives[0].attributes.NORMAL).toBeDefined();
+    expect(gltf.extras?.jftseConfidence?.score).toBeGreaterThan(0);
   }, 120000);
+
+  test("mesh parse exposes decode confidence diagnostics", async () => {
+    const list = await fetch(`${base}/api/mesh-studio/list`).then((r) => r.json());
+    const court =
+      list.meshes.find((row: { member: string }) => row.member === "BF_Court01.dat") ??
+      list.meshes[0];
+    const response = await fetch(
+      `${base}/api/mesh-studio/parse?archive=${encodeURIComponent(court.archive)}&member=${encodeURIComponent(court.member)}&metaOnly=1`,
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.mesh.confidence).toBeDefined();
+    expect(typeof body.mesh.confidence.score).toBe("number");
+    expect(body.mesh.confidence.score).toBeGreaterThan(0);
+    expect(body.mesh.header).toBeDefined();
+  }, 120000);
+
+  test("effect slot fields return Ice_Smoke02 readout", async () => {
+    const response = await fetch(`${base}/api/effects/slot-fields`);
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(String(body.fields.TexturePath).length).toBeGreaterThan(0);
+    expect(body.fields.PQ_Quantity).toBeTruthy();
+    expect(body.fields.SubTexCount).toBeTruthy();
+    // After a soft build, the export archive slot should carry A_feather.
+    const build = await fetch(`${base}/api/effects/preview-build`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(softPayload),
+    }).then((r) => r.json());
+    expect(build.ok).toBe(true);
+    const exported = await fetch(
+      `${base}/api/effects/slot-fields?particleArchive=${encodeURIComponent(build.particleArchive)}`,
+    ).then((r) => r.json());
+    expect(exported.ok).toBe(true);
+    expect(String(exported.fields.TexturePath)).toContain("A_feather");
+  }, 120000);
+
+  test("playtest status reports install and launch readiness", async () => {
+    const response = await fetch(`${base}/api/playtest/status`);
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(typeof body.ready).toBe("boolean");
+    expect(typeof body.installPresent).toBe("boolean");
+    expect(typeof body.launchScriptExists).toBe("boolean");
+    expect(Array.isArray(body.checklist)).toBe(true);
+    expect(body.checklist.length).toBeGreaterThan(0);
+  });
 
   test("map studio export pack writes relational SQL bundle", async () => {
     const response = await fetch(`${base}/api/map-studio/export-pack`, {

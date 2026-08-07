@@ -448,6 +448,29 @@ const server = Bun.serve({
         return safeBridge(() => buildEffect(payload));
       },
     },
+    "/api/effects/slot-fields": {
+      GET: async (req) => {
+        const url = new URL(req.url);
+        const particleArchive = url.searchParams.get("particleArchive") ?? "";
+        const member = url.searchParams.get("member") ?? "Ice_Smoke02.set";
+        const args = ["effect-slot-fields", "--member", member];
+        if (particleArchive) {
+          args.push("--particle-archive", particleArchive);
+        }
+        return safeBridge(() => runBridge(args));
+      },
+    },
+    "/api/playtest/status": {
+      GET: async (req) => {
+        const url = new URL(req.url);
+        const exportArchive = url.searchParams.get("exportArchive") ?? "";
+        const args = ["playtest-status"];
+        if (exportArchive) {
+          args.push("--export-archive", exportArchive);
+        }
+        return safeBridge(() => runBridge(args));
+      },
+    },
     "/api/effects/install": {
       POST: async (req) => {
         let body: Record<string, unknown>;

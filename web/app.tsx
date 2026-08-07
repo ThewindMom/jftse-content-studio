@@ -124,7 +124,13 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return data;
 }
 
-function ParticlePreview({ draft }: { draft: EffectDraft }) {
+function ParticlePreview({
+  draft,
+  atlasSrc,
+}: {
+  draft: EffectDraft;
+  atlasSrc?: string;
+}) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -146,10 +152,12 @@ function ParticlePreview({ draft }: { draft: EffectDraft }) {
       max: number;
       r: number;
       rot: number;
+      frame: number;
     };
     const particles: P[] = [];
     const count = Math.max(1, Math.min(40, draft.quantity));
     const [cr, cg, cb] = draft.color.split(",").map((v) => Number(v.trim()) || 0);
+    const subCount = Math.max(1, draft.subTexCount || 1);
     const spawn = (): P => {
       const angle =
         ((Math.random() * draft.offAxisSpread - draft.offAxisSpread / 2) * Math.PI) /
@@ -165,11 +173,17 @@ function ParticlePreview({ draft }: { draft: EffectDraft }) {
         r: Math.max(2, draft.size * 4),
         rot:
           ((draft.phase + (Math.random() * 2 - 1) * draft.phaseVar) * Math.PI) / 180,
+        frame: Math.floor(Math.random() * subCount),
       };
     };
     for (let i = 0; i < count; i += 1) particles.push(spawn());
     let frame = 0;
     let raf = 0;
+    let atlas: HTMLImageElement | null = null;
+    if (atlasSrc) {
+      atlas = new Image();
+      atlas.src = atlasSrc;
+    }
     const draw = () => {
       ctx.clearRect(0, 0, size, size);
       ctx.fillStyle = "rgba(255,255,255,0.04)";
@@ -184,19 +198,52 @@ function ParticlePreview({ draft }: { draft: EffectDraft }) {
           p.y += p.vy;
           p.vy += 0.01;
           p.life += 1;
+          // Advance subtex frames like SubPlayTime cadence (~3 ticks).
+          if (frame % 3 === 0) p.frame = (p.frame + 1) % subCount;
           if (p.life > p.max) Object.assign(p, spawn());
         }
-        const alpha = Math.max(0, 1 - p.life / p.max) * 0.85;
+        const alpha = Math.max(0, 1 - p.life / p.max) * 0.9;
         ctx.save();
         ctx.translate(p.x, p.y);
-        ctx.rotate(p.rot + frame * 0.01);
-        const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, p.r * 2.2);
-        gradient.addColorStop(0, `rgba(${cr},${cg},${cb},${alpha})`);
-        gradient.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
-        ctx.fillStyle = gradient;
-        ctx.beginPath();
-        ctx.ellipse(0, 0, p.r * 0.55, p.r * 1.8, 0, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.rotate(p.rot + frame * 0.008);
+        ctx.globalAlpha = alpha;
+        if (atlas && atlas.complete && atlas.naturalWidth > 0) {
+          const fw =
+            atlas.naturalWidth >= subCount * 8
+              ? atlas.naturalWidth / subCount
+              : atlas.naturalWidth / Math.max(1, Math.ceil(Math.sqrt(subCount)));
+          const fh =
+            atlas.naturalWidth >= subCount * 8
+              ? atlas.naturalHeight
+              : atlas.naturalHeight / Math.max(1, Math.ceil(Math.sqrt(subCount)));
+          const cols =
+            atlas.naturalWidth >= subCount * 8
+              ? subCount
+              : Math.max(1, Math.ceil(Math.sqrt(subCount)));
+          const col = p.frame % cols;
+          const row = Math.floor(p.frame / cols);
+          const dw = p.r * 3.2;
+          const dh = p.r * 3.2;
+          ctx.drawImage(
+            atlas,
+            col * fw,
+            row * fh,
+            fw,
+            fh,
+            -dw / 2,
+            -dh / 2,
+            dw,
+            dh,
+          );
+        } else {
+          const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, p.r * 2.2);
+          gradient.addColorStop(0, `rgba(${cr},${cg},${cb},${alpha})`);
+          gradient.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
+          ctx.fillStyle = gradient;
+          ctx.beginPath();
+          ctx.ellipse(0, 0, p.r * 0.55, p.r * 1.8, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
         ctx.restore();
       }
       frame += 1;
@@ -204,12 +251,12 @@ function ParticlePreview({ draft }: { draft: EffectDraft }) {
     };
     draw();
     return () => cancelAnimationFrame(raf);
-  }, [draft]);
+  }, [draft, atlasSrc]);
   return (
     <canvas
       className="preview-canvas"
       ref={canvasRef}
-      aria-label="Approximate particle preview"
+      aria-label="Atlas-animated particle preview"
     />
   );
 }
@@ -257,6 +304,16 @@ function App() {
   });
   const [installConfirmOpen, setInstallConfirmOpen] = useState(false);
   const [toast, setToast] = useState("");
+  const [meshFocus, setMeshFocus] = useState<{ archive: string; member: string } | null>(
+    null,
+  );
+  const [slotFields, setSlotFields] = useState<Record<string, string> | null>(null);
+  const [playtestStatus, setPlaytestStatus] = useState<{
+    ready: boolean;
+    installPresent: boolean;
+    launchScriptExists: boolean;
+    checklist: Array<{ id: string; ok: boolean; label: string }>;
+  } | null>(null);
 
   const pushToast = (message: string) => {
     setToast(message);
@@ -305,7 +362,25 @@ function App() {
       }
     })();
     void refreshExports();
+    void api<{ ok: boolean; fields: Record<string, string> }>("/api/effects/slot-fields")
+      .then((data) => setSlotFields(data.fields))
+      .catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    if (step !== "playtest" && step !== "install") return;
+    const q = lastExport.particleArchive
+      ? `?exportArchive=${encodeURIComponent(lastExport.particleArchive)}`
+      : "";
+    void api<{
+      ready: boolean;
+      installPresent: boolean;
+      launchScriptExists: boolean;
+      checklist: Array<{ id: string; ok: boolean; label: string }>;
+    }>(`/api/playtest/status${q}`)
+      .then((data) => setPlaytestStatus(data))
+      .catch(() => undefined);
+  }, [step, installedPath, lastExport.particleArchive]);
 
   useEffect(() => {
     void api<{ items: Item[] }>(`/api/items?part=RACKET&limit=120`)
@@ -433,6 +508,9 @@ function App() {
       setStep("install");
       pushToast("Effect pack built and verified");
       void refreshExports();
+      void api<{ fields: Record<string, string> }>("/api/effects/slot-fields")
+        .then((data) => setSlotFields(data.fields))
+        .catch(() => undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setStatus("Export failed");
@@ -704,9 +782,15 @@ function App() {
       )}
 
       {workspace === "maps" ? (
-        <MapStudio />
+        <MapStudio
+          onOpenMesh={(archive, member) => {
+            setMeshFocus({ archive, member });
+            setWorkspace("meshes");
+            pushToast(`Opened ${member} in Mesh Studio`);
+          }}
+        />
       ) : workspace === "meshes" ? (
-        <MeshStudio />
+        <MeshStudio focus={meshFocus} />
       ) : (
       <main className="workspace">
         <section className="panel" aria-label="Library">
@@ -1217,9 +1301,21 @@ function App() {
             {step === "playtest" && (
               <>
                 <p className="empty">
-                  Browser preview is approximate. Open Equipment with the +9 Dragon Slayer (or your
-                  bound item) and confirm silhouette + aura.
+                  Atlas preview is field-driven (SubTex animation), not DX9. Open Equipment with the
+                  +9 racket and confirm silhouette + aura in the live client.
                 </p>
+                {playtestStatus && (
+                  <ul className="validation" aria-label="Playtest readiness">
+                    <li className={playtestStatus.ready ? "ok" : "bad"}>
+                      {playtestStatus.ready ? "PASS" : "TODO"} — Playtest ready
+                    </li>
+                    {playtestStatus.checklist.map((row) => (
+                      <li key={row.id} className={row.ok ? "ok" : "bad"}>
+                        {row.ok ? "PASS" : "TODO"} — {row.label}
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 <div className="mono">{launchHint}</div>
                 <div className="actions">
                   <button
@@ -1294,7 +1390,27 @@ function App() {
             <h2>Preview & status</h2>
           </header>
           <div className="body">
-            <ParticlePreview draft={effect} />
+            <ParticlePreview
+              draft={effect}
+              atlasSrc={
+                selectedAtlas
+                  ? `/api/atlases/preview?archive=${encodeURIComponent(selectedAtlas.archive)}&member=${encodeURIComponent(selectedAtlas.member)}`
+                  : undefined
+              }
+            />
+            {slotFields && (
+              <div>
+                <strong>Live Ice_Smoke02 slot</strong>
+                <div className="mono">
+                  {`TexturePath=${slotFields.TexturePath}
+PQ_Quantity=${slotFields.PQ_Quantity}
+SubTexCount=${slotFields.SubTexCount}
+SubPlayTime=${slotFields.SubPlayTime}
+PM_Speed=${slotFields.PM_Speed}
+PT_Life=${slotFields.PT_Life}`}
+                </div>
+              </div>
+            )}
             {selectedAtlas && (
               <div className="selected-atlas">
                 <img

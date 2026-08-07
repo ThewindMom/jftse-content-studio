@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { StageMeshPreview } from "./StageMeshPreview.tsx";
 
 type Guardian = {
   id: number;
@@ -49,7 +50,11 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return data;
 }
 
-export function MapStudio() {
+export function MapStudio({
+  onOpenMesh,
+}: {
+  onOpenMesh?: (archive: string, member: string) => void;
+} = {}) {
   const [maps, setMaps] = useState<MapStudioRow[]>([]);
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [query, setQuery] = useState("");
@@ -64,6 +69,12 @@ export function MapStudio() {
   const [exportPath, setExportPath] = useState("");
   const [draftName, setDraftName] = useState("");
   const [draftBoss, setDraftBoss] = useState(false);
+  const worldPath = useMemo(() => {
+    const hit = validation?.assetChecks.find(
+      (check) => check.field === "WorldFile" && check.exists && check.path,
+    );
+    return hit?.path ?? "";
+  }, [validation]);
 
   useEffect(() => {
     void api<{
@@ -367,10 +378,16 @@ export function MapStudio() {
               </div>
 
               <p className="empty">
-                Map Studio authors server metadata and proves the bound stock stage still resolves
-                World/Sky/Collision assets. Custom mesh authoring is intentionally out of scope
-                until stage geometry tooling exists.
+                Map Studio authors server metadata, validates stage asset graphs, and previews the
+                stock World mesh. Full terrain sculpting remains out of scope — open Mesh Studio for
+                DAT recovery/export of bound geometry.
               </p>
+              {worldPath && (
+                <>
+                  <strong>Stage geometry preview</strong>
+                  <StageMeshPreview worldPath={worldPath} onOpenMesh={onOpenMesh} />
+                </>
+              )}
             </>
           )}
         </div>
