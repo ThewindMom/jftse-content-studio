@@ -480,6 +480,278 @@ def cmd_list_items(args: argparse.Namespace) -> dict[str, Any]:
     return {"items": items, "count": len(items)}
 
 
+def _parse_map2scenarios(jftse: Path) -> list[dict[str, int]]:
+    path = jftse / "scripts" / "sql" / "map2scenarios.sql"
+    rows: list[dict[str, int]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        match = re.search(
+            r"VALUES\((?P<scenario_id>\d+),\s*(?P<map_id>\d+)\)",
+            line,
+        )
+        if match:
+            rows.append(
+                {
+                    "scenarioId": int(match.group("scenario_id")),
+                    "mapId": int(match.group("map_id")),
+                }
+            )
+    return rows
+
+
+def _parse_guardian2maps(jftse: Path) -> list[dict[str, Any]]:
+    path = jftse / "scripts" / "sql" / "guardian2maps.sql"
+    rows: list[dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        match = re.search(
+            r"VALUES\((?P<id>\d+),[^,]*,[^,]*,\s*'(?P<side>[^']*)',\s*(?P<boss>[^,]*),\s*(?P<guardian>[^,]*),\s*(?P<map_id>\d+),\s*(?P<scenario_id>\d+),\s*(?P<status_id>\d+)\)",
+            line,
+        )
+        if not match:
+            continue
+        boss_raw = match.group("boss").strip()
+        guardian_raw = match.group("guardian").strip()
+        rows.append(
+            {
+                "id": int(match.group("id")),
+                "side": match.group("side"),
+                "bossGuardianId": None if boss_raw.upper() == "NULL" else int(boss_raw),
+                "guardianId": None
+                if guardian_raw.upper() == "NULL"
+                else int(guardian_raw),
+                "mapId": int(match.group("map_id")),
+                "scenarioId": int(match.group("scenario_id")),
+                "statusId": int(match.group("status_id")),
+            }
+        )
+    return rows
+
+
+def _parse_scenarios(jftse: Path) -> list[dict[str, Any]]:
+    path = jftse / "scripts" / "sql" / "scenarios.sql"
+    if not path.is_file():
+        return []
+    rows: list[dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        match = re.search(
+            r"VALUES\((?P<id>\d+),.*?,'(?:[^']*)',\s*'(?P<name>[^']*)'",
+            line,
+        )
+        # fallback simpler: first int is id
+        if not match:
+            match = re.search(r"VALUES\((?P<id>\d+)", line)
+            if match:
+                rows.append({"id": int(match.group("id")), "name": f"Scenario {match.group('id')}"})
+            continue
+        rows.append({"id": int(match.group("id")), "name": match.group("name")})
+    if not rows:
+        # scenarios.sql may use different shape; derive ids from relations
+        ids = sorted(
+            {
+                row["scenarioId"]
+                for row in _parse_map2scenarios(jftse)
+            }
+        )
+        rows = [{"id": i, "name": f"Scenario {i}"} for i in ids]
+    return rows
+
+
+def _stage_scripts(client: Path) -> list[str]:
+    stage_info = client / "Res" / "Stage" / "Info.res"
+    if not stage_info.is_file():
+        return []
+    with zipfile.ZipFile(stage_info) as archive:
+        return sorted(archive.namelist())
+
+
+def _infer_stage_candidates(map_byte: int, scripts: list[str]) -> list[str]:
+    prefix = f"{map_byte}_"
+    return [script for script in scripts if script.startswith(prefix)]
+
+
+def _decode_stage_script(client: Path, script: str) -> dict[str, str]:
+    wind_assets = _load_wind_assets()
+    stage_info = client / "Res" / "Stage" / "Info.res"
+    with zipfile.ZipFile(stage_info) as archive:
+        if script not in archive.namelist():
+            raise FileNotFoundError(script)
+        text = wind_assets.decrypt_set(archive.read(script)).decode("utf-8", errors="replace")
+    fields: dict[str, str] = {}
+    for line in text.splitlines():
+        if "=" not in line or line.strip().startswith(";") or line.strip().startswith("["):
+            continue
+        key, value = line.split("=", 1)
+        fields[key.strip()] = value.strip().strip('"')
+    return fields
+
+
+def _resolve_client_asset(client: Path, relative: str) -> dict[str, Any]:
+    """Resolve loose files or members inside sibling .res archives."""
+    normalized = relative.replace("\\", "/").lstrip("/")
+    if not normalized:
+        return {"exists": False, "resolved": "", "kind": "empty"}
+    direct = client / normalized
+    if direct.is_file():
+        return {"exists": True, "resolved": str(direct), "kind": "file"}
+    parts = Path(normalized).parts
+    if len(parts) >= 2:
+        member = parts[-1]
+        archive = client.joinpath(*parts[:-1]).with_suffix(".res")
+        if archive.is_file():
+            with zipfile.ZipFile(archive) as handle:
+                names = set(handle.namelist())
+                if member in names:
+                    return {
+                        "exists": True,
+                        "resolved": f"{archive}::{member}",
+                        "kind": "archive-member",
+                    }
+    return {"exists": False, "resolved": normalized, "kind": "missing"}
+
+
+def cmd_map_studio_catalog(_: argparse.Namespace) -> dict[str, Any]:
+    jftse = _jftse_root()
+    client = _client_root(jftse)
+    base = cmd_list_maps(_)
+    scripts = list(base.get("stageScripts") or _stage_scripts(client))
+    map2 = _parse_map2scenarios(jftse)
+    guardians = _parse_guardian2maps(jftse)
+    scenarios = _parse_scenarios(jftse)
+    enriched = []
+    for row in base["maps"]:
+        map_id = int(row["id"])
+        map_byte = int(row["map"])
+        scenario_ids = sorted(
+            {link["scenarioId"] for link in map2 if link["mapId"] == map_id}
+        )
+        guardian_rows = [g for g in guardians if g["mapId"] == map_id]
+        candidates = _infer_stage_candidates(map_byte, scripts)
+        enriched.append(
+            {
+                **row,
+                "scenarioIds": scenario_ids,
+                "guardianCount": len(guardian_rows),
+                "guardians": guardian_rows[:40],
+                "stageCandidates": candidates,
+                "defaultStageScript": candidates[0] if candidates else None,
+            }
+        )
+    return {
+        "ok": True,
+        "maps": enriched,
+        "stageScripts": scripts,
+        "scenarios": scenarios,
+        "relationCounts": {
+            "map2scenarios": len(map2),
+            "guardian2maps": len(guardians),
+        },
+    }
+
+
+def cmd_map_studio_validate(args: argparse.Namespace) -> dict[str, Any]:
+    client = _client_root(_jftse_root())
+    script = str(args.stage_script)
+    scripts = _stage_scripts(client)
+    if script not in scripts:
+        return {"ok": False, "error": "STAGE_SCRIPT_MISSING", "stageScript": script}
+    fields = _decode_stage_script(client, script)
+    checks: list[dict[str, Any]] = []
+    for key in ("WorldFile", "SkyFile", "Collision", "Coll_Chat", "World_Chat"):
+        rel = fields.get(key, "")
+        if not rel:
+            continue
+        resolved = _resolve_client_asset(client, rel)
+        checks.append(
+            {
+                "field": key,
+                "path": rel,
+                "exists": bool(resolved["exists"]),
+                "resolved": resolved["resolved"],
+                "kind": resolved["kind"],
+            }
+        )
+    required = [check for check in checks if check["field"] in {"WorldFile", "SkyFile", "Collision"}]
+    valid = bool(required) and all(check["exists"] for check in required)
+    return {
+        "ok": True,
+        "valid": valid,
+        "stageScript": script,
+        "stage": fields,
+        "assetChecks": checks,
+    }
+
+
+def cmd_map_studio_export_pack(args: argparse.Namespace) -> dict[str, Any]:
+    jftse = _jftse_root()
+    payload = json.loads(Path(args.payload).read_text(encoding="utf-8"))
+    map_ids = {int(value) for value in payload.get("mapIds", [])}
+    if not map_ids:
+        return {"ok": False, "error": "NO_MAP_IDS"}
+    include_scenarios = bool(payload.get("includeScenarios", True))
+    include_guardians = bool(payload.get("includeGuardians", True))
+    stage_by_map_id = {
+        str(key): str(value)
+        for key, value in dict(payload.get("stageByMapId", {})).items()
+    }
+
+    catalog = cmd_map_studio_catalog(args)
+    selected = [row for row in catalog["maps"] if int(row["id"]) in map_ids]
+    if not selected:
+        return {"ok": False, "error": "MAPS_NOT_FOUND"}
+
+    map2 = [row for row in _parse_map2scenarios(jftse) if row["mapId"] in map_ids]
+    guardians = [row for row in _parse_guardian2maps(jftse) if row["mapId"] in map_ids]
+
+    out = Path(args.out_file)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "-- JFTSE Content Studio map pack",
+        "-- Relational metadata export (client stage geometry remains stock-bound)",
+        "",
+        "-- === S_Maps ===",
+    ]
+    for row in selected:
+        stage = stage_by_map_id.get(str(row["id"])) or row.get("defaultStageScript")
+        lines.append(
+            "INSERT INTO S_Maps (id, created, modified, bossPlayTime, breathTime, "
+            "description, isBossStage, `map`, name, playTime, triggerBossTime, useBreathTime) "
+            f"VALUES({int(row['id'])}, NOW(6), NOW(6), NULL, 100, NULL, "
+            f"{1 if row['isBossStage'] else 0}, {int(row['map'])}, "
+            f"'{str(row['name']).replace(chr(39), chr(39)+chr(39))}', NULL, NULL, 0) "
+            "ON DUPLICATE KEY UPDATE name=VALUES(name), isBossStage=VALUES(isBossStage);"
+        )
+        if stage:
+            lines.append(
+                f"-- stage bind map_id={row['id']} map_byte={row['map']}: Stage/Info.res::{stage}"
+            )
+    if include_scenarios:
+        lines.extend(["", "-- === Map_2_Scenarios ==="])
+        for row in map2:
+            lines.append(
+                "INSERT INTO Map_2_Scenarios (scenario_id, map_id) "
+                f"VALUES({row['scenarioId']}, {row['mapId']});"
+            )
+    if include_guardians:
+        lines.extend(["", "-- === Guardian_2_Maps ==="])
+        for row in guardians:
+            boss = "NULL" if row["bossGuardianId"] is None else str(row["bossGuardianId"])
+            guardian = "NULL" if row["guardianId"] is None else str(row["guardianId"])
+            lines.append(
+                "INSERT INTO Guardian_2_Maps (id, created, modified, side, boss_guardian_id, "
+                "guardian_id, map_id, scenario_id, status_id) VALUES("
+                f"{row['id']}, NOW(6), NOW(6), '{row['side']}', {boss}, {guardian}, "
+                f"{row['mapId']}, {row['scenarioId']}, {row['statusId']});"
+            )
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return {
+        "ok": True,
+        "path": str(out),
+        "mapCount": len(selected),
+        "scenarioLinkCount": len(map2) if include_scenarios else 0,
+        "guardianCount": len(guardians) if include_guardians else 0,
+        "maps": selected,
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="studio_bridge")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -510,6 +782,15 @@ def main() -> None:
     p_map_sql.add_argument("--payload", required=True)
     p_map_sql.add_argument("--out-file", required=True)
 
+    sub.add_parser("map-studio-catalog")
+
+    p_map_validate = sub.add_parser("map-studio-validate")
+    p_map_validate.add_argument("--stage-script", required=True)
+
+    p_map_pack = sub.add_parser("map-studio-export-pack")
+    p_map_pack.add_argument("--payload", required=True)
+    p_map_pack.add_argument("--out-file", required=True)
+
     p_items = sub.add_parser("list-items")
     p_items.add_argument("--part", default="")
     p_items.add_argument("--limit", type=int, default=50)
@@ -523,6 +804,9 @@ def main() -> None:
         "install": cmd_install,
         "list-maps": cmd_list_maps,
         "export-map-sql": cmd_export_map_sql,
+        "map-studio-catalog": cmd_map_studio_catalog,
+        "map-studio-validate": cmd_map_studio_validate,
+        "map-studio-export-pack": cmd_map_studio_export_pack,
         "list-items": cmd_list_items,
     }
     result = handlers[args.command](args)

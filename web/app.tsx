@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { MapStudio } from "./MapStudio.tsx";
 
+type WorkspaceMode = "items" | "maps";
 type StepId = "item" | "effect" | "export" | "install" | "playtest";
 
 type Atlas = {
@@ -185,6 +187,7 @@ function ParticlePreview({ draft }: { draft: EffectDraft }) {
 }
 
 function App() {
+  const [workspace, setWorkspace] = useState<WorkspaceMode>("items");
   const [step, setStep] = useState<StepId>("item");
   const [healthOk, setHealthOk] = useState(false);
   const [healthDetail, setHealthDetail] = useState("connecting…");
@@ -498,27 +501,50 @@ function App() {
       <header className="topbar">
         <div className="brand">
           <strong>JFTSE Content Studio</strong>
-          <span>Designer workflow · stock-safe export · local install only</span>
+          <span>Items workflow · Map Studio · stock-safe export</span>
         </div>
-        <nav className="tabs" aria-label="Workflow steps">
-          {STEPS.map((entry) => (
-            <button
-              key={entry.id}
-              className="tab"
-              type="button"
-              aria-selected={step === entry.id}
-              onClick={() => setStep(entry.id)}
-              title={entry.detail}
-            >
-              {entry.title}
-            </button>
-          ))}
+        <nav className="tabs" aria-label="Workspace modes">
+          <button
+            className="tab"
+            type="button"
+            aria-selected={workspace === "items"}
+            onClick={() => setWorkspace("items")}
+          >
+            Items
+          </button>
+          <button
+            className="tab"
+            type="button"
+            aria-selected={workspace === "maps"}
+            onClick={() => setWorkspace("maps")}
+          >
+            Map Studio
+          </button>
         </nav>
+        {workspace === "items" && (
+          <nav className="tabs" aria-label="Workflow steps">
+            {STEPS.map((entry) => (
+              <button
+                key={entry.id}
+                className="tab"
+                type="button"
+                aria-selected={step === entry.id}
+                onClick={() => setStep(entry.id)}
+                title={entry.detail}
+              >
+                {entry.title}
+              </button>
+            ))}
+          </nav>
+        )}
         <div className={`chip ${healthOk ? "ok" : "bad"}`} title={healthDetail}>
           {healthOk ? "Bridge online" : "Bridge down"}
         </div>
       </header>
 
+      {workspace === "maps" ? (
+        <MapStudio />
+      ) : (
       <main className="workspace">
         <section className="panel" aria-label="Library">
           <header>
@@ -1074,10 +1100,13 @@ function App() {
           </div>
         </section>
       </main>
+      )}
 
       <footer className="footer">
         <span>
-          Designer path: stock item → soft preset → verify export → local install → Equipment QA
+          {workspace === "maps"
+            ? "Map Studio: catalog → stage validate → relational SQL pack (geometry stays stock-bound)"
+            : "Items: stock racket → preset → verify export → local install → Equipment QA"}
         </span>
         <span className="mono">{healthDetail}</span>
       </footer>

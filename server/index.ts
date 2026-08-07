@@ -180,6 +180,52 @@ const server = Bun.serve({
         );
       },
     },
+    "/api/map-studio/catalog": {
+      GET: async () => safeBridge(() => runBridge(["map-studio-catalog"])),
+    },
+    "/api/map-studio/validate": {
+      POST: async (req) => {
+        let body: Record<string, unknown>;
+        try {
+          body = (await req.json()) as Record<string, unknown>;
+        } catch {
+          return bad("INVALID_JSON");
+        }
+        const stageScript = String(body.stageScript ?? "");
+        if (!stageScript) return bad("STAGE_SCRIPT_REQUIRED");
+        return safeBridge(() =>
+          runBridge(["map-studio-validate", "--stage-script", stageScript]),
+        );
+      },
+    },
+    "/api/map-studio/export-pack": {
+      POST: async (req) => {
+        let body: Record<string, unknown>;
+        try {
+          body = (await req.json()) as Record<string, unknown>;
+        } catch {
+          return bad("INVALID_JSON");
+        }
+        const payloadPath = join(
+          config.tmpDir,
+          `map-pack-${crypto.randomUUID()}.json`,
+        );
+        const outFile = join(
+          config.exportsDir,
+          `map-pack-${Date.now()}.sql`,
+        );
+        await Bun.write(payloadPath, JSON.stringify(body, null, 2));
+        return safeBridge(() =>
+          runBridge([
+            "map-studio-export-pack",
+            "--payload",
+            payloadPath,
+            "--out-file",
+            outFile,
+          ]),
+        );
+      },
+    },
     "/api/effects/preview-build": {
       POST: async (req) => {
         let payload: Record<string, unknown>;

@@ -259,4 +259,69 @@ describe("content studio production API", () => {
     expect(bytes[2]).toBe(0x4e);
     expect(bytes[3]).toBe(0x47);
   }, 120000);
+
+  test("map studio catalog includes relations and stage candidates", async () => {
+    const response = await fetch(`${base}/api/map-studio/catalog`);
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.maps.length).toBeGreaterThan(0);
+    const emerald = body.maps.find((row: { map: number }) => row.map === 1);
+    expect(emerald).toBeDefined();
+    expect(emerald.name).toContain("Emerald");
+    expect(Array.isArray(emerald.scenarioIds)).toBe(true);
+    expect(emerald.scenarioIds.length).toBeGreaterThan(0);
+    expect(emerald.guardianCount).toBeGreaterThan(0);
+    expect(Array.isArray(emerald.stageCandidates)).toBe(true);
+    expect(emerald.stageCandidates.some((s: string) => s.includes("Emerald"))).toBe(
+      true,
+    );
+  });
+
+  test("map studio validate accepts known stage script", async () => {
+    const response = await fetch(`${base}/api/map-studio/validate`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ stageScript: "1_Emerald_Beach.set" }),
+    });
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.valid).toBe(true);
+    expect(body.stage.WorldFile).toContain("Mesh");
+  });
+
+  test("map studio validate rejects missing stage script", async () => {
+    const response = await fetch(`${base}/api/map-studio/validate`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ stageScript: "99_Does_Not_Exist.set" }),
+    });
+    const body = await response.json();
+    expect(response.status).toBe(400);
+    expect(body.error).toBe("STAGE_SCRIPT_MISSING");
+  });
+
+  test("map studio export pack writes relational SQL bundle", async () => {
+    const response = await fetch(`${base}/api/map-studio/export-pack`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        mapIds: [2],
+        stageByMapId: { "2": "1_Emerald_Beach.set" },
+        includeGuardians: true,
+        includeScenarios: true,
+      }),
+    });
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(await Bun.file(body.path).exists()).toBe(true);
+    const sql = await Bun.file(body.path).text();
+    expect(sql).toContain("INSERT INTO S_Maps");
+    expect(sql).toContain("Map_2_Scenarios");
+    expect(sql).toContain("Guardian_2_Maps");
+    expect(sql).toContain("Emerald Beach");
+    expect(sql).toContain("1_Emerald_Beach.set");
+  });
 });

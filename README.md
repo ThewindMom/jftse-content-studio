@@ -1,14 +1,24 @@
 # JFTSE Content Studio
 
-Designer web platform for Fanta Tennis custom **items**, **effects**, and **map metadata**.
+Designer web platform for Fanta Tennis custom **items**, **effects**, and a full **Map Studio**.
 
-Built as a sibling of the JFTSE monorepo. It guides a real designer path:
+Built as a sibling of the JFTSE monorepo.
 
+### Items workflow
 1. Pick a stock racket base  
 2. Choose a preset + atlas + emitter  
 3. Build a verified fixed-size particle export  
 4. Install only to the local client  
 5. Copy the launch command and playtest in Equipment  
+
+### Map Studio
+1. Browse `S_Maps` with scenario links + guardian counts  
+2. Bind/infer `Stage/Info.res` scripts per map byte  
+3. Validate World/Sky/Collision assets inside stock `.res` archives  
+4. Export relational SQL packs (`S_Maps` + `Map_2_Scenarios` + `Guardian_2_Maps`)  
+5. Save map drafts as content packs  
+
+Map Studio is intentionally **metadata + stage-binding**. It does not invent court meshes.
 
 ## Run
 
@@ -53,6 +63,9 @@ Content packs can be saved/loaded so designers resume mid-flow.
 - `GET /api/atlases/preview?archive=&member=`
 - `GET /api/maps`
 - `POST /api/maps/export-sql`
+- `GET /api/map-studio/catalog`
+- `POST /api/map-studio/validate`
+- `POST /api/map-studio/export-pack`
 - `POST /api/effects/preview-build`
 - `POST /api/effects/install`
 - `GET|POST /api/packs`
