@@ -412,6 +412,22 @@ describe("content studio production API", () => {
     expect(gltf.extras?.jftseConfidence?.score).toBeGreaterThan(0);
   }, 120000);
 
+  test("mesh decode rejects cubic false-positive runs for TU_Court", async () => {
+    const response = await fetch(
+      `${base}/api/mesh-studio/parse?archive=${encodeURIComponent("Res/Stage/Mesh00.res")}&member=${encodeURIComponent("TU_Court.dat")}&metaOnly=1`,
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    const min = body.mesh.bounds.min as number[];
+    const max = body.mesh.bounds.max as number[];
+    const extent = max.map((v: number, i: number) => v - min[i]!);
+    const maxE = Math.max(...extent);
+    const minRatio = Math.min(...extent.map((e: number) => e / maxE));
+    // A perfect cube (~1.0 ratio on all axes) was the prior false positive silhouette.
+    expect(minRatio).toBeLessThan(0.5);
+    expect(body.mesh.vertexCount).toBeGreaterThan(100);
+  }, 120000);
+
   test("mesh parse exposes decode confidence diagnostics", async () => {
     const list = await fetch(`${base}/api/mesh-studio/list`).then((r) => r.json());
     const court =

@@ -59,42 +59,83 @@ def parse_header(data: bytes) -> MeshHeader:
     return MeshHeader(*values)
 
 
-def _is_plausible_vertex(x: float, y: float, z: float) -> bool:
+def _is_plausible_vertex(x: float, y: float, z: float, *, max_abs: float = 2500.0) -> bool:
     if not all(math.isfinite(v) for v in (x, y, z)):
         return False
-    if max(abs(x), abs(y), abs(z)) > 5000:
+    if max(abs(x), abs(y), abs(z)) > max_abs:
         return False
     return abs(x) + abs(y) + abs(z) > 1e-4
 
 
-def find_vertex_run(data: bytes, start: int = 48) -> tuple[int, list[tuple[float, float, float]]]:
+def _extent_of(run: list[tuple[float, float, float]]) -> tuple[float, float, float]:
+    xs = [v[0] for v in run]
+    ys = [v[1] for v in run]
+    zs = [v[2] for v in run]
+    return (max(xs) - min(xs), max(ys) - min(ys), max(zs) - min(zs))
+
+
+def _score_vertex_run(run: list[tuple[float, float, float]]) -> float:
+    """Prefer long, non-cubic, preferably flat stage-like silhouettes over cube junk."""
+    if len(run) < 32:
+        return -1.0
+    ext = _extent_of(run)
+    max_e = max(ext)
+    if max_e < 1.0:
+        return -1.0
+    ratios = sorted(e / max_e for e in ext)
+    # Perfect cubes (common false positive from dense float noise) are heavily penalized.
+    cubeish = ratios[0] > 0.85 and ratios[1] > 0.85
+    if cubeish:
+        return len(run) * 0.05
+    # Flatness: smallest axis much smaller than largest (court floors, walls).
+    flat = 1.0 - ratios[0]
+    # Mild preference for larger spatial footprint (real stages, not tiny clusters).
+    footprint = min(max_e / 50.0, 4.0)
+    return float(len(run)) * (1.0 + 1.75 * flat) * (1.0 + 0.15 * footprint)
+
+
+def find_vertex_run(
+    data: bytes, start: int = 48
+) -> tuple[int, list[tuple[float, float, float]], int]:
+    """Return (byte_offset, positions, stride) for the best-scoring float3 run.
+
+    Fantasy Tennis stage DATs often interleave position with other channels
+    (normals/UVs). Scanning only tightly packed float3 (stride 12) prefers long
+    cubic noise runs. Multi-stride scoring recovers flatter court silhouettes.
+    """
     best_offset = start
     best_run: list[tuple[float, float, float]] = []
-    i = start
+    best_score = -1.0
+    best_stride = 12
     end = len(data) - 12
-    while i <= end:
-        run: list[tuple[float, float, float]] = []
-        j = i
-        while j <= end:
-            x, y, z = struct.unpack_from("<fff", data, j)
-            if not _is_plausible_vertex(x, y, z):
-                break
-            run.append((x, y, z))
-            j += 12
-            if len(run) > 120_000:
-                break
-        if len(run) >= 32:
-            xs = [v[0] for v in run]
-            ys = [v[1] for v in run]
-            zs = [v[2] for v in run]
-            span = (max(xs) - min(xs)) + (max(ys) - min(ys)) + (max(zs) - min(zs))
-            if span > 0.5 and len(run) > len(best_run):
-                best_offset = i
-                best_run = run
-            i = j if j > i else i + 4
-        else:
-            i += 4
-    return best_offset, best_run
+    # Tight abs cap rejects the huge cubic noise shells seen on some courts.
+    for stride in (12, 16, 20, 24, 32):
+        for pos_off in range(0, max(1, stride - 11), 4):
+            if pos_off + 12 > stride:
+                continue
+            i = start
+            while i <= end:
+                run: list[tuple[float, float, float]] = []
+                j = i
+                while j + pos_off + 12 <= len(data):
+                    x, y, z = struct.unpack_from("<fff", data, j + pos_off)
+                    if not _is_plausible_vertex(x, y, z, max_abs=1200.0):
+                        break
+                    run.append((x, y, z))
+                    j += stride
+                    if len(run) > 80_000:
+                        break
+                if len(run) >= 48:
+                    score = _score_vertex_run(run)
+                    if score > best_score:
+                        best_score = score
+                        best_offset = i + pos_off
+                        best_run = run
+                        best_stride = stride
+                    i = j if j > i else i + 4
+                else:
+                    i += 4
+    return best_offset, best_run, best_stride
 
 
 def find_u16_indices(data: bytes, vertex_count: int, start: int) -> list[int]:
@@ -135,11 +176,13 @@ def decode_mesh_bytes(
     max_vertices: int = 40_000,
 ) -> DecodedMesh:
     header = parse_header(data) if len(data) >= 48 else MeshHeader(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
-    offset, run = find_vertex_run(data)
+    offset, run, stride = find_vertex_run(data)
     if not run:
         raise ValueError("NO_VERTEX_RUN")
-    indices = find_u16_indices(data, len(run), offset + len(run) * 12)
-    mode = "indexed" if indices else "triangle-soup"
+    # Indices usually trail the vertex block; stride-aware end offset.
+    index_start = offset - (offset % 2) + max(len(run) * stride, len(run) * 12)
+    indices = find_u16_indices(data, len(run), min(index_start, len(data) - 6))
+    mode = f"indexed-s{stride}" if indices else f"triangle-soup-s{stride}"
     if not indices:
         indices = []
         capped = min(len(run), max_vertices)

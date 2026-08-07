@@ -161,11 +161,21 @@ function MeshViewport({
       const radius = Math.max(size.x, size.y, size.z, 1);
       state.controls.target.copy(center);
       const distance = radius * 1.8;
-      state.camera.position.set(
-        center.x + distance,
-        center.y + distance * 0.65,
-        center.z + distance,
-      );
+      // Near-planar courts need a higher camera so the surface reads as a pad, not an edge.
+      const planar = size.y < Math.max(size.x, size.z) * 0.2;
+      if (planar) {
+        state.camera.position.set(
+          center.x + distance * 0.35,
+          center.y + distance * 1.15,
+          center.z + distance * 0.35,
+        );
+      } else {
+        state.camera.position.set(
+          center.x + distance,
+          center.y + distance * 0.65,
+          center.z + distance,
+        );
+      }
       state.camera.near = Math.max(radius / 1000, 0.1);
       state.camera.far = Math.max(radius * 50, 1000);
       state.camera.updateProjectionMatrix();
@@ -216,7 +226,10 @@ export function MeshStudio({
           }
         }
         const preferred =
-          data.meshes.find((row) => /court/i.test(row.member)) ?? data.meshes[0] ?? null;
+          data.meshes.find((row) => row.member === "BF_Court01.dat") ??
+          data.meshes.find((row) => /court/i.test(row.member)) ??
+          data.meshes[0] ??
+          null;
         if (preferred) void loadMesh(preferred);
       })
       .catch((err: unknown) => {

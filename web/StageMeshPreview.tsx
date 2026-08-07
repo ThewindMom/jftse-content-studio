@@ -105,11 +105,20 @@ export function StageMeshPreview({
           const radius = Math.max(size.x, size.y, size.z, 1);
           controls.target.copy(center);
           const distance = radius * 1.8;
-          camera.position.set(
-            center.x + distance,
-            center.y + distance * 0.6,
-            center.z + distance,
-          );
+          const planar = size.y < Math.max(size.x, size.z) * 0.2;
+          if (planar) {
+            camera.position.set(
+              center.x + distance * 0.35,
+              center.y + distance * 1.15,
+              center.z + distance * 0.35,
+            );
+          } else {
+            camera.position.set(
+              center.x + distance,
+              center.y + distance * 0.6,
+              center.z + distance,
+            );
+          }
           camera.near = Math.max(radius / 1000, 0.1);
           camera.far = Math.max(radius * 50, 1000);
           camera.updateProjectionMatrix();
