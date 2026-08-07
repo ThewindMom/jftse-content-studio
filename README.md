@@ -88,7 +88,8 @@ Topology/materials/UVs are **not** fully solved. Treat Mesh Studio as a producti
 |---|---|
 | Health | `GET /api/health` (includes `setup` checklist) |
 | Exports library | `GET /api/exports?limit=&kind=` |
-| Items/effects | `/api/items`, `/api/atlases`, `/api/presets`, `/api/effects/preview-build`, `/api/effects/install` |
+| Items/effects | `/api/items`, `/api/atlases`, `/api/presets`, `/api/effects/preview-build`, `/api/effects/install`, `/api/effects/slot-fields` |
+| Playtest | `GET /api/playtest/status` |
 | Maps | `/api/map-studio/catalog`, `/api/map-studio/validate`, `/api/map-studio/export-pack` |
 | Meshes | `/api/mesh-studio/list`, `/api/mesh-studio/parse`, `/api/mesh-studio/export`, `/api/mesh-studio/transform` |
 | Packs | `GET/POST /api/packs`, `GET /api/packs/:name` |
@@ -157,14 +158,15 @@ DESIGN.md         Visual/product language
 
 ## Honest limits / intentionally out of scope
 
-| In scope now | Out of scope (for now) |
+| In scope now | Still out of scope |
 |---|---|
-| Soft particle export + local install | Pixel-true in-browser game renderer |
-| Map metadata + stage validation + SQL packs | Full terrain/sculpt DCC |
-| Mesh DAT decode, transform, OBJ/glTF | Blender-parity materials/UVs/skinning |
+| Soft particle export + local install + playtest readiness | DX9-accurate racket attachment / billboarding |
+| Atlas SubTex-animated field-driven preview + live Ice_Smoke02 readout | Pixel-true Equipment silhouette |
+| Map metadata + stage validation + SQL + **World mesh 3D preview** + Mesh Studio deep-link | Full terrain/sculpt DCC |
+| Mesh DAT decode, confidence diagnostics, normals in OBJ/glTF, axes viewport | Blender-parity materials/UVs/skinning |
 | Setup checklist, exports library, guided day-1 UX | Multi-user auth / cloud collab |
 
-- Browser particle preview ≠ final Equipment look  
+- Browser particle preview is field-driven, not final Equipment look  
 - Always use an isolated local client for installs  
 - Stock client writes are refused by design  
 
