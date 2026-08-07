@@ -5,10 +5,14 @@ Public reverse-engineering notes (2026-08):
 - Members are proprietary little-endian .dat blobs (no public schema found;
   FantasyTennis.Ghidra exists but does not document mesh layout).
 - Observed header: 12 x uint32, then mixed records; dense float3 runs carry
-  positions used for court/prop silhouettes.
-- This codec recovers the longest plausible float3 run, builds a triangle soup
-  (or recovered uint16 indices when present), and can write transforms back into
-  the original vertex bytes for same-size round trips.
+  positions used for court/prop silhouettes. Normals/UVs are interleaved —
+  flatness-only scoring picks UV channels (BF_Court01 s20 solidArea≈485).
+- Community tooling (ft_restool): RES browser, FTM/DDS/IFL parsers, .tex XOR
+  (0xFF) → DDS, AES for .set — no mesh DAT decoder. Discord RE: no color in
+  mesh dats; re-texture via related .tex files.
+- This codec multi-stride-scores float3 runs (reject cubes, unit-normals, UV
+  clouds; reward XZ footprint), recovers uint16 indices, drops degenerates,
+  and can write transforms back into the original vertex bytes.
 """
 
 from __future__ import annotations
@@ -74,8 +78,63 @@ def _extent_of(run: list[tuple[float, float, float]]) -> tuple[float, float, flo
     return (max(xs) - min(xs), max(ys) - min(ys), max(zs) - min(zs))
 
 
+def _unitish_frac(run: list[tuple[float, float, float]]) -> float:
+    """Fraction of vertices that look like unit normals (common interleaved channel)."""
+    if not run:
+        return 0.0
+    hits = 0
+    for x, y, z in run:
+        length = math.sqrt(x * x + y * y + z * z)
+        if 0.85 <= length <= 1.15 and max(abs(x), abs(y), abs(z)) <= 1.2:
+            hits += 1
+    return hits / len(run)
+
+
+def _uvish_frac(run: list[tuple[float, float, float]]) -> float:
+    """Fraction of verts whose XY look like UV in [0,1] (false flat runs)."""
+    if not run:
+        return 0.0
+    hits = 0
+    for x, y, _z in run:
+        if 0.0 <= x <= 1.0 and 0.0 <= y <= 1.0:
+            hits += 1
+    return hits / len(run)
+
+
+def _footprint_xz(run: list[tuple[float, float, float]]) -> float:
+    """Convex-hull area of points projected onto XZ (stage ground plane)."""
+    pts = sorted({(round(x, 2), round(z, 2)) for x, _y, z in run})
+    if len(pts) < 3:
+        return 0.0
+
+    def cross(o: tuple[float, float], a: tuple[float, float], b: tuple[float, float]) -> float:
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    lower: list[tuple[float, float]] = []
+    for p in pts:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0:
+            lower.pop()
+        lower.append(p)
+    upper: list[tuple[float, float]] = []
+    for p in reversed(pts):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 0:
+            upper.pop()
+        upper.append(p)
+    hull = lower[:-1] + upper[:-1]
+    area = 0.0
+    for i, (x1, z1) in enumerate(hull):
+        x2, z2 = hull[(i + 1) % len(hull)]
+        area += x1 * z2 - x2 * z1
+    return abs(area) * 0.5
+
+
 def _score_vertex_run(run: list[tuple[float, float, float]]) -> float:
-    """Prefer long, non-cubic, preferably flat stage-like silhouettes over cube junk."""
+    """Prefer real stage geometry over cube noise, unit-normal clouds, and UV channels.
+
+    History: longest float3 run → cubic noise. Flatness-only multi-stride then
+    preferred UV/normal s20 runs on BF_Court01 (Y extent ≈ 1, solid area ~485).
+    Reward XZ footprint + large-coordinate positions; penalize unit/UV-like verts.
+    """
     if len(run) < 32:
         return -1.0
     ext = _extent_of(run)
@@ -83,15 +142,58 @@ def _score_vertex_run(run: list[tuple[float, float, float]]) -> float:
     if max_e < 1.0:
         return -1.0
     ratios = sorted(e / max_e for e in ext)
-    # Perfect cubes (common false positive from dense float noise) are heavily penalized.
+    unit = _unitish_frac(run)
+    uvish = _uvish_frac(run)
+    # Unit-normal / UV false positives (restool community: no color in mesh dats;
+    # interleaved normals/UVs are the usual contaminators).
+    if unit > 0.4:
+        return len(run) * 0.02
     cubeish = ratios[0] > 0.85 and ratios[1] > 0.85
     if cubeish:
         return len(run) * 0.05
-    # Flatness: smallest axis much smaller than largest (court floors, walls).
     flat = 1.0 - ratios[0]
-    # Mild preference for larger spatial footprint (real stages, not tiny clusters).
-    footprint = min(max_e / 50.0, 4.0)
-    return float(len(run)) * (1.0 + 1.75 * flat) * (1.0 + 0.15 * footprint)
+    footprint = _footprint_xz(run)
+    fp_term = min(footprint / 5000.0, 6.0)
+    big = sum(1 for x, y, z in run if max(abs(x), abs(y), abs(z)) > 2.0) / len(run)
+    score = float(len(run)) * (1.0 + 1.5 * flat) * (1.0 + 0.25 * fp_term) * (0.2 + 0.8 * big)
+    score *= (1.0 - 0.85 * unit) * (1.0 - 0.7 * uvish)
+    # Ultra-flat + UV-like is almost always a wrong channel pick.
+    if ratios[0] < 0.02 and uvish > 0.15:
+        score *= 0.15
+    return score
+
+
+def _triangle_stats(
+    positions: list[list[float]] | list[tuple[float, float, float]],
+    indices: list[int],
+) -> tuple[int, int, float, list[int]]:
+    """Return (valid, degenerate, solid_area, filtered_indices)."""
+    valid = 0
+    degen = 0
+    area = 0.0
+    filtered: list[int] = []
+    n = len(positions)
+    for i in range(0, len(indices) - 2, 3):
+        a, b, c = indices[i], indices[i + 1], indices[i + 2]
+        if max(a, b, c) >= n:
+            degen += 1
+            continue
+        ax, ay, az = positions[a]
+        bx, by, bz = positions[b]
+        cx, cy, cz = positions[c]
+        ux, uy, uz = bx - ax, by - ay, bz - az
+        vx, vy, vz = cx - ax, cy - ay, cz - az
+        nx = uy * vz - uz * vy
+        ny = uz * vx - ux * vz
+        nz = ux * vy - uy * vx
+        tri_area = math.sqrt(nx * nx + ny * ny + nz * nz) * 0.5
+        if tri_area < 1e-8:
+            degen += 1
+            continue
+        valid += 1
+        area += tri_area
+        filtered.extend([a, b, c])
+    return valid, degen, area, filtered
 
 
 def find_vertex_run(
@@ -182,7 +284,7 @@ def decode_mesh_bytes(
     # Indices usually trail the vertex block; stride-aware end offset.
     index_start = offset - (offset % 2) + max(len(run) * stride, len(run) * 12)
     indices = find_u16_indices(data, len(run), min(index_start, len(data) - 6))
-    mode = f"indexed-s{stride}" if indices else f"triangle-soup-s{stride}"
+    had_indices = bool(indices)
     if not indices:
         indices = []
         capped = min(len(run), max_vertices)
@@ -192,9 +294,12 @@ def decode_mesh_bytes(
         run = run[:max_vertices]
         indices = [i for i in indices if i < max_vertices]
         indices = indices[: len(indices) // 3 * 3]
-    xs = [v[0] for v in run]
-    ys = [v[1] for v in run]
-    zs = [v[2] for v in run]
+    positions = [[float(x), float(y), float(z)] for x, y, z in run]
+    _valid, _degen, _area, indices = _triangle_stats(positions, indices)
+    mode = f"indexed-s{stride}" if had_indices else f"triangle-soup-s{stride}"
+    xs = [v[0] for v in positions]
+    ys = [v[1] for v in positions]
+    zs = [v[2] for v in positions]
     return DecodedMesh(
         name=name,
         archive=archive,
@@ -202,9 +307,9 @@ def decode_mesh_bytes(
         byteLength=len(data),
         header=header,
         vertexOffset=offset,
-        vertexCount=len(run),
+        vertexCount=len(positions),
         indexCount=len(indices),
-        positions=[[float(x), float(y), float(z)] for x, y, z in run],
+        positions=positions,
         indices=indices,
         bounds={
             "min": [min(xs), min(ys), min(zs)],
@@ -245,29 +350,42 @@ def compute_vertex_normals(
 
 
 def decode_confidence(mesh: DecodedMesh) -> dict[str, Any]:
+    valid, degen, solid_area, _filtered = _triangle_stats(mesh.positions, mesh.indices)
     tri = max(0, mesh.indexCount // 3)
     density = mesh.vertexCount / max(mesh.byteLength, 1)
     score = 0.2
     if mesh.vertexCount >= 3:
         score += 0.25
-    if mesh.decodeMode == "indexed" and tri >= 1:
+    has_indices = mesh.decodeMode.startswith("indexed")
+    if has_indices and tri >= 1:
         score += 0.35
     elif tri >= 1:
         score += 0.15
     if 0.001 <= density <= 0.2:
         score += 0.1
     bounds = mesh.bounds
-    extent = [
-        bounds["max"][i] - bounds["min"][i] for i in range(3)
-    ] if bounds.get("max") and bounds.get("min") else [0, 0, 0]
+    extent = (
+        [bounds["max"][i] - bounds["min"][i] for i in range(3)]
+        if bounds.get("max") and bounds.get("min")
+        else [0, 0, 0]
+    )
     if max(extent) > 1.0:
         score += 0.1
+    # Reward real solid fill (UV/normal false runs score near zero here).
+    if solid_area >= 10_000:
+        score += 0.1
+    elif solid_area >= 1_000:
+        score += 0.05
     return {
         "score": round(min(score, 0.99), 3),
         "triangleCount": tri,
+        "nonDegenerateTriangles": valid,
+        "degenerateTriangles": degen,
+        "solidArea": round(solid_area, 3),
         "bytesPerVertex": round(mesh.byteLength / max(mesh.vertexCount, 1), 3),
         "extent": extent,
-        "hasIndices": mesh.decodeMode == "indexed",
+        "hasIndices": has_indices,
+        "footprintXZ": round(_footprint_xz([tuple(p) for p in mesh.positions]), 3),
     }
 
 
@@ -408,6 +526,19 @@ def write_positions_into_dat(data: bytes, vertex_offset: int, positions: list[li
     for index, (x, y, z) in enumerate(positions):
         struct.pack_into("<fff", buf, vertex_offset + index * 12, float(x), float(y), float(z))
     return bytes(buf)
+
+
+def decrypt_tex_to_dds(tex_data: bytes) -> bytes:
+    """ft_restool Crypter: XOR first 128 bytes with 0xFF yields a DDS header/stream.
+
+    Community RE (Discord/HxD): mesh dats have no color; stage/item color lives in
+    paired .tex files inside Tex*.res archives. Full-file XOR is also valid DDS.
+    """
+    out = bytearray(tex_data)
+    limit = min(128, len(out))
+    for i in range(limit):
+        out[i] ^= 0xFF
+    return bytes(out)
 
 
 def decoded_to_dict(mesh: DecodedMesh, *, include_geometry: bool = True) -> dict[str, Any]:

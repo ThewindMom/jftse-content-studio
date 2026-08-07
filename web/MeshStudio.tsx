@@ -25,6 +25,9 @@ type MeshPayload = {
   confidence?: {
     score: number;
     triangleCount: number;
+    nonDegenerateTriangles?: number;
+    solidArea?: number;
+    footprintXZ?: number;
     bytesPerVertex: number;
     extent: number[];
     hasIndices: boolean;
@@ -158,22 +161,24 @@ function MeshViewport({
       const size = new THREE.Vector3();
       box.getCenter(center);
       box.getSize(size);
-      const radius = Math.max(size.x, size.y, size.z, 1);
+      // Prefer horizontal footprint for framing so tall sparse outliers do not zoom out to a pinhead.
+      const horiz = Math.max(size.x, size.z, 1);
+      const radius = Math.max(horiz, size.y * 0.55, 1);
       state.controls.target.copy(center);
-      const distance = radius * 1.8;
+      const distance = radius * 1.45;
       // Near-planar courts need a higher camera so the surface reads as a pad, not an edge.
-      const planar = size.y < Math.max(size.x, size.z) * 0.2;
+      const planar = size.y < Math.max(size.x, size.z) * 0.25;
       if (planar) {
         state.camera.position.set(
-          center.x + distance * 0.35,
-          center.y + distance * 1.15,
-          center.z + distance * 0.35,
+          center.x + distance * 0.4,
+          center.y + distance * 1.05,
+          center.z + distance * 0.4,
         );
       } else {
         state.camera.position.set(
-          center.x + distance,
-          center.y + distance * 0.65,
-          center.z + distance,
+          center.x + distance * 0.85,
+          center.y + distance * 0.75,
+          center.z + distance * 0.85,
         );
       }
       state.camera.near = Math.max(radius / 1000, 0.1);
@@ -466,6 +471,9 @@ vertexOffset=${mesh.vertexOffset}
 bytes=${mesh.byteLength}
 confidence=${mesh.confidence?.score ?? "?"}
 triangles=${mesh.confidence?.triangleCount ?? Math.floor(mesh.indexCount / 3)}
+solidTris=${mesh.confidence?.nonDegenerateTriangles ?? "?"}
+solidArea=${mesh.confidence?.solidArea ?? "?"}
+footprintXZ=${mesh.confidence?.footprintXZ ?? "?"}
 boundsMin=${mesh.bounds.min.join(", ")}
 boundsMax=${mesh.bounds.max.join(", ")}
 header=${mesh.header ? JSON.stringify(mesh.header) : "n/a"}`}

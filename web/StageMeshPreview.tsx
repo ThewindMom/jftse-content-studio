@@ -102,21 +102,22 @@ export function StageMeshPreview({
           const size = new THREE.Vector3();
           geometry.boundingBox.getCenter(center);
           geometry.boundingBox.getSize(size);
-          const radius = Math.max(size.x, size.y, size.z, 1);
+          const horiz = Math.max(size.x, size.z, 1);
+          const radius = Math.max(horiz, size.y * 0.55, 1);
           controls.target.copy(center);
-          const distance = radius * 1.8;
-          const planar = size.y < Math.max(size.x, size.z) * 0.2;
+          const distance = radius * 1.45;
+          const planar = size.y < Math.max(size.x, size.z) * 0.25;
           if (planar) {
             camera.position.set(
-              center.x + distance * 0.35,
-              center.y + distance * 1.15,
-              center.z + distance * 0.35,
+              center.x + distance * 0.4,
+              center.y + distance * 1.05,
+              center.z + distance * 0.4,
             );
           } else {
             camera.position.set(
-              center.x + distance,
-              center.y + distance * 0.6,
-              center.z + distance,
+              center.x + distance * 0.85,
+              center.y + distance * 0.75,
+              center.z + distance * 0.85,
             );
           }
           camera.near = Math.max(radius / 1000, 0.1);
