@@ -6,13 +6,16 @@ export type BridgeResult = Record<string, unknown>;
 
 export async function runBridge(args: string[]): Promise<BridgeResult> {
   mkdirSync(config.tmpDir, { recursive: true });
-  const proc = Bun.spawn(["uv", "run", "python", config.pythonBridge, ...args], {
+  const proc = Bun.spawn(
+    ["uv", "run", "--with", "pillow", "python", config.pythonBridge, ...args],
+    {
     cwd: config.jftseRoot,
     env: bridgeEnv(),
     stdout: "pipe",
     stderr: "pipe",
     stdin: "ignore",
-  });
+    },
+  );
   const stdout = await new Response(proc.stdout).text();
   const stderr = await new Response(proc.stderr).text();
   const code = await proc.exited;

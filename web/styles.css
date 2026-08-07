@@ -322,6 +322,86 @@ button:focus-visible {
   font-size: 0.9rem;
 }
 
+.atlas-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.atlas-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  border: 1px solid var(--border);
+  background: #0d1426;
+  border-radius: 10px;
+  padding: 0.45rem;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.atlas-card img,
+.selected-atlas img {
+  width: 100%;
+  aspect-ratio: 1.6;
+  object-fit: contain;
+  border-radius: 8px;
+  background:
+    linear-gradient(45deg, #10182b 25%, transparent 25%),
+    linear-gradient(-45deg, #10182b 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #10182b 75%),
+    linear-gradient(-45deg, transparent 75%, #10182b 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  background-color: #0a1020;
+}
+
+.atlas-card[data-active="true"] {
+  border-color: rgba(95, 208, 255, 0.55);
+  box-shadow: 0 0 0 1px rgba(95, 208, 255, 0.2);
+}
+
+.atlas-card span,
+.selected-atlas {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.78rem;
+}
+
+.selected-atlas {
+  flex-direction: row;
+  gap: 0.75rem;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.55rem;
+  background: #0d1426;
+}
+
+.selected-atlas img {
+  width: 96px;
+  aspect-ratio: 1;
+}
+
+.divider {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 0.4rem 0;
+}
+
+.subhead {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+button:disabled,
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     scroll-behavior: auto !important;

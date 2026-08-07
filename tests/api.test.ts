@@ -188,4 +188,75 @@ describe("content studio production API", () => {
     expect(body.installed.particle).toContain("Particle.res");
     expect(await Bun.file(body.installed.particle).exists()).toBe(true);
   }, 120000);
+
+  test("presets endpoint lists designer presets", async () => {
+    const response = await fetch(`${base}/api/presets`);
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.presets.length).toBeGreaterThanOrEqual(3);
+    expect(body.presets[0]).toHaveProperty("effect");
+  });
+
+  test("workflow endpoint returns ordered designer steps", async () => {
+    const response = await fetch(`${base}/api/workflow`);
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.steps.map((step: { id: string }) => step.id)).toEqual([
+      "item",
+      "effect",
+      "export",
+      "install",
+      "playtest",
+    ]);
+  });
+
+  test("map sql export writes seed file", async () => {
+    const response = await fetch(`${base}/api/maps/export-sql`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        maps: [{ id: 1, map: 0, name: "Rubycrab", isBossStage: false }],
+        stageByMap: { "0": "0_Tutorial.set" },
+      }),
+    });
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(await Bun.file(body.path).exists()).toBe(true);
+    const sql = await Bun.file(body.path).text();
+    expect(sql).toContain("INSERT INTO S_Maps");
+    expect(sql).toContain("Rubycrab");
+  });
+
+  test("pack save and load round-trip", async () => {
+    const name = `test-pack-${Date.now()}`;
+    const create = await fetch(`${base}/api/packs`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name,
+        item: { index: "10728", name: "Dragon Slayer(Black)" },
+        effect: softPayload,
+        notes: "round-trip",
+      }),
+    }).then((r) => r.json());
+    expect(create.ok).toBe(true);
+    const loaded = await fetch(`${base}/api/packs/${name}`).then((r) => r.json());
+    expect(loaded.ok).toBe(true);
+    expect(loaded.pack.notes).toBe("round-trip");
+    expect(loaded.pack.item.index).toBe("10728");
+  });
+
+  test("atlas preview returns png bytes", async () => {
+    const response = await fetch(
+      `${base}/api/atlases/preview?archive=EftB.res&member=A_feather.tex`,
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("image/png");
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    expect(bytes[0]).toBe(0x89);
+    expect(bytes[1]).toBe(0x50);
+    expect(bytes[2]).toBe(0x4e);
+    expect(bytes[3]).toBe(0x47);
+  }, 120000);
 });
