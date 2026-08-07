@@ -1,0 +1,8 @@
+node_modules/
+.tmp/
+exports/*
+!.gitkeep
+content-packs/*
+!.gitkeep
+.env
+*.log
