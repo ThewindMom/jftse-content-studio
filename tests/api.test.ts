@@ -667,7 +667,7 @@ describe("content studio production API", () => {
     expect(body.ani.sectionProbe.multiClip).toBeDefined();
     expect(body.ani.sectionProbe.multiClip.clipCount).toBeGreaterThanOrEqual(2);
     expect(body.ani.sectionProbe.clipIndex ?? body.ani.clipIndex ?? 0).toBe(0);
-    expect(String(body.ani.layout)).toMatch(/multi-clip/);
+    expect(String(body.ani.layout)).toMatch(/multi-clip|sequential-float3/);
     // Drive mode: quats only when extract confident; else hierarchical-fk
     expect(["quat", "hierarchical-fk", "position-only-fk"]).toContain(
       body.ani.driveMode,

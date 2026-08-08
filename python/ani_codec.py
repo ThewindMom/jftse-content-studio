@@ -499,29 +499,61 @@ def parse_ani_bytes(
         raise AniParseError(f"channel must be A or C, got {channel!r}")
     multi = probe.get("multiClipC" if channel_u == "C" else "multiClip") or {}
     clips: list[dict[str, Any]] = list(multi.get("clips") or [])
+    # Client bulk walk: sequential float3 slots (often more than high-score multiClip list)
+    from ani_client_re import walk_client_bulk
+
+    bulk_walk = walk_client_bulk(data)
+    seq_clips = int(bulk_walk.get("sequentialFloat3Clips") or 0)
+    f3_bytes = int(bulk_walk.get("float3BlockBytes") or 0)
+    payload_start = int(bulk_walk.get("payloadStart") or 28)
 
     raw_tracks: list[list[list[float]]] | None = None
     layout = ""
     selected_clip: dict[str, Any] | None = None
 
-    if clips:
-        # Clamp clip index into discovered multi-clip range
+    def _decode_at(data_off: int, order: str = "track-major") -> list[list[list[float]]] | None:
+        return _extract_tracks(
+            data, header=header, data_off=data_off, order=order
+        )
+
+    # Prefer sequential client-walk slot when clipIndex maps a motion name (0..seq_clips-1)
+    if (
+        bulk_walk.get("ok")
+        and f3_bytes > 0
+        and 0 <= clip_index < seq_clips
+        and channel_u == "A"
+    ):
+        data_off = payload_start + clip_index * f3_bytes
+        raw_tracks = _decode_at(data_off, "track-major")
+        if raw_tracks is not None:
+            selected_clip = {
+                "index": clip_index,
+                "offset": data_off,
+                "order": "track-major",
+                "source": "client-sequential-float3",
+            }
+            layout = (
+                f"sequential-float3[{clip_index}/{seq_clips}] track-major@+{data_off}"
+            )
+
+    if raw_tracks is None and clips:
+        # High-score multiClip list (may be shorter than name table)
         if clip_index < 0 or clip_index >= len(clips):
             raise AniParseError(
-                f"clipIndex {clip_index} out of range (0..{len(clips) - 1}) for channel {channel_u}"
+                f"clipIndex {clip_index} out of range "
+                f"(sequential 0..{max(seq_clips - 1, 0)}; multiClip 0..{len(clips) - 1}) "
+                f"for channel {channel_u}"
             )
         selected_clip = clips[clip_index]
         order = str(selected_clip.get("order") or "track-major")
         data_off = int(selected_clip["offset"])
-        raw_tracks = _extract_tracks(
-            data, header=header, data_off=data_off, order=order
-        )
+        raw_tracks = _decode_at(data_off, order)
         if raw_tracks is None:
             raise AniParseError(f"failed to decode multi-clip {clip_index}")
         layout = (
             f"multi-clip-{channel_u}[{clip_index}/{len(clips)}] {order}@+{data_off}"
         )
-    else:
+    elif raw_tracks is None:
         best: tuple[float, str, int, list[list[list[float]]]] | None = None
         for data_off in (28, 32, 24, 36, 48, 28 + header.sectionA):
             for order in ("frame-major", "track-major"):
