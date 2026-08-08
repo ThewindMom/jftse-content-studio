@@ -118,8 +118,27 @@ Runtime scripts (`Res/Script/Rtmovie.res` Cam/RTM sets) use fields:
 - `AttachTime` — attach timing
 - `ShadowBone` — shadow projection bone (often `Bip01`)
 
+Concrete example (`Rtm00.set`):
+
+```ini
+AttachPath  = "Res/Player/PlayerA/Item00/Niki_prop02.dat"
+AttachBone  = "Bone_Racket"
+AttachTime  = 2.7, 5.0
+ShadowBone  = "Bip01"
+```
+
 Racket **preview** in studio is still mesh decode + optional co-located tex; full DX9
 bone-matrix skinning/attach is not simulated in Three.js.
+
+### Stage shell decode (scene Object layer)
+
+`1_Emerald_Beach` Object layer `BF_All.dat` (Mesh01.res) recovers cleanly with the
+same multi-stride codec as the court:
+
+| Mesh | verts | solid tris | solidArea | header count1/2 |
+|------|------:|----------:|----------:|-----------------|
+| `BF_Court01.dat` | 2402 | 582 | ~380k | 2 / 2 |
+| `BF_All.dat` | 3041 | 4645 | ~2.3M | 74 / 74 |
 
 ## Map world catalogs (`Res/MapSet/Script.res`)
 
