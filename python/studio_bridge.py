@@ -1094,6 +1094,20 @@ def cmd_ani_parse(args: argparse.Namespace) -> dict[str, Any]:
         payload["channel"] = channel.upper()
         if resolved_motion is not None:
             payload["motion"] = resolved_motion
+        # Surface motion catalog at top-level for UI selectors
+        probe = payload.get("sectionProbe") or {}
+        catalog = (
+            probe.get("motionCatalog")
+            or (probe.get("clientDecoderHypothesis") or {}).get("motionCatalog")
+            or []
+        )
+        if catalog:
+            payload["motionCatalog"] = catalog
+            if not payload.get("motion"):
+                for entry in catalog:
+                    if entry.get("clipIndex") == clip_index and entry.get("name"):
+                        payload["motion"] = entry["name"]
+                        break
         # Prefer hierarchical-fk when dense quats not recovered (see rotationHypothesis).
         if payload.get("hasRotations"):
             payload["driveMode"] = "quat"

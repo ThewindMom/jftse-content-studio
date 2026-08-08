@@ -58,6 +58,14 @@ type AniTrack = {
   end?: number[] | null;
 };
 
+type MotionCatalogEntry = {
+  index: number;
+  name: string;
+  clipIndex: number | null;
+  offset?: number | null;
+  hasFloat3Clip?: boolean;
+};
+
 type AniPayload = {
   ok?: boolean;
   error?: string;
@@ -70,9 +78,33 @@ type AniPayload = {
     sampled?: boolean;
     hasRotations?: boolean;
     driveMode?: string;
+    clipIndex?: number;
+    motion?: string;
+    motionCatalog?: MotionCatalogEntry[];
     tracks: AniTrack[];
+    sectionProbe?: {
+      motionCatalog?: MotionCatalogEntry[];
+      clientDecoderHypothesis?: {
+        motionCatalog?: MotionCatalogEntry[];
+      };
+    };
   };
 };
+
+/** Prefer API motionCatalog; fall back to nested sectionProbe copies. */
+export function extractMotionCatalog(
+  ani: AniPayload["ani"] | null | undefined,
+): MotionCatalogEntry[] {
+  if (!ani) return [];
+  const nested =
+    ani.motionCatalog ??
+    ani.sectionProbe?.motionCatalog ??
+    ani.sectionProbe?.clientDecoderHypothesis?.motionCatalog ??
+    [];
+  return nested.filter(
+    (m) => m && typeof m.name === "string" && m.name.length > 0,
+  );
+}
 
 function dist3(a: number[], b: number[]): number {
   const dx = (a[0] ?? 0) - (b[0] ?? 0);
@@ -137,6 +169,8 @@ export function EquipmentMeshPreview({
   const [playing, setPlaying] = useState(false);
   const [aniError, setAniError] = useState("");
   const [aniBusy, setAniBusy] = useState(false);
+  const [motionName, setMotionName] = useState("");
+  const motionCatalog = useMemo(() => extractMotionCatalog(ani), [ani]);
   const reducedMotion =
     typeof window !== "undefined" &&
     window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -442,7 +476,7 @@ export function EquipmentMeshPreview({
     return () => window.clearInterval(id);
   }, [playing, ani, frameCount, duration, reducedMotion]);
 
-  const loadAni = async () => {
+  const loadAni = async (motionOverride?: string) => {
     setAniBusy(true);
     setAniError("");
     setPlaying(false);
@@ -474,14 +508,26 @@ export function EquipmentMeshPreview({
       };
       const stem = stemByFolder[folder] ?? "Niki";
       const members = [`${stem}AniA.ani`, "NikiAniA.ani"];
+      const motion = (motionOverride ?? motionName).trim() || "Rootidle.ani";
       let lastErr = "ANI not found";
       for (const member of members) {
-        const res = await fetch(
-          `/api/ani/parse?archive=${encodeURIComponent(archive)}&member=${encodeURIComponent(member)}&maxFrames=0&char=${encodeURIComponent(char)}`,
-        );
+        const qs = new URLSearchParams({
+          archive,
+          member,
+          maxFrames: "0",
+          char,
+          motion,
+        });
+        const res = await fetch(`/api/ani/parse?${qs.toString()}`);
         const body = (await res.json()) as AniPayload;
         if (res.ok && body.ok && body.ani) {
           setAni(body.ani);
+          const catalog = extractMotionCatalog(body.ani);
+          const resolved =
+            body.ani.motion ??
+            catalog.find((m) => m.clipIndex === body.ani!.clipIndex)?.name ??
+            motion;
+          setMotionName(resolved);
           const attachRes = await fetch(
             `/api/bone-attach?char=${encodeURIComponent(char)}&attachBone=Bone_Racket`,
           );
@@ -501,9 +547,10 @@ export function EquipmentMeshPreview({
                 ? "hierarchical FK scrub"
                 : "pos-only FK scrub",
           );
+          const motionLabel = resolved ? ` · motion ${resolved}` : "";
           setLabel(
             (prev) =>
-              `${prev.split(" · ANI")[0]} · ANI ${member} · ${body.ani!.frameCount}f · track ${idx}` +
+              `${prev.split(" · ANI")[0]} · ANI ${member}${motionLabel} · ${body.ani!.frameCount}f · clip ${body.ani!.clipIndex ?? 0} · track ${idx}` +
               (body.ani!.layout ? ` · ${body.ani!.layout}` : "") +
               ` · drive ${body.ani!.driveMode ?? mode}`,
           );
@@ -558,8 +605,30 @@ export function EquipmentMeshPreview({
             >
               {playing ? "Pause" : "Play"}
             </button>
+            {motionCatalog.length > 0 && (
+              <label className="inline-label">
+                Motion
+                <select
+                  value={motionName}
+                  disabled={aniBusy}
+                  aria-label="Named multi-clip motion"
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setMotionName(next);
+                    void loadAni(next);
+                  }}
+                >
+                  {motionCatalog.map((m) => (
+                    <option key={`${m.index}-${m.name}`} value={m.name}>
+                      {m.name.replace(/\.ani$/i, "")}
+                      {m.clipIndex != null ? ` (#${m.clipIndex})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label className="inline-label">
-              Track
+              Bone track
               <select
                 value={trackIndex}
                 onChange={(e) => {

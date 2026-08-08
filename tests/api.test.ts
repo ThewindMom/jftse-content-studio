@@ -805,6 +805,11 @@ describe("content studio production API", () => {
     expect(body.ani.tracks[0].positions.length).toBeGreaterThan(0);
     // hierarchical-fk still default (no confident on-disk quats)
     expect(body.ani.driveMode).toBe("hierarchical-fk");
+    // Top-level motionCatalog for equipment UI selectors
+    expect(Array.isArray(body.ani.motionCatalog)).toBe(true);
+    expect(body.ani.motionCatalog.length).toBe(40);
+    expect(body.ani.motionCatalog[1].name).toMatch(/RunForward/i);
+    expect(body.ani.motionCatalog[1].clipIndex).toBe(1);
   }, 60000);
 
   test("ANI motion unknown fails structured", async () => {

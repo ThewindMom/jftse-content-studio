@@ -9,6 +9,7 @@ import {
   type SkeletonBoneJson,
   type SkinParsePayload,
 } from "../web/skinnedBody";
+import { extractMotionCatalog } from "../web/EquipmentMeshPreview";
 
 function restOf(
   bones: THREE.Bone[],
@@ -208,6 +209,35 @@ describe("skinnedBody helpers", () => {
     const mode = driveBonesFromAni(bones, tracks, 0, "quat", rest);
     expect(mode).toBe("quat");
     expect(bones[0]!.quaternion.y).toBeCloseTo(q.y, 5);
+  });
+
+  test("extractMotionCatalog prefers top-level then nested sectionProbe", () => {
+    expect(extractMotionCatalog(null)).toEqual([]);
+    const top = extractMotionCatalog({
+      duration: 1,
+      frameCount: 2,
+      trackCount: 1,
+      tracks: [],
+      motionCatalog: [
+        { index: 0, name: "Rootidle.ani", clipIndex: 0, hasFloat3Clip: true },
+        { index: 1, name: "RunForward.ani", clipIndex: 1, hasFloat3Clip: true },
+      ],
+    });
+    expect(top.map((m) => m.name)).toEqual(["Rootidle.ani", "RunForward.ani"]);
+    const nested = extractMotionCatalog({
+      duration: 1,
+      frameCount: 2,
+      trackCount: 1,
+      tracks: [],
+      sectionProbe: {
+        clientDecoderHypothesis: {
+          motionCatalog: [
+            { index: 0, name: "ServeIdle.ani", clipIndex: 17, hasFloat3Clip: true },
+          ],
+        },
+      },
+    });
+    expect(nested[0]?.name).toBe("ServeIdle.ani");
   });
 
   test("driveBonesFromAni missing quats falls back without throw", () => {
