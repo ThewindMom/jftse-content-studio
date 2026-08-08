@@ -401,6 +401,11 @@ def _probe_sections(data: bytes, header: AniHeader) -> dict[str, Any]:
             else f"Tail starts with {len(tail_clips)} float3 clip(s)"
         ),
     }
+    # Client-decoder RE (static FantaTennis.exe); never writes stock client
+    from ani_client_re import build_client_decoder_hypothesis
+
+    client_hyp = build_client_decoder_hypothesis(data)
+    sections["clientDecoderHypothesis"] = client_hyp
     # Candidate confidence from sample ratios / B probe; parse_ani_bytes confirms via extract
     c_ratio = sections.get("C", {}).get("quatUnitSampleRatio") or 0.0
     a_ratio = sections.get("A", {}).get("quatUnitSampleRatio") or 0.0
@@ -416,13 +421,16 @@ def _probe_sections(data: bytes, header: AniHeader) -> dict[str, Any]:
         "sectionCUnitRatio": c_ratio,
         "sectionBViableEncoding": b_viable,
         "recommendedDriveMode": "hierarchical-fk",
+        "clientRuntimeRotation": "float4",
         "note": (
             "Rotation candidate present; awaiting extract confirmation"
             if candidate
             else (
-                "No dense unit float4 quat graph in A/B/C/tail on Niki-class ANI "
-                f"(A≈{a_ratio:.0%} C≈{c_ratio:.0%} unit samples; B encoding probe found no "
-                "viable layout). Use hierarchical-fk until a true rotation channel is decoded."
+                "No dense unit float4 quat graph extractable from A/B/C/tail on Niki-class "
+                f"ANI (A≈{a_ratio:.0%} C≈{c_ratio:.0%} unit samples; B sparse/delta probes "
+                "non-viable). Client runtime uses float4 rotations (see "
+                "clientDecoderHypothesis); hierarchical-fk until on-disk→unit extract "
+                "reaches confidence ≥0.9."
             )
         ),
     }

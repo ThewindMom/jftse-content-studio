@@ -234,7 +234,25 @@ Module: `python/ftm_codec.py`
 
 ### ANI character animation
 
-Header (28 B LE), verified NikiAniA/B:
+#### Client decoder RE (FantaTennis.exe, static, 2026-08)
+
+Read-only disassembly of PE32 `FantaTennis.exe` (image base `0x400000`). **Stock client is never modified.**
+
+| VA | Role |
+|----|------|
+| `0x5DE920` | `.ani` / `.Ani` / `.ANI` extension gate + stream open |
+| `0x5E0EE0` / `0x5E11D0` | Read **3×u32** then bulk `n0` dwords; bind start/mid/end |
+| `0x608E70` | Bind stream cursors |
+| `0x608F00` / `0x608F10` | Read u32 / read `count×4` bytes advancing cursor |
+| `0x5DD620` / `0x5DD640` / `0x5DD680` | Read **float3 / float4 / float7** × N |
+| `0x5E08D0` | Dense per-track load: f3+**f4 rotation**+f7+f1+f2 × `frameCount` |
+| `0x5DD8E0` | Serialize bone track (name[0x80] + sparse keyframe channels) |
+
+**Stream header (size-verified on NikiAniA):** first three LE u32 are **dword counts** `n0,n1,n2` with `n0×4+12 == file size`. Bulk mini-header at +12: `trackCount`, `duration` f32, `frameCount`, `frameCount2`. Historic **A−B = 1290** is **`n0−n1`**. Studio still also reports the legacy 28 B field view for multi-clip float3 tooling.
+
+**Runtime rotation channel:** float4 (`0x5DD640`). **On-disk → unit-quat extract** still not ≥0.9 confidence → `driveMode=hierarchical-fk`. API: `sectionProbe.clientDecoderHypothesis`.
+
+Header (28 B LE view + stream 12 B dword counts), verified NikiAniA/B:
 
 | Field | AniA | AniB |
 |-------|-----:|-----:|

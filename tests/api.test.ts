@@ -755,6 +755,20 @@ describe("content studio production API", () => {
     expect(probe.multiClipC.clipCount).toBeGreaterThanOrEqual(2);
     expect(probe.tailHypothesis.size).toBeGreaterThan(1000);
     expect(probe.rotationHypothesis.confident).toBe(false);
+    // Client-decoder RE trail (static FantaTennis.exe; no stock client writes)
+    const clientHyp = probe.clientDecoderHypothesis;
+    expect(clientHyp).toBeDefined();
+    expect(clientHyp.streamHeader.sizeMatch).toBe(true);
+    expect(clientHyp.streamHeader.viable).toBe(true);
+    expect(clientHyp.streamHeader.n0MinusN1).toBe(1290);
+    expect(clientHyp.rotationChannel.encoding).toBe("float4");
+    expect(clientHyp.rotationChannel.confidentExtract).toBe(false);
+    expect(clientHyp.recommendedDriveMode).toBe("hierarchical-fk");
+    expect(Array.isArray(clientHyp.runtimeChannels)).toBe(true);
+    expect(clientHyp.runtimeChannels.some((c: { name: string }) => c.name === "float4")).toBe(
+      true,
+    );
+    expect(clientHyp.vas.readFloat4xn).toMatch(/^0x/i);
   }, 60000);
 
   test("ANI channel=C decodes secondary float3 multi-clip stack", async () => {
