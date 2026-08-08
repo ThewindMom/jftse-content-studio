@@ -133,7 +133,7 @@ Recovery-grade mesh modeler for proprietary `.dat` members:
 | Item mesh catalog | AES XML Index → Path | `item_mesh`, `/api/item-mesh/resolve` |
 | Map catalogs | MapObj / Tile / House | `map_catalog`, `/api/map-catalog` |
 | **FTM / PRJ** | Full FT-ResTool schema + **serialize/export** of placement patches | `ftm_codec`, `/api/ftm/parse`, `POST /api/ftm/export` |
-| **ANI** | Header + **multi-clip** float3 stacks in section A (`clipIndex`) + section probe | `ani_codec`, `/api/ani/parse?clipIndex=` |
+| **ANI** | Multi-clip float3 in **A** + secondary stack in **C** (`clipIndex`, `channel`); B/tail classified unknown | `ani_codec`, `/api/ani/parse?clipIndex=&channel=` |
 | **Bone attach** | Bind matrix at `Bone_Racket` | `bone_attach`, `/api/bone-attach` |
 
 FTM layout is a port of decompiled **FT-ResTool** (`FTMParser`): scene objects carry `prefabIndex`, `x`, `y`, `scaleHeight`, `scaleWidth`, `rotationY`, `rotationX`.

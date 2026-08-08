@@ -245,17 +245,23 @@ Header (28 B LE), verified NikiAniA/B:
 | file size | 1 426 808 | 1 618 552 |
 | A+B+C+28 | 1 067 545 (tail ~359 KB) | 1 211 353 (tail ~407 KB) |
 
-**Section probe (2026-08 session):**
-- **A** packs **multiple consecutive float3 clips**:
-  - block size = `trackCount × frameCount × 12` (NikiAniA: 40×44×12 = **21120** B)
-  - NikiAniA: **16** smooth track-major clips + **18779** residual bytes
-  - clip0 root ≈ `(0, 6.37, 0)`; later clips include unit-axis-like roots
-- **B** ≈ same size as **C** on NikiAniA; **not** a dense bone-index u16 stream (u16&lt;40 ratio ≈1.4%). Encoding unknown.
-- **C** bulk float4 unit-length ratio ≈ **58–60%** — **not** ≥90%, so rotations are **not** auto-attached.
-- Tail after A+B+C is large (~359 KB) and does not parse as a second float3 block at offset 0.
-- Studio: `sectionProbe.multiClip` + `?clipIndex=N` selects which A-stack clip to decode.
+**Section probe (2026-08 session, deeper pass):**
 
-API: `GET /api/ani/parse?archive=…&member=…&maxFrames=0&clipIndex=0`  
+| Region | Structure |
+|--------|-----------|
+| **A** | **Primary multi-clip float3 stack** — block = `trackCount×frameCount×12` (NikiAniA: 21120 B). **16** high-smoothness track-major clips + residual. clip0 root ≈ `(0, 6.37, 0)`. |
+| **B** | **Same byte length as C** on NikiAniA/B; invariant **A−B = 1290**. All of A/B/C are **odd-sized**. Not dense bone-index u16 (ratio ≪ 0.5). Not plain float3/f16. Encoding still **unknown**. |
+| **C** | **Secondary float3-shaped multi-clip stack** (same block size, lower smoothness than A). Bulk float4 unit-length ≈ 58–60% — **not** ≥90%, so **not** auto-promoted to quaternions. Possible euler/aux channel — unproven. |
+| **Tail** | Large residual after A\|B\|C (~359 KB AniA). Does **not** start with a high-smoothness float3 multi-clip. |
+
+Studio API:
+- `sectionProbe.multiClip` (channel A), `multiClipC` (channel C)
+- `sectionProbe.sectionBHypothesis`, `tailHypothesis`, `rotationHypothesis`
+- `?clipIndex=N&channel=A|C` selects stack + clip
+
+**Still blocked for full skinning:** per-vertex blend weights/indices in body DAT; confident quat graph; section B bitstream.
+
+API: `GET /api/ani/parse?archive=…&member=…&maxFrames=0&clipIndex=0&channel=A`  
 Module: `python/ani_codec.py`
 
 ### Bone attach (DX9 Equipment socket)

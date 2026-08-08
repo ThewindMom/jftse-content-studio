@@ -694,6 +694,35 @@ describe("content studio production API", () => {
     }
   }, 30000);
 
+  test("ANI section B/C/tail hypotheses expose structural RE fields", async () => {
+    const response = await fetch(
+      `${base}/api/ani/parse?archive=${encodeURIComponent("Res/Player/PlayerA/AniA.res")}&member=${encodeURIComponent("NikiAniA.ani")}&maxFrames=1`,
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    const probe = body.ani.sectionProbe;
+    expect(probe.sectionBHypothesis.sameSizeAsC).toBe(true);
+    expect(probe.sectionBHypothesis.sectionAMinusB).toBe(1290);
+    expect(probe.sectionBHypothesis.oddSized).toBe(true);
+    expect(probe.sectionBHypothesis.boneIndexLike).toBe(false);
+    expect(probe.multiClipC.clipCount).toBeGreaterThanOrEqual(2);
+    expect(probe.tailHypothesis.size).toBeGreaterThan(1000);
+    expect(probe.rotationHypothesis.confident).toBe(false);
+  }, 60000);
+
+  test("ANI channel=C decodes secondary float3 multi-clip stack", async () => {
+    const response = await fetch(
+      `${base}/api/ani/parse?archive=${encodeURIComponent("Res/Player/PlayerA/AniA.res")}&member=${encodeURIComponent("NikiAniA.ani")}&maxFrames=2&channel=C&clipIndex=0`,
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.ani.channel).toBe("C");
+    expect(String(body.ani.layout)).toMatch(/multi-clip-C/);
+    expect(body.ani.tracks[0].positions.length).toBeGreaterThan(0);
+  }, 60000);
+
   test("stage-scene lists World + Object layers for Emerald Beach compositor", async () => {
     const response = await fetch(
       `${base}/api/stage-scene?member=${encodeURIComponent("1_Emerald_Beach.set")}`,
