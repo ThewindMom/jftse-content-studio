@@ -1307,6 +1307,80 @@ describe("content studio production API", () => {
     expect(existsSync(body.infoArchive)).toBe(true);
   });
 
+  test("sql apply dry-run accepts map-create SQL and rejects DROP", async () => {
+    const create = await fetch(`${base}/api/map-studio/create`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        draft: { name: "SQL Dry Court", playTime: 90 },
+        scenarioIds: [1],
+      }),
+    });
+    const created = await create.json();
+    expect(create.status).toBe(200);
+    const dry = await fetch(`${base}/api/sql/apply`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: created.path, dryRun: true }),
+    });
+    const dryBody = await dry.json();
+    expect(dry.status).toBe(200);
+    expect(dryBody.ok).toBe(true);
+    expect(dryBody.dryRun).toBe(true);
+    expect(dryBody.audit.safe).toBe(true);
+    expect(dryBody.audit.insertCount).toBeGreaterThan(0);
+
+    const badPath = join(disposableClient, "bad.sql");
+    await Bun.write(badPath, "DROP TABLE S_Maps;");
+    const banned = await fetch(`${base}/api/sql/apply`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: badPath, dryRun: true }),
+    });
+    const bannedBody = await banned.json();
+    expect(bannedBody.ok).toBe(false);
+    expect(bannedBody.error).toBe("SQL_BANNED_STATEMENT");
+  });
+
+  test("content pack playtest-full returns checklist", async () => {
+    const buildRes = await fetch(`${base}/api/content-pack/build`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "playtest-full",
+        equipment: { meshIndex: 214, char: "NIKI", desc: "PF" },
+        map: { draft: { name: "PF Map" }, scenarioIds: [1] },
+      }),
+    });
+    const pack = await buildRes.json();
+    expect(pack.ok).toBe(true);
+    await fetch(`${base}/api/client/install`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        targetClient: disposableClient,
+        files: pack.installPlan,
+      }),
+    });
+    const full = await fetch(`${base}/api/content-pack/playtest-full`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        targetClient: disposableClient,
+        installPlan: pack.installPlan,
+        sqlPath: pack.parts?.map?.sql,
+      }),
+    });
+    const body = await full.json();
+    expect(full.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.ready).toBe(true);
+    expect(body.checklist.length).toBeGreaterThan(2);
+    expect(body.checklist.some((c: { id: string }) => c.id === "sql-dry-run")).toBe(
+      true,
+    );
+  });
+
   test("content pack builds equipment+map and installs + playtest ready", async () => {
     const buildRes = await fetch(`${base}/api/content-pack/build`, {
       method: "POST",

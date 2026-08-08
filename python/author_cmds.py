@@ -15,6 +15,7 @@ from equipment_author import (
     patch_item_mesh_catalog,
 )
 from content_pack import build_content_pack, playtest_content_pack
+from sql_apply import apply_sql_file
 from ftm_codec import (
     FtmParseError,
     add_scene_object,
@@ -277,6 +278,85 @@ def make_handlers(
         plan = list(payload.get("installPlan") or [])
         return playtest_content_pack(Path(args.target_client), plan)
 
+    def cmd_content_pack_playtest_full(args: Namespace) -> dict[str, Any]:
+        """Files + optional SQL audit + launch script readiness."""
+        import os
+
+        payload = json.loads(Path(args.payload).read_text(encoding="utf-8"))
+        jftse = jftse_fn()
+        target = Path(args.target_client).expanduser()
+        plan = list(payload.get("installPlan") or [])
+        file_check = playtest_content_pack(target, plan)
+        checklist: list[dict[str, Any]] = [
+            {
+                "id": "local-client",
+                "ok": target.is_dir(),
+                "label": f"Local client → {target}",
+            },
+        ]
+        for c in file_check.get("checks") or []:
+            checklist.append(
+                {
+                    "id": f"file-{c.get('destRelative')}",
+                    "ok": bool(c.get("ok")),
+                    "label": f"Installed {c.get('destRelative')}",
+                    "path": c.get("path"),
+                }
+            )
+        sql_path = payload.get("sqlPath")
+        if sql_path:
+            sql_result = apply_sql_file(Path(str(sql_path)), dry_run=True)
+            checklist.append(
+                {
+                    "id": "sql-dry-run",
+                    "ok": bool(sql_result.get("ok") and sql_result.get("audit", {}).get("safe")),
+                    "label": f"SQL dry-run safe · {sql_path}",
+                }
+            )
+        launch_sh = jftse / "FantaTennis-Local-Client" / "START-FANTA-TENNIS.sh"
+        launch_alt = jftse / "FantaTennis-Local-Client" / "client" / "START-FANTA-TENNIS.sh"
+        launch = launch_sh if launch_sh.is_file() else launch_alt
+        checklist.append(
+            {
+                "id": "launch-script",
+                "ok": launch.is_file(),
+                "label": f"Launch script → {launch}",
+            }
+        )
+        db = (os.environ.get("JFTSE_DATABASE_URL") or os.environ.get("DATABASE_URL") or "").strip()
+        checklist.append(
+            {
+                "id": "database-url",
+                "ok": bool(db),
+                "label": "JFTSE_DATABASE_URL set"
+                if db
+                else "JFTSE_DATABASE_URL unset (SQL apply live disabled)",
+            }
+        )
+        # Ready when local client + all install files OK (DB URL optional for file playtest)
+        file_ok = all(
+            c["ok"] for c in checklist if str(c["id"]).startswith("file-") or c["id"] == "local-client"
+        )
+        sql_ok = all(c["ok"] for c in checklist if c["id"] == "sql-dry-run") if sql_path else True
+        ready = file_ok and sql_ok and target.is_dir()
+        return {
+            "ok": True,
+            "ready": ready,
+            "checklist": checklist,
+            "targetClient": str(target),
+            "launchCommand": str(launch) if launch.is_file() else None,
+            "fileCheck": file_check,
+        }
+
+    def cmd_sql_apply(args: Namespace) -> dict[str, Any]:
+        payload = json.loads(Path(args.payload).read_text(encoding="utf-8"))
+        return apply_sql_file(
+            Path(str(payload.get("path") or args.path)),
+            dry_run=bool(payload.get("dryRun", True)),
+            database_url=payload.get("databaseUrl"),
+            allow_deletes=bool(payload.get("allowDeletes", False)),
+        )
+
     def cmd_ani_section_b_status(args: Namespace) -> dict[str, Any]:
         """Expose honest section-B / float4 probe status for the studio UI."""
         import struct
@@ -349,4 +429,6 @@ def make_handlers(
         "ani-section-b-status": cmd_ani_section_b_status,
         "content-pack-build": cmd_content_pack_build,
         "content-pack-playtest": cmd_content_pack_playtest,
+        "content-pack-playtest-full": cmd_content_pack_playtest_full,
+        "sql-apply": cmd_sql_apply,
     }

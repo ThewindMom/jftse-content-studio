@@ -352,7 +352,14 @@ export function EquipmentMeshPreview({
           side: THREE.DoubleSide,
         });
         const stem = data.resolved.member.replace(/\.dat$/i, "");
+        // Prefer equipment material table stems (positional Tex keys) for silhouette.
+        const equipStems =
+          data.equipmentMaterialTable?.records?.map((r) => r.texCandidate) ??
+          data.equipmentMaterialTable?.stems?.map((s) => `${s}.tex`) ??
+          data.silhouette?.stems?.map((s) => (s.endsWith(".tex") ? s : `${s}.tex`)) ??
+          [];
         const texCandidates = [
+          ...equipStems,
           ...(data.mesh.materials ?? [])
             .map((m) => m.texCandidate)
             .filter((x): x is string => Boolean(x)),

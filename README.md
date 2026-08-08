@@ -5,9 +5,10 @@ Designer and reverse-engineering workbench for **Fantasy Tennis / JFTSE** client
 | Workspace | What it does |
 |-----------|----------------|
 | **Items** | Racket/effect particle export, verified install to a **local** client only |
+| **Content Pack** | One desk: build multi-asset pack → install → SQL dry-run/apply → playtest checklist |
 | **Map Studio** | Create/fork maps, stage `.set` write, SQL packs, FTM author + local install |
 | **Mesh Studio** | Stage/player mesh decode, textures, transforms, OBJ/glTF export, OBJ→DAT |
-| **Equipment** | Preview + **pack** (mesh clone + catalog + SQL) + local install |
+| **Equipment** | Preview (multi-mat stems/tex) + **pack** + local install |
 
 Sibling tooling for the [JFTSE](https://github.com/sstokic-tgm/JFTSE) emulator ecosystem. It **never writes the stock client** unless you install into an allowlisted local path.
 
@@ -199,7 +200,8 @@ Always use an **isolated local client** for installs.
 4. **FTM desk** (Map Studio right panel) → Parse `FantaCastleOutSide.ftm` → select placement → optional **Export patched FTM** to `exports/`.
 5. **Mesh Studio** → `BF_Court01.dat` → textured 3D view → Export OBJ/glTF.
 6. **Equipment** → mesh index `214` → racket at Bone_Racket → **Load character ANI** → scrub/play live attach.
-7. **Artifacts** → `exports/`, `content-packs/`, or `GET /api/exports`.
+7. **Content pack** → `POST /api/content-pack/build` with equipment+map+ftm → install to local → `/api/content-pack/playtest`.
+8. **Artifacts** → `exports/`, `content-packs/`, or `GET /api/exports`.
 
 ---
 

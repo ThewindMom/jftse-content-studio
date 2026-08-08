@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { EquipmentMeshPreview } from "./EquipmentMeshPreview";
 import { createRoot } from "react-dom/client";
+import { ContentPackDesk } from "./ContentPackDesk.tsx";
 import { MapStudio } from "./MapStudio.tsx";
 import { MeshStudio } from "./MeshStudio.tsx";
 
-type WorkspaceMode = "items" | "maps" | "meshes";
+type WorkspaceMode = "items" | "maps" | "meshes" | "packs";
 type StepId = "item" | "effect" | "export" | "install" | "playtest";
 
 type Atlas = {
@@ -657,7 +658,7 @@ function App() {
       <header className="topbar">
         <div className="brand">
           <strong>JFTSE Content Studio</strong>
-          <span>Items · Maps · Meshes · stock-safe export</span>
+          <span>Items · Packs · Maps · Meshes · stock-safe export</span>
         </div>
         <nav className="tabs" aria-label="Workspace modes">
           <button
@@ -667,6 +668,14 @@ function App() {
             onClick={() => setWorkspace("items")}
           >
             Items
+          </button>
+          <button
+            className="tab"
+            type="button"
+            aria-selected={workspace === "packs"}
+            onClick={() => setWorkspace("packs")}
+          >
+            Content Pack
           </button>
           <button
             className="tab"
@@ -782,7 +791,9 @@ function App() {
         </section>
       )}
 
-      {workspace === "maps" ? (
+      {workspace === "packs" ? (
+        <ContentPackDesk />
+      ) : workspace === "maps" ? (
         <MapStudio
           onOpenMesh={(archive, member) => {
             setMeshFocus({ archive, member });
@@ -1503,11 +1514,13 @@ PT_Life=${slotFields.PT_Life}`}
 
       <footer className="footer">
         <span>
-          {workspace === "maps"
-            ? "Map Studio: catalog → stage validate → relational SQL pack (geometry stays stock-bound)"
-            : workspace === "meshes"
-              ? "Mesh Studio: decode Stage/Sky/Collision DAT → view/transform → export OBJ/glTF"
-              : "Items: stock racket → preset → verify export → local install → Equipment QA"}
+          {workspace === "packs"
+            ? "Content Pack: build multi-asset → install local → SQL dry-run/apply → playtest checklist"
+            : workspace === "maps"
+              ? "Map Studio: catalog → stage validate → relational SQL pack (geometry stays stock-bound)"
+              : workspace === "meshes"
+                ? "Mesh Studio: decode Stage/Sky/Collision DAT → view/transform → export OBJ/glTF"
+                : "Items: stock racket → preset → verify export → local install → Equipment QA"}
         </span>
         <span className="mono">{healthDetail}</span>
       </footer>

@@ -1029,6 +1029,50 @@ const server = Bun.serve({
         );
       },
     },
+    "/api/content-pack/playtest-full": {
+      POST: async (req) => {
+        let body: Record<string, unknown>;
+        try {
+          body = (await req.json()) as Record<string, unknown>;
+        } catch {
+          return bad("INVALID_JSON");
+        }
+        const targetClient = String(body.targetClient ?? config.localClient);
+        const payloadPath = join(
+          config.tmpDir,
+          `content-pack-playtest-full-${crypto.randomUUID()}.json`,
+        );
+        await Bun.write(payloadPath, JSON.stringify(body, null, 2));
+        return safeBridge(() =>
+          runBridge([
+            "content-pack-playtest-full",
+            "--target-client",
+            targetClient,
+            "--payload",
+            payloadPath,
+          ]),
+        );
+      },
+    },
+    "/api/sql/apply": {
+      POST: async (req) => {
+        let body: Record<string, unknown>;
+        try {
+          body = (await req.json()) as Record<string, unknown>;
+        } catch {
+          return bad("INVALID_JSON");
+        }
+        if (!body.path) return bad("PATH_REQUIRED");
+        const payloadPath = join(
+          config.tmpDir,
+          `sql-apply-${crypto.randomUUID()}.json`,
+        );
+        await Bun.write(payloadPath, JSON.stringify(body, null, 2));
+        return safeBridge(() =>
+          runBridge(["sql-apply", "--payload", payloadPath]),
+        );
+      },
+    },
     "/api/packs": {
       GET: async () => {
         const files = readdirSync(config.packsDir).filter((name) =>

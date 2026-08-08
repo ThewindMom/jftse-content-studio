@@ -1604,6 +1604,14 @@ def main() -> None:
     p_cpp.add_argument("--target-client", required=True)
     p_cpp.add_argument("--payload", required=True)
 
+    p_cpfull = sub.add_parser("content-pack-playtest-full")
+    p_cpfull.add_argument("--target-client", required=True)
+    p_cpfull.add_argument("--payload", required=True)
+
+    p_sql = sub.add_parser("sql-apply")
+    p_sql.add_argument("--payload", required=True)
+    p_sql.add_argument("--path", default="")
+
     args = parser.parse_args()
     from author_cmds import make_handlers as make_author_handlers
 

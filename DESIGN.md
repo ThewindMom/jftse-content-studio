@@ -28,10 +28,11 @@
 - Density: comfortable operational (not marketing hero)
 
 ## 3. Information architecture
-- Top nav: Studio title + mode tabs (**Items**, **Maps**, **Meshes**) + bridge/export chip
-- **Items**: library → effect editor → export/install → Equipment preview (mesh + Bone_Racket + optional ANI scrub)
-- **Maps**: catalog → stage design desk (validate/SQL) → **Stage compositor** (World + Object layers) → **FTM overworld desk** (2D placements)
-- **Meshes**: catalog → single DAT recovery/transform/export (material name list when present)
+- Top nav: Studio title + mode tabs (**Items**, **Content Pack**, **Maps**, **Meshes**) + bridge/export chip
+- **Items**: library → effect editor → export/install → Equipment preview (mesh + Bone_Racket + multi-mat stems + ANI scrub)
+- **Content Pack**: numbered primary actions (Build → Install → SQL dry-run/apply → Playtest checklist); progressive disclosure for FTM fields; PASS/MISS validation list
+- **Maps**: catalog → stage design desk (validate/SQL) → **Stage compositor** → **FTM overworld desk**
+- **Meshes**: catalog → single DAT recovery/transform/export
 - Bottom bar: mode-specific next action copy
 
 ### Map Studio sub-desks (same workspace, progressive)
