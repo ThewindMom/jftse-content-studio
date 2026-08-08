@@ -511,6 +511,15 @@ def patch_scene_objects(
             objects[idx].prefabName = None
             objects[idx].prefabObjId = None
 
+    return _copy_ftm(ftm, scene_objects=objects)
+
+
+def _copy_ftm(
+    ftm: ParsedFtm,
+    *,
+    scene_objects: list[SceneObject] | None = None,
+    blocked_tiles: list[Any] | None = None,
+) -> ParsedFtm:
     return ParsedFtm(
         mapPath=ftm.mapPath,
         tileCountX=ftm.tileCountX,
@@ -522,9 +531,53 @@ def patch_scene_objects(
         tileLayerDefinitions=list(ftm.tileLayerDefinitions),
         tileLayers=list(ftm.tileLayers),
         prefabs=list(ftm.prefabs),
-        sceneObjects=objects,
+        sceneObjects=list(scene_objects if scene_objects is not None else ftm.sceneObjects),
         interactableTiles=list(ftm.interactableTiles),
-        blockedTiles=list(ftm.blockedTiles),
+        blockedTiles=list(blocked_tiles if blocked_tiles is not None else ftm.blockedTiles),
         unknownBytes=ftm.unknownBytes,
         byteLength=ftm.byteLength,
     )
+
+
+def add_scene_object(ftm: ParsedFtm, obj: dict[str, Any]) -> ParsedFtm:
+    """Append a placement. Required: prefabIndex, x, y."""
+    pi = int(obj["prefabIndex"])
+    name = None
+    oid = None
+    if 0 <= pi < len(ftm.prefabs):
+        name = ftm.prefabs[pi].name
+        oid = ftm.prefabs[pi].objId
+    objects = list(ftm.sceneObjects)
+    objects.append(
+        SceneObject(
+            prefabIndex=pi,
+            x=int(obj.get("x", 0)),
+            y=int(obj.get("y", 0)),
+            scaleHeight=float(obj.get("scaleHeight", 1.0)),
+            scaleWidth=float(obj.get("scaleWidth", 1.0)),
+            rotationY=float(obj.get("rotationY", 0.0)),
+            rotationX=float(obj.get("rotationX", 0.0)),
+            prefabName=name,
+            prefabObjId=oid,
+        )
+    )
+    return _copy_ftm(ftm, scene_objects=objects)
+
+
+def remove_scene_object(ftm: ParsedFtm, index: int) -> ParsedFtm:
+    objects = list(ftm.sceneObjects)
+    if index < 0 or index >= len(objects):
+        raise FtmParseError(
+            f"scene object index {index} out of range (0..{len(objects) - 1})"
+        )
+    del objects[index]
+    return _copy_ftm(ftm, scene_objects=objects)
+
+
+def set_blocked_tiles(
+    ftm: ParsedFtm,
+    tiles: list[dict[str, int]],
+) -> ParsedFtm:
+    blocked = [BlockedTile(x=int(t["x"]), y=int(t["y"])) for t in tiles]
+    return _copy_ftm(ftm, blocked_tiles=blocked)
+

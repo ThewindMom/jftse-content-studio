@@ -5,9 +5,9 @@ Designer and reverse-engineering workbench for **Fantasy Tennis / JFTSE** client
 | Workspace | What it does |
 |-----------|----------------|
 | **Items** | Racket/effect particle export, verified install to a **local** client only |
-| **Map Studio** | Map metadata, stage asset validation, SQL packs, stage mesh preview |
-| **Mesh Studio** | Stage/player mesh decode, textures, transforms, OBJ/glTF export |
-| **Equipment** | Shop mesh index → racket DAT + **Bone_Racket** bind-matrix attach preview |
+| **Map Studio** | Create/fork maps, stage `.set` write, SQL packs, FTM author + local install |
+| **Mesh Studio** | Stage/player mesh decode, textures, transforms, OBJ/glTF export, OBJ→DAT |
+| **Equipment** | Preview + **pack** (mesh clone + catalog + SQL) + local install |
 
 Sibling tooling for the [JFTSE](https://github.com/sstokic-tgm/JFTSE) emulator ecosystem. It **never writes the stock client** unless you install into an allowlisted local path.
 
@@ -92,14 +92,15 @@ Safe racket-aura pipeline:
 
 ### 2. Map Studio
 
-Relational map desk + stage preview:
+Relational map desk + stage authoring:
 
-1. Browse `S_Maps` with scenario / guardian links.
-2. Bind / validate `Stage/Info.res` scripts (World / Sky / Collision).
-3. Preview court geometry with stock textures.
-4. Export SQL packs (`S_Maps` full timing columns, `M_Scenarios`, `Map_2_Scenarios`, `Guardian_2_Maps` with UPSERTs).
+1. Browse `S_Maps` with scenario / guardian links; edit timings, description, boss flags.
+2. **Create new map** SQL (next id/map byte + scenario links + stage bind comments).
+3. Validate / **write** stage `.set` (WorldFile overrides) into exported `Info.res`.
+4. Preview court geometry (World + Object compositor).
+5. Export SQL packs + **FTM author** (patch/add/remove placements → MapSet RES → local install).
 
-Also exposes decrypted **map catalogs** (`MapObjRes`, `MapTileRes`, `MapHouseRes`) and full **FTM** placement parsing (see below).
+Also exposes decrypted **map catalogs** (`MapObjRes`, `MapTileRes`, `MapHouseRes`).
 
 ### 3. Mesh Studio
 
@@ -107,16 +108,17 @@ Recovery-grade mesh modeler for proprietary `.dat` members:
 
 1. List Stage / Sky / Collision meshes.
 2. Multi-stride vertex recovery + solid-area index scoring.
-3. UVs (interleaved or planar XZ) + stage albedo `.tex` → PNG.
+3. UVs (interleaved or planar XZ) + stage albedo `.tex` → PNG / **DDS→`.tex` encode**.
 4. Translate / rotate / scale with **stride-aware** rewrite (same byte length).
-5. Export OBJ + glTF + meta JSON.
+5. Export OBJ + glTF + meta JSON; **OBJ→DAT** when vertex counts match (topology-preserving).
 
-### 4. Equipment mesh + attach
+### 4. Equipment mesh + attach + pack
 
 1. Resolve shop `mesh` index → player DAT via AES `Info_Item_Mesh.set`.
 2. Decode racket geometry + co-located texture when present.
-3. Load body skeleton socket **`Bone_Racket`** bind 4×4.
-4. Three.js preview places the racket at the socket (pink marker); missing socket falls back to origin.
+3. Load body skeleton socket **`Bone_Racket`** bind 4×4 + skinned body + named ANI motions.
+4. **Pack equipment**: clone Item RES + patch `Info_Item_Mesh` (new Index) + item SQL.
+5. **Install pack** to allowlisted local client only (stock refused).
 
 ---
 
@@ -150,11 +152,11 @@ See [`docs/client-re.md`](docs/client-re.md) for field-level detail and remainin
 | Exports | `GET /api/exports?limit=&kind=` |
 | Items / effects | `/api/items`, `/api/atlases`, `/api/atlases/preview`, `/api/presets`, `/api/effects/preview-build`, `/api/effects/install`, `/api/effects/slot-fields` |
 | Playtest | `GET /api/playtest/status` |
-| Maps | `/api/maps`, `/api/maps/export-sql`, `/api/map-studio/catalog`, `/api/map-studio/validate`, `/api/map-studio/export-pack` |
-| Stage RE | `/api/stage-set/decrypt`, `/api/stage-scene`, `/api/map-catalog` |
-| FTM / ANI / bones | `/api/ftm/parse`, `POST /api/ftm/export`, `/api/ani/parse?clipIndex=`, `/api/bone-attach` |
-| Meshes | `/api/mesh-studio/list`, `/parse`, `/meta`, `/texture`, `/export`, `/transform` |
-| Equipment / skin | `/api/item-mesh/resolve`, `/api/skin/parse?char=` |
+| Maps | `/api/maps`, `/api/maps/export-sql`, `/api/map-studio/catalog`, `/validate`, `/export-pack`, **`/create`** |
+| Stage RE | `/api/stage-set/decrypt`, **`POST /api/stage-set/write`**, `/api/stage-scene`, `/api/map-catalog` |
+| FTM / ANI / bones | `/api/ftm/parse`, `POST /api/ftm/export`, **`POST /api/ftm/author`**, `/api/ani/parse`, `/api/bone-attach` |
+| Meshes | `/api/mesh-studio/*` + **`POST /api/mesh-studio/import-obj`**, **`POST /api/tex/encode`** |
+| Equipment / skin | `/api/item-mesh/resolve`, `/api/skin/parse`, **`POST /api/equipment/pack`**, **`POST /api/client/install`** |
 | Packs | `GET/POST /api/packs`, `GET /api/packs/:name` |
 
 ### Bridge CLI (Python)
@@ -234,12 +236,12 @@ DESIGN.md               Product / visual language
 
 | In scope today | Still limited / out of scope |
 |----------------|------------------------------|
-| Soft particle export + local install | Pixel-true DX9 Equipment silhouette |
-| Stage scene graph + **multi-draw World/Object compositor** (layer toggles, cap 6) | Full multi-material submesh ranges + VFX `.eft` meshing |
-| FTM placements + **2D desk** (select/focus) + **patched .ftm export** under `exports/` | Full FT-ResTool tile paint GUI / stock-client FTM install |
-| ANI float3 **multi-clip** + **`driveMode`**: `quat` \| **`hierarchical-fk`** (look-at) \| `position-only-fk` | Dense unit-quat channel / section-B decode / DX9 local-quat parity |
-| Ordered **304 B skeleton palette** + body **SkinnedMesh** + Bone_Racket attach | Gameplay-accurate skin weights / material submesh ranges |
-| Mesh recovery + stride-aware edit + export | Blender-parity topology authoring |
+| Soft particle export + **equipment pack** + generalized **local install** | Pixel-true DX9 Equipment silhouette |
+| Stage scene graph + compositor + **`.set` write/encrypt** + greenfield **map SQL** | Full multi-material submesh ranges + VFX `.eft` meshing/authoring |
+| FTM **add/remove/patch** + MapSet RES export + **local install** | Full FT-ResTool tile paint GUI / blocked-tile paint canvas / stock client |
+| ANI multi-clip + hierarchical-derived unit quats when skeleton present | On-disk dense float4 / section-B bitstream / DX9 parity |
+| Ordered skeleton palette + SkinnedMesh + Bone_Racket attach | Gameplay-perfect skin weight authoring |
+| Mesh recovery + transform + **OBJ→DAT (same vert count)** + tex encode | Blender-parity new topology / freeform material table insert |
 
 ---
 

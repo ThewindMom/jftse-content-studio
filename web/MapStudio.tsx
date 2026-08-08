@@ -17,6 +17,12 @@ export type MapStudioRow = {
   map: number;
   name: string;
   isBossStage: boolean;
+  bossPlayTime: number | null;
+  breathTime: number;
+  description: string | null;
+  playTime: number | null;
+  triggerBossTime: number | null;
+  useBreathTime: boolean;
   scenarioIds: number[];
   guardianCount: number;
   guardians: Guardian[];
@@ -24,7 +30,14 @@ export type MapStudioRow = {
   defaultStageScript: string | null;
 };
 
-type Scenario = { id: number; name: string };
+type Scenario = {
+  id: number;
+  name: string;
+  description?: string;
+  gameMode?: string;
+  isDefault?: boolean;
+  statusId?: number;
+};
 
 type ValidateResult = {
   valid: boolean;
@@ -70,6 +83,14 @@ export function MapStudio({
   const [exportPath, setExportPath] = useState("");
   const [draftName, setDraftName] = useState("");
   const [draftBoss, setDraftBoss] = useState(false);
+  const [draftPlayTime, setDraftPlayTime] = useState("");
+  const [draftBossPlayTime, setDraftBossPlayTime] = useState("");
+  const [draftTriggerBoss, setDraftTriggerBoss] = useState("");
+  const [draftBreath, setDraftBreath] = useState("100");
+  const [draftDescription, setDraftDescription] = useState("");
+  const [draftScenarioIds, setDraftScenarioIds] = useState("");
+  const [worldFileOverride, setWorldFileOverride] = useState("");
+  const [createName, setCreateName] = useState("Custom Court");
   const worldPath = useMemo(() => {
     const hit = validation?.assetChecks.find(
       (check) => check.field === "WorldFile" && check.exists && check.path,
@@ -92,6 +113,16 @@ export function MapStudio({
         setStageScript(first?.defaultStageScript ?? "");
         setDraftName(first?.name ?? "");
         setDraftBoss(Boolean(first?.isBossStage));
+        setDraftPlayTime(first?.playTime == null ? "" : String(first.playTime));
+        setDraftBossPlayTime(
+          first?.bossPlayTime == null ? "" : String(first.bossPlayTime),
+        );
+        setDraftTriggerBoss(
+          first?.triggerBossTime == null ? "" : String(first.triggerBossTime),
+        );
+        setDraftBreath(String(first?.breathTime ?? 100));
+        setDraftDescription(first?.description ?? "");
+        setDraftScenarioIds((first?.scenarioIds ?? []).join(","));
         setStatus(
           `Loaded ${data.maps.length} maps · ${data.relationCounts.map2scenarios} scenario links · ${data.relationCounts.guardian2maps} guardian rows`,
         );
@@ -122,6 +153,16 @@ export function MapStudio({
     setStageScript(selected.defaultStageScript ?? selected.stageCandidates[0] ?? "");
     setDraftName(selected.name);
     setDraftBoss(selected.isBossStage);
+    setDraftPlayTime(selected.playTime == null ? "" : String(selected.playTime));
+    setDraftBossPlayTime(
+      selected.bossPlayTime == null ? "" : String(selected.bossPlayTime),
+    );
+    setDraftTriggerBoss(
+      selected.triggerBossTime == null ? "" : String(selected.triggerBossTime),
+    );
+    setDraftBreath(String(selected.breathTime ?? 100));
+    setDraftDescription(selected.description ?? "");
+    setDraftScenarioIds(selected.scenarioIds.join(","));
     setValidation(null);
     setExportPath("");
   }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -131,9 +172,35 @@ export function MapStudio({
     setStageScript(row.defaultStageScript ?? row.stageCandidates[0] ?? "");
     setDraftName(row.name);
     setDraftBoss(row.isBossStage);
+    setDraftPlayTime(row.playTime == null ? "" : String(row.playTime));
+    setDraftBossPlayTime(row.bossPlayTime == null ? "" : String(row.bossPlayTime));
+    setDraftTriggerBoss(
+      row.triggerBossTime == null ? "" : String(row.triggerBossTime),
+    );
+    setDraftBreath(String(row.breathTime ?? 100));
+    setDraftDescription(row.description ?? "");
+    setDraftScenarioIds(row.scenarioIds.join(","));
     setValidation(null);
     setExportPath("");
     setStatus(`Selected ${row.name} (map byte ${row.map})`);
+  };
+
+  const draftPayload = () => {
+    const optInt = (raw: string) => {
+      const t = raw.trim();
+      if (!t) return null;
+      const n = Number(t);
+      return Number.isFinite(n) ? Math.trunc(n) : null;
+    };
+    return {
+      name: draftName,
+      isBossStage: draftBoss,
+      playTime: optInt(draftPlayTime),
+      bossPlayTime: optInt(draftBossPlayTime),
+      triggerBossTime: optInt(draftTriggerBoss),
+      breathTime: optInt(draftBreath) ?? 100,
+      description: draftDescription || null,
+    };
   };
 
   const validateStage = async () => {
@@ -182,10 +249,7 @@ export function MapStudio({
           stageByMapId: { [String(selected.id)]: stageScript },
           includeScenarios,
           includeGuardians,
-          draft: {
-            name: draftName,
-            isBossStage: draftBoss,
-          },
+          draft: draftPayload(),
         }),
       });
       setExportPath(result.path);
@@ -212,8 +276,7 @@ export function MapStudio({
           step: "maps",
           map: {
             ...selected,
-            name: draftName,
-            isBossStage: draftBoss,
+            ...draftPayload(),
             stageScript,
           },
           stageScript,
@@ -224,6 +287,84 @@ export function MapStudio({
       setStatus(`Saved map content pack: ${result.path}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const createNewMap = async () => {
+    setBusy(true);
+    setError("");
+    setStatus("Creating greenfield map SQL…");
+    try {
+      const scenarioIds = draftScenarioIds
+        .split(/[,\s]+/)
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((s) => Number(s))
+        .filter((n) => Number.isFinite(n));
+      const result = await api<{ path: string; map: MapStudioRow }>(
+        "/api/map-studio/create",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            draft: {
+              name: createName || "Custom Court",
+              isBossStage: draftBoss,
+              playTime: draftPlayTime ? Number(draftPlayTime) : 180,
+              breathTime: draftBreath ? Number(draftBreath) : 100,
+              description: draftDescription || "custom map",
+              bossPlayTime: draftBossPlayTime ? Number(draftBossPlayTime) : null,
+              triggerBossTime: draftTriggerBoss
+                ? Number(draftTriggerBoss)
+                : null,
+            },
+            scenarioIds,
+            stageScript: stageScript || "1_Emerald_Beach.set",
+            includeScenarios: includeScenarios,
+            includeGuardians: includeGuardians,
+          }),
+        },
+      );
+      setExportPath(result.path);
+      setStatus(
+        `Created map SQL · id ${result.map.id} map byte ${result.map.map} → ${result.path}`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setStatus("Map create failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const writeStageSet = async () => {
+    if (!stageScript) {
+      setError("Choose a stage script");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setStatus("Writing stage .set…");
+    try {
+      const fields: Record<string, string> = {};
+      if (worldFileOverride.trim()) {
+        fields.WorldFile = worldFileOverride.trim();
+      }
+      const result = await api<{ infoArchive: string; setPath: string }>(
+        "/api/stage-set/write",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            member: stageScript,
+            fields,
+          }),
+        },
+      );
+      setStatus(`Stage set written · ${result.infoArchive}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setStatus("Stage set write failed");
     } finally {
       setBusy(false);
     }
@@ -315,17 +456,64 @@ export function MapStudio({
                   </select>
                 </label>
                 <label>
-                  Scenarios
+                  Scenario ids (comma)
                   <input
-                    readOnly
-                    value={
-                      selected.scenarioIds
-                        .map((id) => {
-                          const row = scenarios.find((scenario) => scenario.id === id);
-                          return row ? `${id}:${row.name}` : String(id);
-                        })
-                        .join(", ") || "none"
-                    }
+                    value={draftScenarioIds}
+                    onChange={(event) => setDraftScenarioIds(event.target.value)}
+                    placeholder="1, 2"
+                  />
+                </label>
+                <label>
+                  bossPlayTime
+                  <input
+                    value={draftBossPlayTime}
+                    onChange={(event) => setDraftBossPlayTime(event.target.value)}
+                    placeholder="NULL"
+                  />
+                </label>
+                <label>
+                  playTime
+                  <input
+                    value={draftPlayTime}
+                    onChange={(event) => setDraftPlayTime(event.target.value)}
+                    placeholder="NULL"
+                  />
+                </label>
+                <label>
+                  triggerBossTime
+                  <input
+                    value={draftTriggerBoss}
+                    onChange={(event) => setDraftTriggerBoss(event.target.value)}
+                    placeholder="NULL"
+                  />
+                </label>
+                <label>
+                  breathTime
+                  <input
+                    value={draftBreath}
+                    onChange={(event) => setDraftBreath(event.target.value)}
+                  />
+                </label>
+                <label>
+                  description
+                  <input
+                    value={draftDescription}
+                    onChange={(event) => setDraftDescription(event.target.value)}
+                  />
+                </label>
+                <label>
+                  New map name (create)
+                  <input
+                    value={createName}
+                    onChange={(event) => setCreateName(event.target.value)}
+                  />
+                </label>
+                <label>
+                  WorldFile override (stage write)
+                  <input
+                    value={worldFileOverride}
+                    onChange={(event) => setWorldFileOverride(event.target.value)}
+                    placeholder="Res/Stage/Mesh01/BF_Court01.dat"
                   />
                 </label>
               </div>
@@ -376,12 +564,29 @@ export function MapStudio({
                 >
                   Save map pack
                 </button>
+                <button
+                  className="btn primary"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void createNewMap()}
+                >
+                  Create new map SQL
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  disabled={busy || !stageScript}
+                  onClick={() => void writeStageSet()}
+                >
+                  Write stage .set
+                </button>
               </div>
 
               <p className="empty">
-                Map Studio authors server metadata, validates stage asset graphs, multi-draws World +
-                Object layers, and inspects FTM placements. Full terrain sculpting remains out of
-                scope — open Mesh Studio for DAT recovery/export of bound geometry.
+                Map Studio authors server metadata (including greenfield create), validates stage
+                graphs, writes stage .set packs, multi-draws World + Object layers, and authors FTM
+                placements. Court mesh topology: Mesh Studio transform/export; full Blender
+                authoring remains out of scope.
               </p>
               {(stageScript || worldPath) && (
                 <>

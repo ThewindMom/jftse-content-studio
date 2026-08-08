@@ -1,0 +1,1 @@
+68 tests pass; equipment pack + map create + stage set + ftm author + stock refuse

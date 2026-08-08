@@ -694,6 +694,205 @@ const server = Bun.serve({
         );
       },
     },
+    "/api/equipment/pack": {
+      POST: async (req) => {
+        let body: Record<string, unknown>;
+        try {
+          body = (await req.json()) as Record<string, unknown>;
+        } catch {
+          return bad("INVALID_JSON");
+        }
+        const meshIndex = String(body.meshIndex ?? body.mesh_index ?? "");
+        if (!meshIndex) return bad("MESH_INDEX_REQUIRED");
+        const outDir = join(config.exportsDir, `equipment-pack-${Date.now()}`);
+        const args = [
+          "equipment-pack",
+          "--mesh-index",
+          meshIndex,
+          "--char",
+          String(body.char ?? "NIKI"),
+          "--out-dir",
+          outDir,
+          "--desc",
+          String(body.desc ?? body.name ?? ""),
+          "--part",
+          String(body.part ?? "Racket"),
+          "--gold",
+          String(body.gold ?? "0"),
+        ];
+        if (body.newIndex != null && String(body.newIndex)) {
+          args.push("--new-index", String(body.newIndex));
+        }
+        if (body.productIndex != null && String(body.productIndex)) {
+          args.push("--product-index", String(body.productIndex));
+        }
+        if (typeof body.dat === "string" && body.dat) {
+          args.push("--dat", body.dat);
+        }
+        return safeBridge(() => runBridge(args));
+      },
+    },
+    "/api/client/install": {
+      POST: async (req) => {
+        let body: Record<string, unknown>;
+        try {
+          body = (await req.json()) as Record<string, unknown>;
+        } catch {
+          return bad("INVALID_JSON");
+        }
+        const targetClient = String(body.targetClient ?? config.localClient);
+        const files = body.files;
+        if (!Array.isArray(files) || files.length === 0) {
+          return bad("FILES_REQUIRED");
+        }
+        const payloadPath = join(
+          config.tmpDir,
+          `client-install-${crypto.randomUUID()}.json`,
+        );
+        await Bun.write(payloadPath, JSON.stringify({ files }, null, 2));
+        return safeBridge(() =>
+          runBridge([
+            "client-install",
+            "--target-client",
+            targetClient,
+            "--payload",
+            payloadPath,
+          ]),
+        );
+      },
+    },
+    "/api/map-studio/create": {
+      POST: async (req) => {
+        let body: Record<string, unknown>;
+        try {
+          body = (await req.json()) as Record<string, unknown>;
+        } catch {
+          return bad("INVALID_JSON");
+        }
+        const payloadPath = join(
+          config.tmpDir,
+          `map-create-${crypto.randomUUID()}.json`,
+        );
+        const outFile = join(config.exportsDir, `map-create-${Date.now()}.sql`);
+        await Bun.write(payloadPath, JSON.stringify(body, null, 2));
+        return safeBridge(() =>
+          runBridge([
+            "map-create",
+            "--payload",
+            payloadPath,
+            "--out-file",
+            outFile,
+          ]),
+        );
+      },
+    },
+    "/api/stage-set/write": {
+      POST: async (req) => {
+        let body: Record<string, unknown>;
+        try {
+          body = (await req.json()) as Record<string, unknown>;
+        } catch {
+          return bad("INVALID_JSON");
+        }
+        const payloadPath = join(
+          config.tmpDir,
+          `stage-set-write-${crypto.randomUUID()}.json`,
+        );
+        const outDir = join(config.exportsDir, `stage-set-${Date.now()}`);
+        await Bun.write(payloadPath, JSON.stringify(body, null, 2));
+        return safeBridge(() =>
+          runBridge([
+            "stage-set-write",
+            "--payload",
+            payloadPath,
+            "--out-dir",
+            outDir,
+            "--member",
+            String(body.member ?? "1_Emerald_Beach.set"),
+          ]),
+        );
+      },
+    },
+    "/api/ftm/author": {
+      POST: async (req) => {
+        let body: Record<string, unknown>;
+        try {
+          body = (await req.json()) as Record<string, unknown>;
+        } catch {
+          return bad("INVALID_JSON");
+        }
+        const payloadPath = join(
+          config.tmpDir,
+          `ftm-author-${crypto.randomUUID()}.json`,
+        );
+        const outDir = join(config.exportsDir, `ftm-author-${Date.now()}`);
+        await Bun.write(payloadPath, JSON.stringify(body, null, 2));
+        return safeBridge(() =>
+          runBridge([
+            "ftm-author",
+            "--payload",
+            payloadPath,
+            "--out-dir",
+            outDir,
+            "--archive",
+            String(body.archive ?? ""),
+            "--member",
+            String(body.member ?? ""),
+          ]),
+        );
+      },
+    },
+    "/api/tex/encode": {
+      POST: async (req) => {
+        let body: Record<string, unknown>;
+        try {
+          body = (await req.json()) as Record<string, unknown>;
+        } catch {
+          return bad("INVALID_JSON");
+        }
+        const dds = String(body.dds ?? "");
+        if (!dds) return bad("DDS_REQUIRED");
+        const out = String(
+          body.out ?? join(config.exportsDir, `tex-${Date.now()}.tex`),
+        );
+        return safeBridge(() =>
+          runBridge(["tex-encode", "--dds", dds, "--out", out]),
+        );
+      },
+    },
+    "/api/mesh-studio/import-obj": {
+      POST: async (req) => {
+        let body: Record<string, unknown>;
+        try {
+          body = (await req.json()) as Record<string, unknown>;
+        } catch {
+          return bad("INVALID_JSON");
+        }
+        const archive = String(body.archive ?? "");
+        const member = String(body.member ?? "");
+        const obj = String(body.obj ?? "");
+        if (!archive || !member || !obj) {
+          return bad("ARCHIVE_MEMBER_OBJ_REQUIRED");
+        }
+        const out = String(
+          body.out ??
+            join(config.exportsDir, `mesh-obj-${Date.now()}`, member),
+        );
+        return safeBridge(() =>
+          runBridge([
+            "mesh-obj-import",
+            "--archive",
+            archive,
+            "--member",
+            member,
+            "--obj",
+            obj,
+            "--out",
+            out,
+          ]),
+        );
+      },
+    },
     "/api/packs": {
       GET: async () => {
         const files = readdirSync(config.packsDir).filter((name) =>

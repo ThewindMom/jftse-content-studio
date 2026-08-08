@@ -1,0 +1,1 @@
+{"ok": true, "path": "/tmp/ev-map.sql", "map": {"id": 16, "map": 15, "name": "ULW Custom Court", "isBossStage": false, "bossPlayTime": null, "breathTime": 100, "description": "ulw", "playTime": 180, "triggerBossTime": null, "useBreathTime": true}, "scenarioIds": [1], "guardianCount": 0}

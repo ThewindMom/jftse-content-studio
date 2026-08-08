@@ -1519,7 +1519,53 @@ def main() -> None:
     p_play = sub.add_parser("playtest-status")
     p_play.add_argument("--export-archive", default="")
 
+    p_tex = sub.add_parser("tex-encode")
+    p_tex.add_argument("--dds", required=True)
+    p_tex.add_argument("--out", required=True)
+
+    p_tex_rt = sub.add_parser("tex-roundtrip")
+    p_tex_rt.add_argument("--tex", required=True)
+
+    p_equip = sub.add_parser("equipment-pack")
+    p_equip.add_argument("--mesh-index", required=True)
+    p_equip.add_argument("--char", default="NIKI")
+    p_equip.add_argument("--out-dir", required=True)
+    p_equip.add_argument("--dat", default="")
+    p_equip.add_argument("--new-index", default="")
+    p_equip.add_argument("--product-index", default="")
+    p_equip.add_argument("--desc", default="")
+    p_equip.add_argument("--part", default="Racket")
+    p_equip.add_argument("--gold", default="0")
+
+    p_cinst = sub.add_parser("client-install")
+    p_cinst.add_argument("--target-client", required=True)
+    p_cinst.add_argument("--payload", required=True)
+
+    p_map_create = sub.add_parser("map-create")
+    p_map_create.add_argument("--payload", required=True)
+    p_map_create.add_argument("--out-file", required=True)
+
+    p_stage_write = sub.add_parser("stage-set-write")
+    p_stage_write.add_argument("--payload", required=True)
+    p_stage_write.add_argument("--out-dir", required=True)
+    p_stage_write.add_argument("--member", default="1_Emerald_Beach.set")
+
+    p_ftm_author = sub.add_parser("ftm-author")
+    p_ftm_author.add_argument("--payload", required=True)
+    p_ftm_author.add_argument("--out-dir", required=True)
+    p_ftm_author.add_argument("--archive", default="")
+    p_ftm_author.add_argument("--member", default="")
+
+    p_obj = sub.add_parser("mesh-obj-import")
+    p_obj.add_argument("--archive", required=True)
+    p_obj.add_argument("--member", required=True)
+    p_obj.add_argument("--obj", required=True)
+    p_obj.add_argument("--out", required=True)
+
     args = parser.parse_args()
+    from author_cmds import make_handlers as make_author_handlers
+
+    author_handlers = make_author_handlers(_jftse_root, _client_root, cmd_ftm_parse)
     handlers = {
         "health": cmd_health,
         "list-atlases": cmd_list_atlases,
@@ -1549,6 +1595,7 @@ def main() -> None:
         "mesh-texture": cmd_mesh_texture,
         "effect-slot-fields": cmd_effect_slot_fields,
         "playtest-status": cmd_playtest_status,
+        **author_handlers,
     }
     result = handlers[args.command](args)
     print(json.dumps(result))

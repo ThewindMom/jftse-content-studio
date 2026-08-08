@@ -1233,4 +1233,121 @@ describe("content studio production API", () => {
     expect(sql).toContain("Guardian_2_Maps");
     expect(sql).toContain("M_Scenarios");
   });
+
+  test("equipment pack builds mesh+catalog+sql and installs to disposable client", async () => {
+    const packRes = await fetch(`${base}/api/equipment/pack`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        meshIndex: 214,
+        char: "NIKI",
+        desc: "API Test Racket",
+      }),
+    });
+    const pack = await packRes.json();
+    expect(packRes.status).toBe(200);
+    expect(pack.ok).toBe(true);
+    expect(pack.installPlan?.length).toBeGreaterThanOrEqual(2);
+    expect(await Bun.file(pack.sql).text()).toContain("API Test Racket");
+    expect(pack.catalog?.sizeMatch).toBe(true);
+
+    const installRes = await fetch(`${base}/api/client/install`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        targetClient: disposableClient,
+        files: pack.installPlan,
+      }),
+    });
+    const installed = await installRes.json();
+    expect(installRes.status).toBe(200);
+    expect(installed.ok).toBe(true);
+    expect(installed.installed["Res/Script/Item.res"]).toBeTruthy();
+    expect(installed.installed["Res/Player/PlayerA/Item07.res"]).toBeTruthy();
+  });
+
+  test("map studio create emits greenfield S_Maps SQL", async () => {
+    const response = await fetch(`${base}/api/map-studio/create`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        draft: {
+          name: "API Custom Court",
+          playTime: 200,
+          breathTime: 100,
+          description: "from test",
+        },
+        scenarioIds: [1],
+        stageScript: "1_Emerald_Beach.set",
+      }),
+    });
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.map.name).toBe("API Custom Court");
+    const sql = await Bun.file(body.path).text();
+    expect(sql).toContain("API Custom Court");
+    expect(sql).toContain("INSERT INTO S_Maps");
+    expect(sql).toContain("Map_2_Scenarios");
+  });
+
+  test("stage-set write encrypts and packages Info.res", async () => {
+    const response = await fetch(`${base}/api/stage-set/write`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        member: "1_Emerald_Beach.set",
+        fields: { WorldFile: "Res/Stage/Mesh01/BF_Court01.dat" },
+      }),
+    });
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.sizeMatch).toBe(true);
+    expect(existsSync(body.infoArchive)).toBe(true);
+  });
+
+  test("ftm author add placement and refuse stock install", async () => {
+    const authorRes = await fetch(`${base}/api/ftm/author`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        archive: "Res/MapSet/FantaCastle.res",
+        member: "FantaCastleOutSide.ftm",
+        add: [
+          {
+            prefabIndex: 0,
+            x: 3,
+            y: 4,
+            scaleHeight: 1,
+            scaleWidth: 1,
+            rotationY: 0,
+            rotationX: 0,
+          },
+        ],
+      }),
+    });
+    const author = await authorRes.json();
+    expect(authorRes.status).toBe(200);
+    expect(author.ok).toBe(true);
+    expect(author.sceneObjectCount).toBeGreaterThanOrEqual(1);
+    expect(existsSync(author.archive)).toBe(true);
+
+    const refuse = await fetch(`${base}/api/client/install`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        targetClient: stockClient,
+        files: [
+          {
+            source: author.archive,
+            destRelative: "Res/MapSet/FantaCastle.res",
+          },
+        ],
+      }),
+    });
+    const refused = await refuse.json();
+    expect(refused.ok).toBe(false);
+    expect(refused.error).toBe("REFUSE_STOCK_CLIENT");
+  });
 });

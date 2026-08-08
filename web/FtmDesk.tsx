@@ -275,7 +275,7 @@ export function FtmDesk() {
       if (![x, y, scaleHeight, scaleWidth, rotationY, rotationX].every(Number.isFinite)) {
         throw new Error("placement fields must be finite numbers");
       }
-      const response = await fetch("/api/ftm/export", {
+      const response = await fetch("/api/ftm/author", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -297,6 +297,7 @@ export function FtmDesk() {
       const body = (await response.json()) as {
         ok?: boolean;
         path?: string;
+        archive?: string;
         error?: string;
         detail?: string;
         sceneObjectCount?: number;
@@ -304,9 +305,9 @@ export function FtmDesk() {
       if (!response.ok || !body.ok) {
         throw new Error(body.detail ?? body.error ?? `HTTP ${response.status}`);
       }
-      setExportPath(body.path ?? "");
+      setExportPath(body.path ?? body.archive ?? "");
       setStatus(
-        `Exported patched FTM · placement #${selected} → ${body.path} (studio exports/ only)`,
+        `Exported authored FTM · placement #${selected} → ${body.path} (+ MapSet RES)`,
       );
       setFtm({
         ...ftm,
@@ -327,6 +328,137 @@ export function FtmDesk() {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setStatus("FTM export failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const addPlacement = async () => {
+    if (!ftm) {
+      setError("Parse an FTM first");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const prefabIndex = selectedObj?.prefabIndex ?? 0;
+      const response = await fetch("/api/ftm/author", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          archive: archive.trim(),
+          member: member.trim(),
+          add: [
+            {
+              prefabIndex,
+              x: Number(draftX) || 0,
+              y: Number(draftY) || 0,
+              scaleHeight: Number(draftScaleH) || 1,
+              scaleWidth: Number(draftScaleW) || 1,
+              rotationY: Number(draftRotY) || 0,
+              rotationX: Number(draftRotX) || 0,
+            },
+          ],
+        }),
+      });
+      const body = (await response.json()) as {
+        ok?: boolean;
+        path?: string;
+        archive?: string;
+        sceneObjectCount?: number;
+        error?: string;
+        detail?: string;
+      };
+      if (!response.ok || !body.ok) {
+        throw new Error(body.detail ?? body.error ?? `HTTP ${response.status}`);
+      }
+      setExportPath(body.path ?? body.archive ?? "");
+      setStatus(`Added placement · count ${body.sceneObjectCount} → ${body.path}`);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setStatus("FTM add failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removePlacement = async () => {
+    if (!ftm || selected == null) {
+      setError("Select a placement to remove");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/ftm/author", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          archive: archive.trim(),
+          member: member.trim(),
+          remove: [selected],
+        }),
+      });
+      const body = (await response.json()) as {
+        ok?: boolean;
+        path?: string;
+        archive?: string;
+        sceneObjectCount?: number;
+        error?: string;
+        detail?: string;
+      };
+      if (!response.ok || !body.ok) {
+        throw new Error(body.detail ?? body.error ?? `HTTP ${response.status}`);
+      }
+      setExportPath(body.path ?? body.archive ?? "");
+      setStatus(`Removed #${selected} · count ${body.sceneObjectCount}`);
+      setSelected(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setStatus("FTM remove failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const installAuthored = async () => {
+    if (!exportPath) {
+      setError("Export an FTM first");
+      return;
+    }
+    // Prefer MapSet .res sibling if export path is .ftm
+    const archiveSource = exportPath.endsWith(".ftm")
+      ? exportPath.replace(/[^/]+$/, archive.split("/").pop() || "Map.res")
+      : exportPath;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/client/install", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          files: [
+            {
+              source: archiveSource,
+              destRelative: archive.trim().replace(/\\/g, "/"),
+            },
+          ],
+        }),
+      });
+      const body = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+        installed?: Record<string, string>;
+      };
+      if (!response.ok || !body.ok) {
+        throw new Error(body.error ?? `HTTP ${response.status}`);
+      }
+      setStatus(`Installed to local client · ${Object.keys(body.installed ?? {}).join(", ")}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setStatus("FTM install failed");
     } finally {
       setBusy(false);
     }
@@ -477,7 +609,31 @@ export function FtmDesk() {
                   disabled={busy}
                   onClick={() => void exportPatched()}
                 >
-                  {busy ? "Exporting…" : "Export patched FTM to exports/"}
+                  {busy ? "Exporting…" : "Export patched FTM + MapSet RES"}
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void addPlacement()}
+                >
+                  Add placement
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  disabled={busy || selected == null}
+                  onClick={() => void removePlacement()}
+                >
+                  Remove selected
+                </button>
+                <button
+                  className="btn primary"
+                  type="button"
+                  disabled={busy || !exportPath}
+                  onClick={() => void installAuthored()}
+                >
+                  Install to local client
                 </button>
                 {exportPath && (
                   <button className="btn" type="button" onClick={() => void copyExportPath()}>
@@ -492,8 +648,8 @@ export function FtmDesk() {
                 </div>
               )}
               <p className="empty">
-                Flow: Parse → select placement (auto #0) → edit fields → export. Writes only under
-                studio <code>exports/</code> — never the stock client.
+                Flow: Parse → edit/add/remove placements → export MapSet RES → install local only
+                (stock refused).
               </p>
             </div>
           )}

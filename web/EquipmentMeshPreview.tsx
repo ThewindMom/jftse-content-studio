@@ -171,6 +171,13 @@ export function EquipmentMeshPreview({
   const [aniError, setAniError] = useState("");
   const [aniBusy, setAniBusy] = useState(false);
   const [motionName, setMotionName] = useState("");
+  const [packBusy, setPackBusy] = useState(false);
+  const [packStatus, setPackStatus] = useState("");
+  const [packError, setPackError] = useState("");
+  const [packDesc, setPackDesc] = useState("Custom racket");
+  const [lastInstallPlan, setLastInstallPlan] = useState<
+    Array<{ source: string; destRelative: string }>
+  >([]);
   const motionCatalog = useMemo(() => extractMotionCatalog(ani), [ani]);
   const reducedMotion =
     typeof window !== "undefined" &&
@@ -672,11 +679,113 @@ export function EquipmentMeshPreview({
           {aniError}
         </div>
       )}
+      <div className="field-grid" style={{ marginTop: 12 }}>
+        <label>
+          Custom item name
+          <input
+            value={packDesc}
+            onChange={(e) => setPackDesc(e.target.value)}
+            aria-label="Custom equipment name"
+          />
+        </label>
+      </div>
+      <div className="actions">
+        <button
+          className="btn primary"
+          type="button"
+          disabled={packBusy || !meshIndex}
+          onClick={() => {
+            void (async () => {
+              setPackBusy(true);
+              setPackError("");
+              setPackStatus("Building equipment pack…");
+              try {
+                const res = await fetch("/api/equipment/pack", {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({
+                    meshIndex,
+                    char,
+                    desc: packDesc,
+                    part: "Racket",
+                  }),
+                });
+                const body = (await res.json()) as {
+                  ok?: boolean;
+                  error?: string;
+                  sql?: string;
+                  newIndex?: number;
+                  installPlan?: Array<{ source: string; destRelative: string }>;
+                  outDir?: string;
+                };
+                if (!res.ok || !body.ok) {
+                  throw new Error(body.error ?? `HTTP ${res.status}`);
+                }
+                setLastInstallPlan(body.installPlan ?? []);
+                setPackStatus(
+                  `Pack ready · newIndex ${body.newIndex} · ${body.outDir} · SQL ${body.sql}`,
+                );
+              } catch (err) {
+                setPackError(err instanceof Error ? err.message : String(err));
+                setPackStatus("Pack failed");
+              } finally {
+                setPackBusy(false);
+              }
+            })();
+          }}
+        >
+          {packBusy ? "Packing…" : "Pack equipment (mesh + catalog + SQL)"}
+        </button>
+        <button
+          className="btn primary"
+          type="button"
+          disabled={packBusy || lastInstallPlan.length === 0}
+          onClick={() => {
+            void (async () => {
+              setPackBusy(true);
+              setPackError("");
+              setPackStatus("Installing equipment pack to local client…");
+              try {
+                const res = await fetch("/api/client/install", {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({ files: lastInstallPlan }),
+                });
+                const body = (await res.json()) as {
+                  ok?: boolean;
+                  error?: string;
+                  installed?: Record<string, string>;
+                };
+                if (!res.ok || !body.ok) {
+                  throw new Error(body.error ?? `HTTP ${res.status}`);
+                }
+                setPackStatus(
+                  `Installed · ${Object.keys(body.installed ?? {}).join(", ")}`,
+                );
+              } catch (err) {
+                setPackError(err instanceof Error ? err.message : String(err));
+                setPackStatus("Install failed");
+              } finally {
+                setPackBusy(false);
+              }
+            })();
+          }}
+        >
+          Install pack to local client
+        </button>
+      </div>
+      {packStatus && <div className="empty mono">{packStatus}</div>}
+      {packError && (
+        <div className="mono" style={{ color: "var(--danger)" }} role="alert">
+          {packError}
+        </div>
+      )}
       <div className="empty">
         Body: SkinnedMesh from /api/skin/parse + ordered 304-byte bone palette.
         ANI drive: <code>quat</code> with <code>rotationSource=hierarchical-derived</code>{" "}
         unit local rotations from named float3 multi-clips + skeleton (when char is set);
         else runtime <code>hierarchical-fk</code>. Not on-disk DX9 float4. Racket: Bone_Racket + float3 delta.
+        Authoring: pack clones stock mesh + patches Info_Item_Mesh + item SQL; install local only.
       </div>
     </div>
   );

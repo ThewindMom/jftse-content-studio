@@ -68,7 +68,8 @@
 
 ## 7. Accepted debt
 - Submesh index ranges per material not fully table-parsed (names + single albedo draw common)
-- ANI is float3 track recovery, not full quat skinning graph
-- Live attach samples ANI positions onto bind matrix — not full skeletal hierarchy retarget
-- FTM desk is inspect/select first; binary rewrite of placements not shipped
-- Install-to-permanent-client is opt-in path config only; tests use disposable dirs
+- ANI uses hierarchical-derived unit quats when skeleton present; on-disk float4 still unknown
+- FTM desk supports patch/add/remove + MapSet install; not full tile-paint GUI
+- Equipment pack clones stock mesh slots + catalog index; not freeform topology authoring
+- Install-to-permanent-client is allowlist only (`JFTSE_LOCAL_CLIENT` / `/tmp`); stock refused
+- `.eft` stage effects listed in scene graph but not meshed/authored
