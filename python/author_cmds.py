@@ -180,6 +180,7 @@ def make_handlers(
         payload = json.loads(Path(args.payload).read_text(encoding="utf-8"))
         archive = str(payload.get("archive") or args.archive)
         member = str(payload.get("member") or args.member)
+        # load_ftm_from_res is the supported entry (no bare load_ftm symbol).
         from ftm_codec import FtmParseError, load_ftm_from_res, parse_ftm_bytes
 
         try:

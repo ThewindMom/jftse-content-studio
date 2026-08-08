@@ -32,15 +32,19 @@ def import_obj_into_dat(
     out_dat: Path,
 ) -> dict[str, Any]:
     mesh = decode_member(client_root, archive, member)
+    # DecodedMesh fields are camelCase: vertexCount / vertexOffset / vertexStride.
+    vertex_count = mesh.vertexCount
+    vertex_offset = mesh.vertexOffset
+    vertex_stride = mesh.vertexStride
     positions = parse_obj_positions(obj_path.read_text(encoding="utf-8", errors="replace"))
     if not positions:
         return {"ok": False, "error": "OBJ_NO_VERTICES"}
-    if len(positions) != mesh.vertexCount:
+    if len(positions) != vertex_count:
         return {
             "ok": False,
             "error": "VERTEX_COUNT_MISMATCH",
             "objCount": len(positions),
-            "datCount": mesh.vertexCount,
+            "datCount": vertex_count,
             "detail": "OBJ must match DAT vertex count (topology-preserving import)",
         }
     import zipfile
@@ -49,9 +53,9 @@ def import_obj_into_dat(
         data = zin.read(member)
     patched = write_positions_into_dat(
         data,
-        mesh.vertexOffset,
+        vertex_offset,
         positions,
-        stride=mesh.vertexStride,
+        stride=vertex_stride,
     )
     out_dat.parent.mkdir(parents=True, exist_ok=True)
     out_dat.write_bytes(patched)
