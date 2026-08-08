@@ -103,23 +103,71 @@ def parse_mesh_header_fields(data: bytes) -> dict[str, Any]:
     }
 
 
+def parse_equipment_material_table(data: bytes) -> dict[str, Any] | None:
+    """Parse positional 64-byte material records in equipment DATs (FORMAT_NOTES).
+
+    Verified on Niki_CommonRacket41.dat:
+      - uint32le count at offset 0x64
+      - table at file_size - 6 - count*64
+      - each record: null-terminated material stem (→ .tex / .ifl) + padding
+    Keys are positional (Item_Parts Tex index); do not append/reorder without
+    a full dependent-offset parser.
+    """
+    if len(data) < 0x68 + 64:
+        return None
+    count = struct.unpack_from("<I", data, 0x64)[0]
+    if count < 1 or count > 64:
+        return None
+    table_off = len(data) - 6 - count * 64
+    if table_off < 0x68 or table_off + count * 64 > len(data):
+        return None
+    records: list[dict[str, Any]] = []
+    for i in range(count):
+        rec = data[table_off + i * 64 : table_off + (i + 1) * 64]
+        name = rec.split(b"\x00", 1)[0]
+        if not name or not all(32 <= b < 127 for b in name):
+            return None
+        stem = name.decode("ascii")
+        records.append(
+            {
+                "index": i,
+                "stem": stem,
+                "texCandidate": f"{stem}.tex",
+                "offset": table_off + i * 64,
+            }
+        )
+    if not records:
+        return None
+    return {
+        "countOffset": 0x64,
+        "count": count,
+        "tableOffset": table_off,
+        "recordSize": 64,
+        "trailerSize": 6,
+        "records": records,
+        "stems": [r["stem"] for r in records],
+    }
+
+
 def analyze_mesh_dat(data: bytes, *, name: str = "") -> dict[str, Any]:
     materials = extract_material_names(data)
     bones = extract_bone_names(data)
     sockets = [b for b in bones if b.get("socket")]
     header = parse_mesh_header_fields(data)
+    equip_table = parse_equipment_material_table(data)
     return {
         "name": name,
         "byteLength": len(data),
         "header": header,
         "materials": materials,
         "materialCount": len(materials),
+        "equipmentMaterialTable": equip_table,
         "bones": bones,
         "boneCount": len(bones),
         "sockets": sockets,
         "socketNames": [s["name"] for s in sockets],
         "hasSkeleton": len(bones) >= 3,
-        "hasMultiMaterial": len(materials) >= 2,
+        "hasMultiMaterial": len(materials) >= 2 or bool(equip_table and equip_table["count"] >= 2),
     }
 
 

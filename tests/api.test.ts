@@ -568,6 +568,20 @@ describe("content studio production API", () => {
     expect(boneNames.some((n) => /Racket/i.test(n))).toBe(true);
   }, 120000);
 
+  test("mesh meta parses 64-byte equipment material table on Dragon Slayer racket", async () => {
+    const response = await fetch(
+      `${base}/api/mesh-studio/meta?archive=${encodeURIComponent("Res/Player/PlayerA/Item07.res")}&member=${encodeURIComponent("Niki_CommonRacket41.dat")}`,
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    const table = body.meta.equipmentMaterialTable;
+    expect(table).toBeDefined();
+    expect(table.count).toBeGreaterThanOrEqual(2);
+    expect(table.recordSize).toBe(64);
+    expect(table.stems[0]).toMatch(/Racket/i);
+  }, 60000);
+
   test("mesh parse exposes planar UVs and stage texture for BF_Court01", async () => {
     const response = await fetch(
       `${base}/api/mesh-studio/parse?archive=${encodeURIComponent("Res/Stage/Mesh01.res")}&member=${encodeURIComponent("BF_Court01.dat")}`,

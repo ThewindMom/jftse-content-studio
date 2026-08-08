@@ -147,9 +147,31 @@ AES → UTF-8 XML:
 
 Shop item `mesh` field is this `Index`. 1921 entries across characters.
 
-API: `GET /api/item-mesh/resolve?meshIndex=214&char=NIKI`
+Resource graph (also `tools/wind_dragon_slayer/FORMAT_NOTES.md`):
+
+1. `Item_Parts.set` → `(Char, Part, Mesh, Tex, Effect)`
+2. `(Char, Mesh)` → DAT via `Info_Item_Mesh`
+3. **`Tex` selects a positional 64-byte material record** in the DAT tail
+4. Material stem → `.tex` or `.ifl` in the same RES archive
+5. `Effect` is a separate racket-effect path (not the material animation)
+
+### Equipment DAT material table (verified `Niki_CommonRacket41.dat`)
+
+| Field | Value |
+|-------|--------|
+| Count | `uint32le` @ **0x64** (e.g. 4) |
+| Table start | `file_size - 6 - count×64` |
+| Record size | **64 bytes** |
+| Record layout | null-terminated stem (`CommonRacket41`, `CommonRacketX0`…`X2`) + pad/params |
+
+Material keys are **positional** — do not insert/remove records without a full dependent-offset parser. Studio exposes this via `mesh-meta` → `equipmentMaterialTable`.
+
+API: `GET /api/item-mesh/resolve?meshIndex=214&char=NIKI`  
+API: `GET /api/mesh-studio/meta?archive=Res/Player/PlayerA/Item07.res&member=Niki_CommonRacket41.dat`
 
 Player archives: `Res/Player/Player{A-G}/ItemNN.res` + `Mesh.res` body meshes + `Ani*.res` / `FtmAni*.res` animations.
+
+D3D9 skinning note (EXE / FVF): fixed-function supports `XYZBn` + `LASTBETA_UBYTE4` blend weights — full bone-matrix skinning is still not simulated in Content Studio Three.js previews.
 
 ## Other formats (inventory)
 
