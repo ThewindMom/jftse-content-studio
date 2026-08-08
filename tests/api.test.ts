@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
+  chmodSync,
   cpSync,
   existsSync,
   mkdirSync,
@@ -25,6 +26,9 @@ const artifactRoots = ["exports", "content-packs", ".tmp"].map((name) =>
 let serverProc: ReturnType<typeof Bun.spawn> | null = null;
 let disposableClient = "";
 let initialArtifacts = new Map<string, Set<string>>();
+let fakeMysqlDir = "";
+let fakeMysqlArgs = "";
+let fakeMysqlEnv = "";
 
 async function postInstall(
   targetClient: string,
@@ -39,6 +43,53 @@ async function postInstall(
     response,
     body: (await response.json()) as Record<string, unknown>,
   };
+}
+
+async function postSql(
+  payload: Record<string, unknown>,
+): Promise<{
+  response: Response;
+  body: {
+    ok?: boolean;
+    error?: string;
+    dryRun?: boolean;
+    audit?: {
+      safe: boolean;
+      insertCount: number;
+      statementCount: number;
+      tables: string[];
+    };
+  };
+}> {
+  const response = await fetch(`${base}/api/sql/apply`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return {
+    response,
+    body: (await response.json()) as {
+      ok?: boolean;
+      error?: string;
+      dryRun?: boolean;
+      audit?: {
+        safe: boolean;
+        insertCount: number;
+        statementCount: number;
+        tables: string[];
+      };
+    },
+  };
+}
+
+async function writeExportSql(sql: string): Promise<string> {
+  const path = join(
+    studioRoot,
+    "exports",
+    `sql-policy-${Date.now()}-${crypto.randomUUID()}.sql`,
+  );
+  await Bun.write(path, sql);
+  return path;
 }
 
 function snapshotArtifacts(): Map<string, Set<string>> {
@@ -103,6 +154,23 @@ const softPayload = {
 beforeAll(async () => {
   initialArtifacts = snapshotArtifacts();
   disposableClient = mkdtempSync(join(tmpdir(), "jftse-studio-client-"));
+  fakeMysqlDir = mkdtempSync(join(tmpdir(), "jftse-studio-mysql-"));
+  fakeMysqlArgs = join(fakeMysqlDir, "args.txt");
+  fakeMysqlEnv = join(fakeMysqlDir, "env.txt");
+  const fakeMysql = join(fakeMysqlDir, "mysql");
+  await Bun.write(
+    fakeMysql,
+    `#!/bin/sh
+printf '%s\\n' "$@" > "$JFTSE_TEST_MYSQL_ARGS"
+if [ "$MYSQL_PWD" = "super-secret" ]; then
+  printf 'password_set=yes\\n' > "$JFTSE_TEST_MYSQL_ENV"
+else
+  printf 'password_set=no\\n' > "$JFTSE_TEST_MYSQL_ENV"
+fi
+cat >/dev/null
+`,
+  );
+  chmodSync(fakeMysql, 0o755);
   await Bun.write(join(disposableClient, "Res/Effect/.keep"), "");
   cpSync(
     join(stockClient, "Res/Effect/Particle.res"),
@@ -117,6 +185,11 @@ beforeAll(async () => {
       JFTSE_ROOT: jftseRoot,
       JFTSE_STOCK_CLIENT: stockClient,
       JFTSE_LOCAL_CLIENT: disposableClient,
+      JFTSE_DATABASE_URL:
+        "mysql://studio:super-secret@127.0.0.1:3306/fantasytennis",
+      JFTSE_TEST_MYSQL_ARGS: fakeMysqlArgs,
+      JFTSE_TEST_MYSQL_ENV: fakeMysqlEnv,
+      PATH: `${fakeMysqlDir}:${process.env.PATH ?? ""}`,
     },
     stdout: "pipe",
     stderr: "pipe",
@@ -143,6 +216,9 @@ afterAll(async () => {
   serverProc = null;
   if (disposableClient && existsSync(disposableClient)) {
     rmSync(disposableClient, { recursive: true, force: true });
+  }
+  if (fakeMysqlDir && existsSync(fakeMysqlDir)) {
+    rmSync(fakeMysqlDir, { recursive: true, force: true });
   }
   for (const [root, before] of initialArtifacts) {
     if (!existsSync(root)) continue;
@@ -1501,7 +1577,7 @@ describe("content studio production API", () => {
     expect(existsSync(body.infoArchive)).toBe(true);
   });
 
-  test("sql apply dry-run accepts map-create SQL and rejects DROP", async () => {
+  test("sql apply dry-run accepts generated map SQL", async () => {
     const create = await fetch(`${base}/api/map-studio/create`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -1512,28 +1588,147 @@ describe("content studio production API", () => {
     });
     const created = await create.json();
     expect(create.status).toBe(200);
-    const dry = await fetch(`${base}/api/sql/apply`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ path: created.path, dryRun: true }),
+    const { response: dry, body: dryBody } = await postSql({
+      path: created.path,
+      dryRun: true,
     });
-    const dryBody = await dry.json();
     expect(dry.status).toBe(200);
     expect(dryBody.ok).toBe(true);
     expect(dryBody.dryRun).toBe(true);
-    expect(dryBody.audit.safe).toBe(true);
-    expect(dryBody.audit.insertCount).toBeGreaterThan(0);
+    expect(dryBody.audit?.safe).toBe(true);
+    expect(dryBody.audit?.insertCount).toBeGreaterThan(0);
+    expect(dryBody.audit?.tables).toContain("s_maps");
+  });
 
-    const badPath = join(disposableClient, "bad.sql");
-    await Bun.write(badPath, "DROP TABLE S_Maps;");
-    const banned = await fetch(`${base}/api/sql/apply`, {
+  test("sql apply rejects path outside generated exports", async () => {
+    const { response, body } = await postSql({
+      path: "/etc/hosts",
+      dryRun: true,
+    });
+    expect(response.status).toBe(400);
+    expect(body.error).toBe("SQL_OUTSIDE_EXPORTS");
+  });
+
+  test("sql apply rejects symlink inside generated exports", async () => {
+    const path = join(
+      studioRoot,
+      "exports",
+      `sql-policy-link-${Date.now()}.sql`,
+    );
+    symlinkSync("/etc/hosts", path);
+    const { response, body } = await postSql({ path, dryRun: true });
+    expect(response.status).toBe(400);
+    expect(body.error).toBe("SQL_SYMLINK");
+  });
+
+  test("sql apply rejects caller database URL override", async () => {
+    const path = await writeExportSql("INSERT INTO S_Maps (id) VALUES (1);");
+    const { response, body } = await postSql({
+      path,
+      dryRun: false,
+      databaseUrl: "mysql://attacker:secret@127.0.0.1/other",
+    });
+    expect(response.status).toBe(400);
+    expect(body.error).toBe("DATABASE_URL_OVERRIDE_FORBIDDEN");
+  });
+
+  test("sql apply rejects caller delete override", async () => {
+    const path = await writeExportSql("DELETE FROM S_Maps WHERE id = 1;");
+    const { response, body } = await postSql({
+      path,
+      dryRun: true,
+      allowDeletes: true,
+    });
+    expect(response.status).toBe(400);
+    expect(body.error).toBe("SQL_DELETE_OVERRIDE_FORBIDDEN");
+  });
+
+  test("sql apply accepts only generated insert tables", async () => {
+    const allowed = [
+      "S_Product",
+      "product",
+      "S_Maps",
+      "M_Scenarios",
+      "Map_2_Scenarios",
+      "Guardian_2_Maps",
+    ];
+    const path = await writeExportSql(
+      allowed
+        .map(
+          (table, index) =>
+            `INSERT INTO ${table} (id) VALUES (${index + 1}) ON DUPLICATE KEY UPDATE id = VALUES(id);`,
+        )
+        .join("\n"),
+    );
+    const { response, body } = await postSql({ path, dryRun: true });
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.audit?.insertCount).toBe(allowed.length);
+    expect(body.audit?.tables).toEqual([
+      "s_product",
+      "product",
+      "s_maps",
+      "m_scenarios",
+      "map_2_scenarios",
+      "guardian_2_maps",
+    ]);
+  });
+
+  for (const [label, sql, error] of [
+    ["unknown table", "INSERT INTO mysql.user (Host) VALUES ('%');", "SQL_STATEMENT_NOT_ALLOWED"],
+    ["update", "UPDATE S_Maps SET name = 'owned';", "SQL_STATEMENT_NOT_ALLOWED"],
+    ["delete", "DELETE FROM S_Maps WHERE id = 1;", "SQL_STATEMENT_NOT_ALLOWED"],
+    ["drop after insert", "INSERT INTO S_Maps (id) VALUES (1); DROP TABLE S_Maps;", "SQL_STATEMENT_NOT_ALLOWED"],
+    ["block comment", "INSERT/**/INTO S_Maps (id) VALUES (1);", "SQL_PARSE_FAILED"],
+    ["executable comment", "/*!50000 DROP TABLE S_Maps */;", "SQL_PARSE_FAILED"],
+    ["unterminated quote", "INSERT INTO S_Maps (name) VALUES ('oops);", "SQL_PARSE_FAILED"],
+    ["backslash escape", "INSERT INTO S_Maps (name) VALUES ('bad\\\\'quote');", "SQL_PARSE_FAILED"],
+  ] as const) {
+    test(`sql apply rejects ${label}`, async () => {
+      const path = await writeExportSql(sql);
+      const { response, body } = await postSql({ path, dryRun: true });
+      expect(response.status).toBe(400);
+      expect(body.error).toBe(error);
+      expect(body.audit?.safe).toBe(false);
+    });
+  }
+
+  test("sql apply strips line comments without treating quoted tokens as verbs", async () => {
+    const path = await writeExportSql(`
+      -- Generated by the studio
+      INSERT INTO S_Maps (name, description)
+      VALUES ('DROP TABLE is text', 'semi;colon');
+    `);
+    const { response, body } = await postSql({ path, dryRun: true });
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.audit?.statementCount).toBe(1);
+    expect(body.audit?.tables).toEqual(["s_maps"]);
+  });
+
+  test("sql apply live mode uses configured client without exposing password", async () => {
+    const path = await writeExportSql("INSERT INTO S_Maps (id) VALUES (99);");
+    const response = await fetch(`${base}/api/sql/apply`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ path: badPath, dryRun: true }),
+      body: JSON.stringify({ path, dryRun: false }),
     });
-    const bannedBody = await banned.json();
-    expect(bannedBody.ok).toBe(false);
-    expect(bannedBody.error).toBe("SQL_BANNED_STATEMENT");
+    const raw = await response.text();
+    const body = JSON.parse(raw) as {
+      ok: boolean;
+      applied: boolean;
+      exitCode: number;
+    };
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.applied).toBe(true);
+    expect(body.exitCode).toBe(0);
+    expect(await Bun.file(fakeMysqlEnv).text()).toBe("password_set=yes\n");
+    expect(await Bun.file(fakeMysqlArgs).text()).toBe(
+      "-h\n127.0.0.1\n-P\n3306\n-u\nstudio\nfantasytennis\n",
+    );
+    expect(raw).not.toContain("super-secret");
+    expect(raw).not.toContain("MYSQL_PWD");
   });
 
   test("content pack playtest-full returns checklist", async () => {

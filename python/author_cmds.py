@@ -353,8 +353,6 @@ def make_handlers(
         return apply_sql_file(
             Path(str(payload.get("path") or args.path)),
             dry_run=bool(payload.get("dryRun", True)),
-            database_url=payload.get("databaseUrl"),
-            allow_deletes=bool(payload.get("allowDeletes", False)),
         )
 
     def cmd_ani_section_b_status(args: Namespace) -> dict[str, Any]:

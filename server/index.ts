@@ -162,7 +162,7 @@ async function safeBridge(
   try {
     const result = await work();
     if (result.ok === false) {
-      return bad(String(result.error ?? "BRIDGE_FAILED"));
+      return json(result, 400);
     }
     return json(result);
   } catch (error) {
@@ -1063,6 +1063,19 @@ const server = Bun.serve({
           return bad("INVALID_JSON");
         }
         if (!body.path) return bad("PATH_REQUIRED");
+        if ("databaseUrl" in body) {
+          return bad("DATABASE_URL_OVERRIDE_FORBIDDEN");
+        }
+        if ("allowDeletes" in body) {
+          return bad("SQL_DELETE_OVERRIDE_FORBIDDEN");
+        }
+        if (
+          Object.keys(body).some(
+            (field) => field !== "path" && field !== "dryRun",
+          )
+        ) {
+          return bad("SQL_REQUEST_FIELD_FORBIDDEN");
+        }
         const payloadPath = join(
           config.tmpDir,
           `sql-apply-${crypto.randomUUID()}.json`,

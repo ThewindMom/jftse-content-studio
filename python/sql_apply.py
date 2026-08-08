@@ -1,90 +1,46 @@
-"""Safe apply of studio-generated SQL packs (dry-run default).
-
-Rejects destructive statements. Optional live apply via mysql/mariadb CLI
-when JFTSE_DATABASE_URL or DATABASE_URL is set.
-"""
+"""Strict apply of studio-generated INSERT-only SQL packs."""
 
 from __future__ import annotations
 
 import os
-import re
-import shlex
+import shutil
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import TypeAlias
 from urllib.parse import unquote, urlparse
 
-_BANNED = re.compile(
-    r"\b(DROP\s+TABLE|DROP\s+DATABASE|TRUNCATE\s+TABLE|ALTER\s+TABLE|CREATE\s+USER|"
-    r"GRANT\s+|REVOKE\s+|LOAD\s+DATA|INTO\s+OUTFILE)\b",
-    re.IGNORECASE,
+from sql_policy import (
+    JsonValue,
+    SqlParseError,
+    audit_statements,
+    invalid_audit,
+    split_sql_statements,
 )
-_DELETE = re.compile(r"^\s*DELETE\s+FROM\b", re.IGNORECASE)
-_INSERT = re.compile(r"^\s*INSERT\s+INTO\b", re.IGNORECASE)
+
+SqlResult: TypeAlias = dict[str, JsonValue]
 
 
-def split_sql_statements(sql: str) -> list[str]:
-    """Split on `;` outside simple quotes (studio packs are plain ASCII SQL)."""
-    parts: list[str] = []
-    buf: list[str] = []
-    in_single = False
-    for ch in sql:
-        if ch == "'" and not in_single:
-            in_single = True
-            buf.append(ch)
-            continue
-        if ch == "'" and in_single:
-            in_single = False
-            buf.append(ch)
-            continue
-        if ch == ";" and not in_single:
-            stmt = "".join(buf).strip()
-            if stmt:
-                parts.append(stmt)
-            buf = []
-            continue
-        buf.append(ch)
-    tail = "".join(buf).strip()
-    if tail:
-        parts.append(tail)
-    return parts
-
-
-def audit_statements(statements: list[str]) -> dict[str, Any]:
-    banned: list[str] = []
-    deletes: list[str] = []
-    inserts = 0
-    comments_only = 0
-    for stmt in statements:
-        body = "\n".join(
-            line for line in stmt.splitlines() if not line.strip().startswith("--")
-        ).strip()
-        if not body:
-            comments_only += 1
-            continue
-        if _BANNED.search(body):
-            banned.append(body[:120])
-        if _DELETE.match(body):
-            deletes.append(body[:120])
-        if _INSERT.match(body):
-            inserts += 1
-    return {
-        "statementCount": len(statements),
-        "insertCount": inserts,
-        "deleteCount": len(deletes),
-        "commentOnly": comments_only,
-        "banned": banned,
-        "deletes": deletes,
-        "safe": len(banned) == 0,
-    }
+def _validated_sql_path(path: Path) -> tuple[Path | None, str | None]:
+    candidate = path.expanduser()
+    if candidate.is_symlink():
+        return None, "SQL_SYMLINK"
+    if not candidate.exists() or not candidate.is_file():
+        return None, "SQL_FILE_MISSING"
+    exports_value = os.environ.get("JFTSE_STUDIO_EXPORTS", "").strip()
+    if not exports_value:
+        return None, "SQL_OUTSIDE_EXPORTS"
+    resolved = candidate.resolve()
+    exports_root = Path(exports_value).expanduser().resolve()
+    if not resolved.is_relative_to(exports_root) or resolved.suffix.lower() != ".sql":
+        return None, "SQL_OUTSIDE_EXPORTS"
+    return resolved, None
 
 
 def parse_database_url(url: str) -> dict[str, str]:
-    """Parse mysql://user:pass@host:port/db → connection fields."""
-    raw = url.strip()
-    if "://" not in raw:
+    """Parse a MySQL URL into CLI connection fields."""
+    parsed = urlparse(url.strip())
+    if not parsed.scheme:
         raise ValueError("DATABASE_URL_INVALID")
-    parsed = urlparse(raw)
     if parsed.scheme not in ("mysql", "mariadb"):
         raise ValueError("DATABASE_URL_SCHEME")
     return {
@@ -92,40 +48,41 @@ def parse_database_url(url: str) -> dict[str, str]:
         "port": str(parsed.port or 3306),
         "user": unquote(parsed.username or ""),
         "password": unquote(parsed.password or ""),
-        "database": (parsed.path or "/").lstrip("/") or "",
+        "database": (parsed.path or "/").lstrip("/"),
     }
 
 
-def apply_sql_file(
-    path: Path,
-    *,
-    dry_run: bool = True,
-    database_url: str | None = None,
-    allow_deletes: bool = False,
-) -> dict[str, Any]:
-    if not path.is_file():
-        return {"ok": False, "error": "SQL_FILE_MISSING", "path": str(path)}
-    sql = path.read_text(encoding="utf-8")
-    statements = split_sql_statements(sql)
+def apply_sql_file(path: Path, *, dry_run: bool = True) -> SqlResult:
+    validated_path, path_error = _validated_sql_path(path)
+    if path_error or validated_path is None:
+        return {
+            "ok": False,
+            "error": path_error or "SQL_FILE_MISSING",
+            "path": str(path),
+        }
+
+    sql = validated_path.read_text(encoding="utf-8")
+    try:
+        statements = split_sql_statements(sql)
+    except SqlParseError as exc:
+        return {
+            "ok": False,
+            "error": "SQL_PARSE_FAILED",
+            "audit": invalid_audit(str(exc)),
+            "path": str(validated_path),
+        }
     audit = audit_statements(statements)
-    if not audit["safe"]:
+    if not bool(audit["safe"]):
         return {
             "ok": False,
-            "error": "SQL_BANNED_STATEMENT",
+            "error": "SQL_STATEMENT_NOT_ALLOWED",
             "audit": audit,
-            "path": str(path),
+            "path": str(validated_path),
         }
-    if audit["deletes"] and not allow_deletes:
-        return {
-            "ok": False,
-            "error": "SQL_DELETE_REQUIRES_FLAG",
-            "audit": audit,
-            "path": str(path),
-            "hint": "Pass allowDeletes=true for Map_2_Scenarios DELETE patches only.",
-        }
-    result: dict[str, Any] = {
+
+    result: SqlResult = {
         "ok": True,
-        "path": str(path),
+        "path": str(validated_path),
         "dryRun": dry_run,
         "audit": audit,
         "applied": False,
@@ -134,61 +91,58 @@ def apply_sql_file(
         result["note"] = "Dry-run only; no database connection opened."
         return result
 
-    url = (database_url or os.environ.get("JFTSE_DATABASE_URL") or os.environ.get("DATABASE_URL") or "").strip()
+    url = os.environ.get("JFTSE_DATABASE_URL", "").strip()
     if not url:
         return {
             "ok": False,
             "error": "DATABASE_URL_REQUIRED",
-            "path": str(path),
+            "path": str(validated_path),
             "hint": "Set JFTSE_DATABASE_URL=mysql://user:pass@host:3306/jftse",
         }
     try:
-        conn = parse_database_url(url)
+        connection = parse_database_url(url)
     except ValueError as exc:
-        return {"ok": False, "error": str(exc), "path": str(path)}
+        return {"ok": False, "error": str(exc), "path": str(validated_path)}
 
-    # Prefer mysql client; fall back to mariadb
-    client_bin = "mysql"
-    for candidate in ("mysql", "mariadb"):
-        if subprocess.run(["which", candidate], capture_output=True).returncode == 0:
-            client_bin = candidate
-            break
-    else:
+    client = next(
+        (candidate for candidate in ("mysql", "mariadb") if shutil.which(candidate)),
+        None,
+    )
+    if client is None:
         return {
             "ok": False,
             "error": "MYSQL_CLIENT_MISSING",
-            "path": str(path),
+            "path": str(validated_path),
             "hint": "Install mysql or mariadb client for live apply.",
         }
-
-    cmd = [
-        client_bin,
+    command = [
+        client,
         "-h",
-        conn["host"],
+        connection["host"],
         "-P",
-        conn["port"],
+        connection["port"],
         "-u",
-        conn["user"],
-        conn["database"],
+        connection["user"],
+        connection["database"],
     ]
-    env = os.environ.copy()
-    if conn["password"]:
-        env["MYSQL_PWD"] = conn["password"]
-    proc = subprocess.run(
-        cmd,
+    environment = os.environ.copy()
+    if connection["password"]:
+        environment["MYSQL_PWD"] = connection["password"]
+    process = subprocess.run(
+        command,
         input=sql,
         text=True,
         capture_output=True,
-        env=env,
+        env=environment,
         timeout=120,
         check=False,
     )
-    result["applied"] = proc.returncode == 0
-    result["exitCode"] = proc.returncode
-    if proc.returncode != 0:
+    result["applied"] = process.returncode == 0
+    result["exitCode"] = process.returncode
+    if process.returncode != 0:
         result["ok"] = False
         result["error"] = "MYSQL_APPLY_FAILED"
-        result["stderr"] = (proc.stderr or "")[:2000]
+        result["stderr"] = (process.stderr or "")[:2000]
     else:
-        result["stdout"] = (proc.stdout or "")[:500]
+        result["stdout"] = (process.stdout or "")[:500]
     return result
