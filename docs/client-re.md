@@ -250,7 +250,7 @@ Header (28 B LE), verified NikiAniA/B:
 | Region | Structure |
 |--------|-----------|
 | **A** | **Primary multi-clip float3 stack** — block = `trackCount×frameCount×12` (NikiAniA: 21120 B). **16** high-smoothness track-major clips + residual. clip0 root ≈ `(0, 6.37, 0)`. |
-| **B** | **Same byte length as C** on NikiAniA/B; invariant **A−B = 1290**. All of A/B/C are **odd-sized**. Not dense bone-index u16 (ratio ≪ 0.5). Not plain float3/f16. Encoding still **unknown**. |
+| **B** | **Same byte length as C** on NikiAniA/B; invariant **A−B = 1290**. All of A/B/C are **odd-sized**. Exhaustive probe (`ani_rotation_probe.py`): not float3/float4/s16-quat/f16/zlib-raw; no contiguous unit float4 block ≥90%. Encoding still **unknown**. |
 | **C** | **Secondary float3-shaped multi-clip stack** (same block size, lower smoothness than A). Bulk float4 unit-length ≈ 58–60% — **not** ≥90%, so **not** auto-promoted to quaternions. Possible euler/aux channel — unproven. |
 | **Tail** | Large residual after A\|B\|C (~359 KB AniA). Does **not** start with a high-smoothness float3 multi-clip. |
 
@@ -315,10 +315,14 @@ Module: `python/bone_attach.py`
 
 ### ANI → bone drive
 
-- Dense **unit float4 quats not found** on NikiAniA/B (A/C ≈ 55–60% unit samples as float4 noise; B ≈ 0%). Multi-clip C float3 is **not** a ≥90% xyz-compressed-quat channel either.
+- Dense **unit float4 quats not found** on NikiAniA/B after exhaustive probe:
+  - A/C ≈ 55–60% unit samples as float4 noise; B ≈ 0% as float4
+  - Section B candidates scored: float3, float4, s16×4, s16 xyz-compress, f16, zlib-raw, odd-pad drop, contiguous float4 block scan (B + whole file) — **none ≥ 0.9 unit**
+  - Multi-clip C float3 is **not** a ≥90% xyz-compressed-quat channel either
+- API: `sectionProbe.sectionBHypothesis.encodingProbe.candidates[]` carries the score table
 - `driveMode` / `rotationHypothesis.recommendedDriveMode`:
-  - `quat` only when `rotationHypothesis.confident` (dense unit float4)
-  - else **`hierarchical-fk`** (default): parent chain + look-at swing from float3 position deltas on the ordered skeleton
+  - `quat` only when extract confirms dense unit float4 (`rotationHypothesis.confident`)
+  - else **`hierarchical-fk`** (default): parent chain + look-at swing from float3 position deltas
   - `position-only-fk` remains available as a flat/legacy experiment
 - Track labels optional via `?char=NIKI` (skeleton name order)
 - UI: Equipment preview uses hierarchical-fk when `hasRotations` is false. No throw on missing quats.

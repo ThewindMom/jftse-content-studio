@@ -247,6 +247,7 @@ def _probe_sections(data: bytes, header: AniHeader) -> dict[str, Any]:
         # u16 stats for section B (index-like?)
         u16_count = len(chunk) // 2
         u16_lt40 = 0
+        sample_n = 0
         if u16_count:
             # sample first 20k u16s
             sample_n = min(u16_count, 20_000)
@@ -267,7 +268,7 @@ def _probe_sections(data: bytes, header: AniHeader) -> dict[str, Any]:
             "quatUnitSampleRatio": (unit / total) if total else None,
             "quatUnitSamples": unit,
             "quatSamples": total,
-            "u16Lt40SampleRatio": (u16_lt40 / sample_n) if u16_count else None,
+            "u16Lt40SampleRatio": (u16_lt40 / sample_n) if sample_n else None,
         }
         off += size
     tail_off = off
@@ -337,8 +338,18 @@ def _probe_sections(data: bytes, header: AniHeader) -> dict[str, Any]:
             else "No float3 clip stack in section C"
         ),
     }
-    # Section B: same size as C on Niki AniA/B; odd-sized; not bone-index dense
+    # Section B: exhaustive encoding probe (see ani_rotation_probe)
+    from ani_rotation_probe import probe_section_b
+
     b_ratio = sections.get("B", {}).get("u16Lt40SampleRatio") or 0.0
+    b_probe = probe_section_b(
+        data,
+        section_a=header.sectionA,
+        section_b=header.sectionB,
+        section_c=header.sectionC,
+        track_count=header.trackCount,
+        frame_count=header.frameCount,
+    )
     sections["sectionBHypothesis"] = {
         "sameSizeAsC": header.sectionB == header.sectionC,
         "sectionAMinusB": header.sectionA - header.sectionB,
@@ -349,10 +360,12 @@ def _probe_sections(data: bytes, header: AniHeader) -> dict[str, Any]:
             and header.sectionC % 2 == 1
         ),
         "boneIndexLike": b_ratio >= 0.5,
-        "note": (
+        "encodingProbe": b_probe,
+        "viableRotationEncoding": b_probe.get("viableRotationEncoding"),
+        "note": b_probe.get("note")
+        or (
             "Section B matches C’s byte length (AniA/B: A−B=1290) but is odd-sized "
-            f"and not a dense bone-index u16 stream (u16<40 sample ratio={b_ratio:.3f}). "
-            "Encoding remains unknown (not plain float3/float4/f16)."
+            f"and not a dense bone-index u16 stream (u16<40 sample ratio={b_ratio:.3f})."
         ),
     }
     # Tail after A|B|C: large residual; not a clean float3 stack at offset 0
@@ -375,24 +388,28 @@ def _probe_sections(data: bytes, header: AniHeader) -> dict[str, Any]:
             else f"Tail starts with {len(tail_clips)} float3 clip(s)"
         ),
     }
-    # Prefer section C as dense float4 rotation candidate when unit ratio is high
+    # Candidate confidence from sample ratios / B probe; parse_ani_bytes confirms via extract
     c_ratio = sections.get("C", {}).get("quatUnitSampleRatio") or 0.0
     a_ratio = sections.get("A", {}).get("quatUnitSampleRatio") or 0.0
-    confident = bool(c_ratio >= 0.9)
+    b_viable = sections.get("sectionBHypothesis", {}).get("viableRotationEncoding")
+    candidate = bool(c_ratio >= 0.9 or b_viable)
     sections["rotationHypothesis"] = {
-        "preferredSection": "C" if c_ratio >= 0.9 else None,
-        "confident": confident,
+        "preferredSection": (
+            "C" if c_ratio >= 0.9 else ("B" if b_viable else None)
+        ),
+        "confident": False,  # set true only after successful extract in parse_ani_bytes
+        "candidateConfident": candidate,
         "sectionAUnitRatio": a_ratio,
         "sectionCUnitRatio": c_ratio,
-        "recommendedDriveMode": "quat" if confident else "hierarchical-fk",
+        "sectionBViableEncoding": b_viable,
+        "recommendedDriveMode": "hierarchical-fk",
         "note": (
-            "Section C looks like unit quaternions"
-            if confident
+            "Rotation candidate present; awaiting extract confirmation"
+            if candidate
             else (
                 "No dense unit float4 quat graph in A/B/C/tail on Niki-class ANI "
-                f"(A≈{a_ratio:.0%} C≈{c_ratio:.0%} unit samples). "
-                "Use hierarchical-fk (parent chain + look-at from float3 positions) "
-                "until a true rotation channel is decoded."
+                f"(A≈{a_ratio:.0%} C≈{c_ratio:.0%} unit samples; B encoding probe found no "
+                "viable layout). Use hierarchical-fk until a true rotation channel is decoded."
             )
         ),
     }
@@ -487,16 +504,18 @@ def parse_ani_bytes(
         best: tuple[float, str, int, list[list[list[float]]]] | None = None
         for data_off in (28, 32, 24, 36, 48, 28 + header.sectionA):
             for order in ("frame-major", "track-major"):
-                tracks = _extract_tracks(
+                pos_tracks = _extract_tracks(
                     data, header=header, data_off=data_off, order=order
                 )
-                if tracks is None:
+                if pos_tracks is None:
                     continue
-                score = sum(_smoothness(t) for t in tracks[: min(8, len(tracks))])
-                if tracks:
-                    xs = [p[0] for p in tracks[0]]
-                    ys = [p[1] for p in tracks[0]]
-                    zs = [p[2] for p in tracks[0]]
+                score = sum(
+                    _smoothness(t) for t in pos_tracks[: min(8, len(pos_tracks))]
+                )
+                if pos_tracks:
+                    xs = [p[0] for p in pos_tracks[0]]
+                    ys = [p[1] for p in pos_tracks[0]]
+                    zs = [p[2] for p in pos_tracks[0]]
                     extent = (
                         (max(xs) - min(xs))
                         + (max(ys) - min(ys))
@@ -507,22 +526,59 @@ def parse_ani_bytes(
                     score += 5.0
                 label = f"{order}@+{data_off}"
                 if best is None or score > best[0]:
-                    best = (score, label, data_off, tracks)
+                    best = (score, label, data_off, pos_tracks)
         if best is None:
             raise AniParseError("no valid float3 track layout found")
         _score, layout, _pos_off, raw_tracks = best
 
-    # Experimental quat attach: only when section probe is confident
+    # Experimental quat attach: only when extract yields unit ratio ≥ 0.9
     rot_tracks: list[list[list[float]]] | None = None
-    if probe.get("rotationHypothesis", {}).get("confident"):
-        c_off = 28 + header.sectionA + header.sectionB
-        for order in ("track-major", "frame-major"):
-            rot_tracks = _extract_quats(
-                data, header=header, data_off=c_off, order=order
-            )
-            if rot_tracks is not None:
-                layout = f"{layout}+quat-{order}@C"
-                break
+    rot_meta: dict[str, Any] | None = None
+    from ani_rotation_probe import try_extract_confident_quats
+
+    b_probe = (probe.get("sectionBHypothesis") or {}).get("encodingProbe")
+    # Skip expensive extract when probe already says no candidate
+    hyp = probe.get("rotationHypothesis") or {}
+    if hyp.get("candidateConfident") or (
+        b_probe and b_probe.get("viableRotationEncoding")
+    ):
+        rot_tracks, rot_meta = try_extract_confident_quats(
+            data,
+            track_count=header.trackCount,
+            frame_count=header.frameCount,
+            section_a=header.sectionA,
+            section_b=header.sectionB,
+            section_c=header.sectionC,
+            b_probe=b_probe,
+        )
+    else:
+        rot_meta = {
+            "selectedOffset": None,
+            "selectedUnitRatio": None,
+            "confident": False,
+            "skipped": True,
+            "note": "extract skipped: no rotation candidate from probe",
+        }
+
+    if rot_tracks is not None and rot_meta.get("confident"):
+        order = rot_meta.get("order") or "track-major"
+        off = rot_meta.get("selectedOffset")
+        layout = f"{layout}+quat-{order}@+{off}"
+        probe = {
+            **probe,
+            "rotationHypothesis": {
+                **probe.get("rotationHypothesis", {}),
+                "confident": True,
+                "recommendedDriveMode": "quat",
+                "note": (
+                    f"Dense unit quaternions at +{off} ({order}, "
+                    f"ratio={rot_meta.get('decodeUnitRatio')})"
+                ),
+            },
+            "rotationExtract": rot_meta,
+        }
+    else:
+        probe = {**probe, "rotationExtract": rot_meta or {}}
 
     times = [
         header.duration * (i / max(header.frameCount - 1, 1))

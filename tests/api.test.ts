@@ -668,18 +668,29 @@ describe("content studio production API", () => {
     expect(body.ani.sectionProbe.multiClip.clipCount).toBeGreaterThanOrEqual(2);
     expect(body.ani.sectionProbe.clipIndex ?? body.ani.clipIndex ?? 0).toBe(0);
     expect(String(body.ani.layout)).toMatch(/multi-clip/);
-    // Drive mode: quats only when confident; else hierarchical-fk (not flat pos-only)
+    // Drive mode: quats only when extract confident; else hierarchical-fk
     expect(["quat", "hierarchical-fk", "position-only-fk"]).toContain(
       body.ani.driveMode,
     );
     expect(body.ani.sectionProbe.rotationHypothesis.recommendedDriveMode).toBeDefined();
+    // Section B encoding probe always present with scored candidates
+    const bHyp = body.ani.sectionProbe.sectionBHypothesis;
+    expect(bHyp.encodingProbe).toBeDefined();
+    expect(Array.isArray(bHyp.encodingProbe.candidates)).toBe(true);
+    expect(bHyp.encodingProbe.candidates.length).toBeGreaterThanOrEqual(5);
+    expect(bHyp.encodingProbe.candidates.every((c: { name: string }) => c.name)).toBe(
+      true,
+    );
     if (body.ani.hasRotations) {
       expect(body.ani.driveMode).toBe("quat");
       expect(body.ani.tracks[0].hasRotations).toBe(true);
+      expect(body.ani.sectionProbe.rotationHypothesis.confident).toBe(true);
     } else {
       expect(body.ani.driveMode).toBe("hierarchical-fk");
       expect(body.ani.tracks[0].hasRotations).toBe(false);
       expect(body.ani.sectionProbe.rotationHypothesis.confident).toBe(false);
+      // Niki: no viable B rotation encoding yet
+      expect(bHyp.viableRotationEncoding).toBeNull();
     }
   }, 60000);
 
