@@ -4,11 +4,18 @@ import {
   readFileSync,
   writeFileSync,
   existsSync,
+  rmSync,
   statSync,
 } from "node:fs";
 import { join, relative } from "node:path";
 import index from "../web/index.html";
-import { buildEffect, installEffect, runBridge } from "./bridge.ts";
+import {
+  BridgeError,
+  buildEffect,
+  installEffect,
+  runBridge,
+  runBridgeWithPayload,
+} from "./bridge.ts";
 import { config } from "./config.ts";
 import { EFFECT_PRESETS } from "./presets.ts";
 
@@ -166,10 +173,16 @@ async function safeBridge(
     }
     return json(result);
   } catch (error) {
+    if (error instanceof BridgeError) {
+      return json(
+        { ok: false, error: error.code, detail: error.detail },
+        error.code === "BRIDGE_TIMEOUT" ? 504 : 500,
+      );
+    }
     return json(
       {
         ok: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: "BRIDGE_FAILED",
       },
       500,
     );
@@ -306,17 +319,12 @@ const server = Bun.serve({
         } catch {
           return bad("INVALID_JSON");
         }
-        const payloadPath = join(
-          config.tmpDir,
-          `maps-${crypto.randomUUID()}.json`,
-        );
         const outFile = join(
           config.exportsDir,
           `maps-${Date.now()}.sql`,
         );
-        await Bun.write(payloadPath, JSON.stringify(body, null, 2));
         return safeBridge(() =>
-          runBridge([
+          runBridgeWithPayload("maps", body, (payloadPath) => [
             "export-map-sql",
             "--payload",
             payloadPath,
@@ -546,14 +554,9 @@ const server = Bun.serve({
         } catch {
           return bad("INVALID_JSON");
         }
-        const payloadPath = join(
-          config.tmpDir,
-          `mesh-transform-${crypto.randomUUID()}.json`,
-        );
         const outDir = join(config.exportsDir, `mesh-edit-${Date.now()}`);
-        await Bun.write(payloadPath, JSON.stringify(body, null, 2));
         return safeBridge(() =>
-          runBridge([
+          runBridgeWithPayload("mesh-transform", body, (payloadPath) => [
             "mesh-transform",
             "--payload",
             payloadPath,
@@ -587,7 +590,8 @@ const server = Bun.serve({
           if (!body.ok || !body.png) {
             return bad(String(body.error ?? "TEXTURE_FAILED"));
           }
-          return new Response(Bun.file(body.png), {
+          const bytes = await Bun.file(body.png).arrayBuffer();
+          return new Response(bytes, {
             headers: {
               "content-type": "image/png",
               "cache-control": "public, max-age=3600",
@@ -595,13 +599,21 @@ const server = Bun.serve({
             },
           });
         } catch (error) {
+          if (error instanceof BridgeError) {
+            return json(
+              { ok: false, error: error.code, detail: error.detail },
+              error.code === "BRIDGE_TIMEOUT" ? 504 : 500,
+            );
+          }
           return json(
             {
               ok: false,
-              error: error instanceof Error ? error.message : String(error),
+              error: "BRIDGE_FAILED",
             },
             500,
           );
+        } finally {
+          rmSync(outDir, { recursive: true, force: true });
         }
       },
     },
@@ -613,17 +625,12 @@ const server = Bun.serve({
         } catch {
           return bad("INVALID_JSON");
         }
-        const payloadPath = join(
-          config.tmpDir,
-          `map-pack-${crypto.randomUUID()}.json`,
-        );
         const outFile = join(
           config.exportsDir,
           `map-pack-${Date.now()}.sql`,
         );
-        await Bun.write(payloadPath, JSON.stringify(body, null, 2));
         return safeBridge(() =>
-          runBridge([
+          runBridgeWithPayload("map-pack", body, (payloadPath) => [
             "map-studio-export-pack",
             "--payload",
             payloadPath,
@@ -745,19 +752,18 @@ const server = Bun.serve({
         if (!Array.isArray(files) || files.length === 0) {
           return bad("FILES_REQUIRED");
         }
-        const payloadPath = join(
-          config.tmpDir,
-          `client-install-${crypto.randomUUID()}.json`,
-        );
-        await Bun.write(payloadPath, JSON.stringify({ files }, null, 2));
         return safeBridge(() =>
-          runBridge([
+          runBridgeWithPayload(
             "client-install",
-            "--target-client",
-            targetClient,
-            "--payload",
-            payloadPath,
-          ]),
+            { files },
+            (payloadPath) => [
+              "client-install",
+              "--target-client",
+              targetClient,
+              "--payload",
+              payloadPath,
+            ],
+          ),
         );
       },
     },
@@ -769,14 +775,9 @@ const server = Bun.serve({
         } catch {
           return bad("INVALID_JSON");
         }
-        const payloadPath = join(
-          config.tmpDir,
-          `map-create-${crypto.randomUUID()}.json`,
-        );
         const outFile = join(config.exportsDir, `map-create-${Date.now()}.sql`);
-        await Bun.write(payloadPath, JSON.stringify(body, null, 2));
         return safeBridge(() =>
-          runBridge([
+          runBridgeWithPayload("map-create", body, (payloadPath) => [
             "map-create",
             "--payload",
             payloadPath,
@@ -794,14 +795,9 @@ const server = Bun.serve({
         } catch {
           return bad("INVALID_JSON");
         }
-        const payloadPath = join(
-          config.tmpDir,
-          `stage-set-write-${crypto.randomUUID()}.json`,
-        );
         const outDir = join(config.exportsDir, `stage-set-${Date.now()}`);
-        await Bun.write(payloadPath, JSON.stringify(body, null, 2));
         return safeBridge(() =>
-          runBridge([
+          runBridgeWithPayload("stage-set-write", body, (payloadPath) => [
             "stage-set-write",
             "--payload",
             payloadPath,
@@ -821,14 +817,9 @@ const server = Bun.serve({
         } catch {
           return bad("INVALID_JSON");
         }
-        const payloadPath = join(
-          config.tmpDir,
-          `ftm-author-${crypto.randomUUID()}.json`,
-        );
         const outDir = join(config.exportsDir, `ftm-author-${Date.now()}`);
-        await Bun.write(payloadPath, JSON.stringify(body, null, 2));
         return safeBridge(() =>
-          runBridge([
+          runBridgeWithPayload("ftm-author", body, (payloadPath) => [
             "ftm-author",
             "--payload",
             payloadPath,
@@ -948,17 +939,12 @@ const server = Bun.serve({
         } catch {
           return bad("INVALID_JSON");
         }
-        const payloadPath = join(
-          config.tmpDir,
-          `content-pack-${crypto.randomUUID()}.json`,
-        );
         const outDir = join(
           config.exportsDir,
           `content-pack-${Date.now()}`,
         );
-        await Bun.write(payloadPath, JSON.stringify(body, null, 2));
         return safeBridge(() =>
-          runBridge([
+          runBridgeWithPayload("content-pack", body, (payloadPath) => [
             "content-pack-build",
             "--payload",
             payloadPath,
@@ -981,19 +967,18 @@ const server = Bun.serve({
         if (!Array.isArray(files) || files.length === 0) {
           return bad("INSTALL_PLAN_REQUIRED");
         }
-        const payloadPath = join(
-          config.tmpDir,
-          `content-pack-install-${crypto.randomUUID()}.json`,
-        );
-        await Bun.write(payloadPath, JSON.stringify({ files }, null, 2));
         const installed = await safeBridge(() =>
-          runBridge([
-            "client-install",
-            "--target-client",
-            targetClient,
-            "--payload",
-            payloadPath,
-          ]),
+          runBridgeWithPayload(
+            "content-pack-install",
+            { files },
+            (payloadPath) => [
+              "client-install",
+              "--target-client",
+              targetClient,
+              "--payload",
+              payloadPath,
+            ],
+          ),
         );
         // safeBridge returns Response - need raw bridge for chaining
         return installed;
@@ -1010,22 +995,18 @@ const server = Bun.serve({
         const targetClient = String(body.targetClient ?? config.localClient);
         const installPlan = body.installPlan;
         if (!Array.isArray(installPlan)) return bad("INSTALL_PLAN_REQUIRED");
-        const payloadPath = join(
-          config.tmpDir,
-          `content-pack-playtest-${crypto.randomUUID()}.json`,
-        );
-        await Bun.write(
-          payloadPath,
-          JSON.stringify({ installPlan }, null, 2),
-        );
         return safeBridge(() =>
-          runBridge([
+          runBridgeWithPayload(
             "content-pack-playtest",
-            "--target-client",
-            targetClient,
-            "--payload",
-            payloadPath,
-          ]),
+            { installPlan },
+            (payloadPath) => [
+              "content-pack-playtest",
+              "--target-client",
+              targetClient,
+              "--payload",
+              payloadPath,
+            ],
+          ),
         );
       },
     },
@@ -1038,19 +1019,18 @@ const server = Bun.serve({
           return bad("INVALID_JSON");
         }
         const targetClient = String(body.targetClient ?? config.localClient);
-        const payloadPath = join(
-          config.tmpDir,
-          `content-pack-playtest-full-${crypto.randomUUID()}.json`,
-        );
-        await Bun.write(payloadPath, JSON.stringify(body, null, 2));
         return safeBridge(() =>
-          runBridge([
+          runBridgeWithPayload(
             "content-pack-playtest-full",
-            "--target-client",
-            targetClient,
-            "--payload",
-            payloadPath,
-          ]),
+            body,
+            (payloadPath) => [
+              "content-pack-playtest-full",
+              "--target-client",
+              targetClient,
+              "--payload",
+              payloadPath,
+            ],
+          ),
         );
       },
     },
@@ -1076,13 +1056,12 @@ const server = Bun.serve({
         ) {
           return bad("SQL_REQUEST_FIELD_FORBIDDEN");
         }
-        const payloadPath = join(
-          config.tmpDir,
-          `sql-apply-${crypto.randomUUID()}.json`,
-        );
-        await Bun.write(payloadPath, JSON.stringify(body, null, 2));
         return safeBridge(() =>
-          runBridge(["sql-apply", "--payload", payloadPath]),
+          runBridgeWithPayload("sql-apply", body, (payloadPath) => [
+            "sql-apply",
+            "--payload",
+            payloadPath,
+          ]),
         );
       },
     },

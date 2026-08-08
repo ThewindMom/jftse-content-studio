@@ -22,6 +22,8 @@ const studioRoot = join(import.meta.dir, "..");
 const artifactRoots = ["exports", "content-packs", ".tmp"].map((name) =>
   join(studioRoot, name),
 );
+const oneShotPattern =
+  /^(payload|maps|mesh-transform|mesh-tex|map-pack|client-install|map-create|stage-set-write|ftm-author|content-pack|content-pack-install|content-pack-playtest|content-pack-playtest-full|sql-apply)-/;
 
 let serverProc: ReturnType<typeof Bun.spawn> | null = null;
 let disposableClient = "";
@@ -101,6 +103,20 @@ function snapshotArtifacts(): Map<string, Set<string>> {
   );
 }
 
+function snapshotOneShotArtifacts(): string[] {
+  const root = join(studioRoot, ".tmp");
+  return existsSync(root)
+    ? readdirSync(root).filter((name) => oneShotPattern.test(name)).sort()
+    : [];
+}
+
+async function expectNoOneShotArtifacts<T>(work: () => Promise<T>): Promise<T> {
+  const before = snapshotOneShotArtifacts();
+  const result = await work();
+  expect(snapshotOneShotArtifacts()).toEqual(before);
+  return result;
+}
+
 async function waitForServerOutput(
   stream: ReadableStream<Uint8Array>,
   marker: string,
@@ -157,7 +173,22 @@ beforeAll(async () => {
   fakeMysqlDir = mkdtempSync(join(tmpdir(), "jftse-studio-mysql-"));
   fakeMysqlArgs = join(fakeMysqlDir, "args.txt");
   fakeMysqlEnv = join(fakeMysqlDir, "env.txt");
+  const realUv = Bun.which("uv");
+  if (!realUv) throw new Error("uv is required for API tests");
+  const fakeUv = join(fakeMysqlDir, "uv");
   const fakeMysql = join(fakeMysqlDir, "mysql");
+  await Bun.write(
+    fakeUv,
+    `#!/bin/sh
+for arg in "$@"; do
+  if [ "$arg" = "__bridge_invalid_json__" ]; then
+    printf 'not-json\\n'
+    exit 0
+  fi
+done
+exec ${JSON.stringify(realUv)} "$@"
+`,
+  );
   await Bun.write(
     fakeMysql,
     `#!/bin/sh
@@ -170,6 +201,7 @@ fi
 cat >/dev/null
 `,
   );
+  chmodSync(fakeUv, 0o755);
   chmodSync(fakeMysql, 0o755);
   await Bun.write(join(disposableClient, "Res/Effect/.keep"), "");
   cpSync(
@@ -257,6 +289,67 @@ describe("content studio production API", () => {
     expect(body.setup.checklist[0]).toHaveProperty("ok");
     expect(body.setup.checklist[0]).toHaveProperty("label");
   });
+
+  test("stable bridge error maps malformed output without raw exception", async () => {
+    const response = await fetch(
+      `${base}/api/mesh-studio/parse?archive=${encodeURIComponent("Res/Stage/Mesh01.res")}&member=__bridge_invalid_json__`,
+    );
+    const body = (await response.json()) as {
+      ok: boolean;
+      error: string;
+      detail: string;
+    };
+    expect(response.status).toBe(500);
+    expect(body).toEqual({
+      ok: false,
+      error: "BRIDGE_INVALID_JSON",
+      detail: "not-json",
+    });
+  });
+
+  test("temporary bridge files cleanup effect payload", async () => {
+    const response = await expectNoOneShotArtifacts(() =>
+      fetch(`${base}/api/effects/preview-build`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(softPayload),
+      }),
+    );
+    expect(response.status).toBe(200);
+  }, 120000);
+
+  test("temporary bridge files cleanup content pack payload", async () => {
+    const response = await expectNoOneShotArtifacts(() =>
+      fetch(`${base}/api/content-pack/build`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "temporary-cleanup",
+          equipment: { meshIndex: 214, char: "NIKI", desc: "cleanup" },
+        }),
+      }),
+    );
+    expect(response.status).toBe(200);
+  }, 120000);
+
+  test("temporary bridge files cleanup SQL payload", async () => {
+    const path = await writeExportSql("INSERT INTO S_Maps (id) VALUES (101);");
+    const result = await expectNoOneShotArtifacts(() =>
+      postSql({ path, dryRun: true }),
+    );
+    expect(result.response.status).toBe(200);
+  });
+
+  test("mesh texture cleanup removes one-shot directory", async () => {
+    const response = await expectNoOneShotArtifacts(() =>
+      fetch(
+        `${base}/api/mesh-studio/texture?meshMember=${encodeURIComponent("BF_Court01.dat")}`,
+      ),
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("image/png");
+    expect((await response.arrayBuffer()).byteLength).toBeGreaterThan(1_000);
+  }, 120000);
 
   test("exports library lists recent studio artifacts", async () => {
     const build = await fetch(`${base}/api/effects/preview-build`, {

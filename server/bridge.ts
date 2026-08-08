@@ -1,12 +1,60 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { bridgeEnv, config } from "./config.ts";
 
 export type BridgeResult = Record<string, unknown>;
 
-export async function runBridge(args: string[]): Promise<BridgeResult> {
+export type BridgeOptions = {
+  timeoutMs?: number;
+};
+
+export class BridgeError extends Error {
+  constructor(
+    readonly code:
+      | "BRIDGE_TIMEOUT"
+      | "BRIDGE_EXIT_FAILED"
+      | "BRIDGE_INVALID_JSON",
+    readonly detail: string,
+  ) {
+    super(code);
+    this.name = "BridgeError";
+  }
+}
+
+const DEFAULT_TIMEOUT_MS = 180_000;
+const DETAIL_LIMIT = 2_000;
+const OUTPUT_LIMIT = 1_000_000;
+
+function sanitizeDetail(value: string): string {
+  return value.replace(/[^\x09\x0a\x0d\x20-\x7e]/g, "?").slice(-DETAIL_LIMIT);
+}
+
+async function readBoundedTail(
+  stream: ReadableStream<Uint8Array>,
+): Promise<string> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let tail = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      tail = (tail + decoder.decode(value, { stream: true })).slice(
+        -OUTPUT_LIMIT,
+      );
+    }
+    return (tail + decoder.decode()).slice(-OUTPUT_LIMIT);
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+export async function runBridge(
+  args: string[],
+  options: BridgeOptions = {},
+): Promise<BridgeResult> {
   mkdirSync(config.tmpDir, { recursive: true });
-  const proc = Bun.spawn(
+  const process = Bun.spawn(
     [
       "uv",
       "run",
@@ -19,21 +67,71 @@ export async function runBridge(args: string[]): Promise<BridgeResult> {
       ...args,
     ],
     {
-    cwd: config.jftseRoot,
-    env: bridgeEnv(),
-    stdout: "pipe",
-    stderr: "pipe",
-    stdin: "ignore",
+      cwd: config.jftseRoot,
+      env: bridgeEnv(),
+      stdout: "pipe",
+      stderr: "pipe",
+      stdin: "ignore",
     },
   );
-  const stdout = await new Response(proc.stdout).text();
-  const stderr = await new Response(proc.stderr).text();
-  const code = await proc.exited;
-  if (code !== 0) {
-    throw new Error(stderr || stdout || `bridge exited ${code}`);
+  const completion = Promise.all([
+    readBoundedTail(process.stdout),
+    readBoundedTail(process.stderr),
+    process.exited,
+  ]);
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  let timeout: Timer | undefined;
+  const outcome = await Promise.race([
+    completion.then((result) => ({ kind: "complete" as const, result })),
+    new Promise<{ kind: "timeout" }>((resolve) => {
+      timeout = setTimeout(() => resolve({ kind: "timeout" }), timeoutMs);
+    }),
+  ]);
+  if (timeout) clearTimeout(timeout);
+  if (outcome.kind === "timeout") {
+    process.kill();
+    await completion;
+    throw new BridgeError(
+      "BRIDGE_TIMEOUT",
+      `Bridge timed out after ${timeoutMs}ms`,
+    );
   }
-  const line = stdout.trim().split("\n").filter(Boolean).at(-1) ?? "{}";
-  return JSON.parse(line) as BridgeResult;
+
+  const [stdout, stderr, code] = outcome.result;
+  if (code !== 0) {
+    throw new BridgeError(
+      "BRIDGE_EXIT_FAILED",
+      sanitizeDetail(stderr || stdout || `Bridge exited ${code}`),
+    );
+  }
+  const line = stdout.trim().split("\n").filter(Boolean).at(-1) ?? "";
+  try {
+    return JSON.parse(line) as BridgeResult;
+  } catch {
+    throw new BridgeError(
+      "BRIDGE_INVALID_JSON",
+      sanitizeDetail(line || "Bridge returned no JSON"),
+    );
+  }
+}
+
+export async function runBridgeWithPayload(
+  prefix: string,
+  payload: Record<string, unknown>,
+  argsForPath: (payloadPath: string) => string[],
+  options?: BridgeOptions,
+): Promise<BridgeResult> {
+  mkdirSync(config.tmpDir, { recursive: true });
+  const payloadPath = join(
+    config.tmpDir,
+    `${prefix}-${crypto.randomUUID()}.json`,
+  );
+  await Bun.write(payloadPath, JSON.stringify(payload, null, 2));
+  try {
+    return await runBridge(argsForPath(payloadPath), options);
+  } finally {
+    rmSync(payloadPath, { force: true });
+  }
 }
 
 export async function buildEffect(
@@ -43,15 +141,18 @@ export async function buildEffect(
   const destination =
     outDir ?? join(config.exportsDir, `effect-${Date.now()}`);
   mkdirSync(destination, { recursive: true });
-  const payloadPath = join(config.tmpDir, `payload-${crypto.randomUUID()}.json`);
-  await Bun.write(payloadPath, JSON.stringify(payload, null, 2));
-  return runBridge([
-    "build-effect",
-    "--payload",
-    payloadPath,
-    "--out-dir",
-    destination,
-  ]);
+  return runBridgeWithPayload(
+    "payload",
+    payload,
+    (payloadPath) => [
+      "build-effect",
+      "--payload",
+      payloadPath,
+      "--out-dir",
+      destination,
+    ],
+    { timeoutMs: 300_000 },
+  );
 }
 
 export async function installEffect(input: {
