@@ -48,12 +48,31 @@ export type AniTrackJson = {
   readonly start?: readonly number[] | null;
 };
 
-export type DriveMode = "bind" | "position-only-fk" | "quat";
+export type DriveMode =
+  | "bind"
+  | "position-only-fk"
+  | "hierarchical-fk"
+  | "quat";
+
+export type BoneRestState = {
+  readonly positions: readonly THREE.Vector3[];
+  readonly quats: readonly THREE.Quaternion[];
+  readonly worldPositions: readonly THREE.Vector3[];
+  readonly parentIndex: readonly (number | null)[];
+  readonly children: readonly (readonly number[])[];
+  readonly topoOrder: readonly number[];
+};
 
 export function buildBoneHierarchy(
   palette: readonly SkeletonBoneJson[],
-): { bones: THREE.Bone[]; rootBones: THREE.Bone[]; byIndex: THREE.Bone[] } {
+): {
+  bones: THREE.Bone[];
+  rootBones: THREE.Bone[];
+  byIndex: THREE.Bone[];
+  parentIndex: (number | null)[];
+} {
   const byIndex: THREE.Bone[] = [];
+  const parentIndex: (number | null)[] = [];
   for (const entry of palette) {
     const bone = new THREE.Bone();
     bone.name = entry.name;
@@ -70,6 +89,7 @@ export function buildBoneHierarchy(
     }
     bone.updateMatrix();
     byIndex[entry.index] = bone;
+    parentIndex[entry.index] = entry.parentIndex;
   }
   const rootBones: THREE.Bone[] = [];
   for (const entry of palette) {
@@ -85,9 +105,46 @@ export function buildBoneHierarchy(
       byIndex[parentIdx]!.add(bone);
     } else {
       rootBones.push(bone);
+      parentIndex[entry.index] = null;
     }
   }
-  return { bones: byIndex.filter(Boolean), rootBones, byIndex };
+  return {
+    bones: byIndex.filter(Boolean),
+    rootBones,
+    byIndex,
+    parentIndex,
+  };
+}
+
+function buildChildren(
+  parentIndex: readonly (number | null)[],
+  boneCount: number,
+): number[][] {
+  const children: number[][] = Array.from({ length: boneCount }, () => []);
+  for (let i = 0; i < boneCount; i++) {
+    const p = parentIndex[i];
+    if (p !== null && p !== undefined && p >= 0 && p < boneCount) {
+      children[p]!.push(i);
+    }
+  }
+  return children;
+}
+
+function topologicalOrder(
+  parentIndex: readonly (number | null)[],
+  boneCount: number,
+): number[] {
+  const children = buildChildren(parentIndex, boneCount);
+  const order: number[] = [];
+  const visit = (i: number) => {
+    order.push(i);
+    for (const c of children[i] ?? []) visit(c);
+  };
+  for (let i = 0; i < boneCount; i++) {
+    const p = parentIndex[i];
+    if (p === null || p === undefined || p < 0) visit(i);
+  }
+  return order;
 }
 
 export function buildSkinnedGeometry(
@@ -142,6 +199,7 @@ export function buildSkinnedMesh(
   skeleton: THREE.Skeleton;
   bones: THREE.Bone[];
   root: THREE.Object3D;
+  parentIndex: (number | null)[];
   vertexCount: number;
   boneCount: number;
 } | null {
@@ -149,7 +207,7 @@ export function buildSkinnedMesh(
   const palette = payload.skeleton?.bones;
   if (!verts?.length || !palette?.length) return null;
 
-  const { bones, rootBones, byIndex } = buildBoneHierarchy(palette);
+  const { rootBones, byIndex, parentIndex } = buildBoneHierarchy(palette);
   const geometry = buildSkinnedGeometry(verts, palette.length);
   // Three r152+: mesh type drives GPU weights; material flags are unused.
   let mat: THREE.Material;
@@ -172,7 +230,8 @@ export function buildSkinnedMesh(
   for (const rb of rootBones) root.add(rb);
 
   // Bind with current pose as bind pose (local matrices already applied)
-  const skeleton = new THREE.Skeleton(byIndex.filter(Boolean));
+  const bones = byIndex.filter(Boolean);
+  const skeleton = new THREE.Skeleton(bones);
   mesh.add(root);
   mesh.bind(skeleton);
   skeleton.calculateInverses();
@@ -180,134 +239,43 @@ export function buildSkinnedMesh(
   return {
     mesh,
     skeleton,
-    bones: byIndex.filter(Boolean),
+    bones,
     root,
+    parentIndex,
     vertexCount: verts.length,
     boneCount: palette.length,
   };
 }
 
-function sampleVec3(
-  series: readonly (readonly number[])[] | null | undefined,
-  frame: number,
-): THREE.Vector3 | null {
-  if (!series?.length) return null;
-  const i = Math.max(0, Math.min(series.length - 1, frame));
-  const p = series[i];
-  if (!p || p.length < 3) return null;
-  return new THREE.Vector3(p[0] ?? 0, p[1] ?? 0, p[2] ?? 0);
-}
-
-function sampleQuat(
-  series: readonly (readonly number[])[] | null | undefined,
-  frame: number,
-): THREE.Quaternion | null {
-  if (!series?.length) return null;
-  const i = Math.max(0, Math.min(series.length - 1, frame));
-  const q = series[i];
-  if (!q || q.length < 4) return null;
-  const quat = new THREE.Quaternion(q[0] ?? 0, q[1] ?? 0, q[2] ?? 0, q[3] ?? 1);
-  if (quat.lengthSq() < 1e-8) return null;
-  quat.normalize();
-  return quat;
-}
-
-/**
- * Drive skeleton bones from ANI tracks.
- * - quat mode: apply track.rotations when present
- * - position-only-fk: set bone.position from track positions (experiment)
- * Never throws on missing quats / short tracks.
- */
-export function driveBonesFromAni(
-  bones: readonly THREE.Bone[],
-  tracks: readonly AniTrackJson[],
-  frame: number,
-  mode: DriveMode,
-  restPositions: readonly THREE.Vector3[],
-  restQuats: readonly THREE.Quaternion[],
-): DriveMode {
-  if (mode === "bind") {
-    for (let i = 0; i < bones.length; i++) {
-      const bone = bones[i];
-      const rp = restPositions[i];
-      const rq = restQuats[i];
-      if (!bone || !rp || !rq) continue;
-      bone.position.copy(rp);
-      bone.quaternion.copy(rq);
-      bone.updateMatrix();
-    }
-    return "bind";
-  }
-
-  const n = Math.min(bones.length, tracks.length);
-  let appliedQuat = false;
-  let appliedPos = false;
-
-  for (let i = 0; i < n; i++) {
-    const bone = bones[i];
-    const track = tracks[i];
-    if (!bone || !track) continue;
-    const restP = restPositions[i];
-    const restQ = restQuats[i];
-
-    if (mode === "quat" && track.hasRotations && track.rotations) {
-      const q = sampleQuat(track.rotations, frame);
-      if (q) {
-        bone.quaternion.copy(q);
-        appliedQuat = true;
-      } else if (restQ) {
-        bone.quaternion.copy(restQ);
-      }
-      // Still apply positions if present as local translation experiment
-      const p = sampleVec3(track.positions, frame);
-      if (p) {
-        bone.position.copy(p);
-        appliedPos = true;
-      } else if (restP) {
-        bone.position.copy(restP);
-      }
-    } else {
-      // position-only FK experiment
-      const p = sampleVec3(track.positions, frame);
-      if (p) {
-        bone.position.copy(p);
-        appliedPos = true;
-      } else if (restP) {
-        bone.position.copy(restP);
-      }
-      if (restQ) bone.quaternion.copy(restQ);
-    }
-    bone.updateMatrix();
-  }
-
-  // Bones beyond track count stay at rest
-  for (let i = n; i < bones.length; i++) {
-    const bone = bones[i];
-    const rp = restPositions[i];
-    const rq = restQuats[i];
-    if (!bone || !rp || !rq) continue;
-    bone.position.copy(rp);
-    bone.quaternion.copy(rq);
-    bone.updateMatrix();
-  }
-
-  if (mode === "quat" && appliedQuat) return "quat";
-  if (appliedPos) return "position-only-fk";
-  return "bind";
-}
-
 export function captureBoneRest(
   bones: readonly THREE.Bone[],
-): { positions: THREE.Vector3[]; quats: THREE.Quaternion[] } {
+  parentIndex: readonly (number | null)[],
+): BoneRestState {
   const positions: THREE.Vector3[] = [];
   const quats: THREE.Quaternion[] = [];
+  const worldPositions: THREE.Vector3[] = [];
+  for (const bone of bones) {
+    bone.updateMatrixWorld(true);
+  }
   for (const bone of bones) {
     positions.push(bone.position.clone());
     quats.push(bone.quaternion.clone());
+    worldPositions.push(new THREE.Vector3().setFromMatrixPosition(bone.matrixWorld));
   }
-  return { positions, quats };
+  const n = bones.length;
+  const parents = parentIndex.slice(0, n);
+  while (parents.length < n) parents.push(null);
+  const children = buildChildren(parents, n);
+  const topoOrder = topologicalOrder(parents, n);
+  return {
+    positions,
+    quats,
+    worldPositions,
+    parentIndex: parents,
+    children,
+    topoOrder,
+  };
 }
 
-export function resolveDriveMode(hasRotations: boolean | undefined): DriveMode {
-  return hasRotations ? "quat" : "position-only-fk";
-}
+// Drive implementation lives in boneDrive.ts (keeps this module under LOC budget).
+export { driveBonesFromAni, resolveDriveMode } from "./boneDrive";

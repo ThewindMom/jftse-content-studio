@@ -668,14 +668,18 @@ describe("content studio production API", () => {
     expect(body.ani.sectionProbe.multiClip.clipCount).toBeGreaterThanOrEqual(2);
     expect(body.ani.sectionProbe.clipIndex ?? body.ani.clipIndex ?? 0).toBe(0);
     expect(String(body.ani.layout)).toMatch(/multi-clip/);
-    // Drive mode: quats only when confident; Niki falls back to position-only FK
-    expect(["quat", "position-only-fk"]).toContain(body.ani.driveMode);
+    // Drive mode: quats only when confident; else hierarchical-fk (not flat pos-only)
+    expect(["quat", "hierarchical-fk", "position-only-fk"]).toContain(
+      body.ani.driveMode,
+    );
+    expect(body.ani.sectionProbe.rotationHypothesis.recommendedDriveMode).toBeDefined();
     if (body.ani.hasRotations) {
       expect(body.ani.driveMode).toBe("quat");
       expect(body.ani.tracks[0].hasRotations).toBe(true);
     } else {
-      expect(body.ani.driveMode).toBe("position-only-fk");
+      expect(body.ani.driveMode).toBe("hierarchical-fk");
       expect(body.ani.tracks[0].hasRotations).toBe(false);
+      expect(body.ani.sectionProbe.rotationHypothesis.confident).toBe(false);
     }
   }, 60000);
 

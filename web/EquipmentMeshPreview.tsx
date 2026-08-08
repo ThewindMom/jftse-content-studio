@@ -6,6 +6,7 @@ import {
   captureBoneRest,
   driveBonesFromAni,
   resolveDriveMode,
+  type BoneRestState,
   type DriveMode,
   type SkinParsePayload,
 } from "./skinnedBody";
@@ -124,8 +125,7 @@ export function EquipmentMeshPreview({
   const markerRef = useRef<THREE.Mesh | null>(null);
   const skinnedRef = useRef<THREE.SkinnedMesh | null>(null);
   const skeletonBonesRef = useRef<THREE.Bone[]>([]);
-  const restPosRef = useRef<THREE.Vector3[]>([]);
-  const restQuatRef = useRef<THREE.Quaternion[]>([]);
+  const boneRestRef = useRef<BoneRestState | null>(null);
   const bindMatrixRef = useRef<THREE.Matrix4 | null>(null);
   const restLocalRef = useRef<THREE.Matrix4>(new THREE.Matrix4());
   const [label, setLabel] = useState("Resolving equipment mesh…");
@@ -228,9 +228,10 @@ export function EquipmentMeshPreview({
             scene.add(built.mesh);
             skinnedRef.current = built.mesh;
             skeletonBonesRef.current = built.bones;
-            const rest = captureBoneRest(built.bones);
-            restPosRef.current = rest.positions;
-            restQuatRef.current = rest.quats;
+            boneRestRef.current = captureBoneRest(
+              built.bones,
+              built.parentIndex,
+            );
             skinnedDispose = () => {
               built.mesh.geometry.dispose();
               const mat = built.mesh.material;
@@ -372,6 +373,7 @@ export function EquipmentMeshPreview({
           markerRef.current = null;
           skinnedRef.current = null;
           skeletonBonesRef.current = [];
+          boneRestRef.current = null;
           mount.replaceChildren();
         };
       } catch (err) {
@@ -386,32 +388,27 @@ export function EquipmentMeshPreview({
     };
   }, [meshIndex, char]);
 
-  // Apply live frame: skeleton drive + racket delta
+  // Apply live frame: skeleton hierarchical drive + racket delta
   useEffect(() => {
     const bones = skeletonBonesRef.current;
-    if (ani && bones.length > 0) {
-      const mode = resolveDriveMode(ani.hasRotations);
+    const boneRest = boneRestRef.current;
+    if (ani && bones.length > 0 && boneRest) {
+      const mode = resolveDriveMode(ani.hasRotations, { hierarchical: true });
       const applied = driveBonesFromAni(
         bones,
         ani.tracks,
         frame,
         mode,
-        restPosRef.current,
-        restQuatRef.current,
+        boneRest,
       );
       setDriveMode(applied);
-      setModeBadge(
-        applied === "quat"
-          ? playing
-            ? "live quat FK"
-            : "quat scrub"
-          : applied === "position-only-fk"
-            ? playing
-              ? "live pos-only FK"
-              : "pos-only FK scrub"
-            : "bind pose",
-      );
-      // Keep skinned mesh matrices current
+      const live = playing ? "live " : "";
+      if (applied === "quat") setModeBadge(`${live}quat FK`.trim());
+      else if (applied === "hierarchical-fk")
+        setModeBadge(`${live}hierarchical FK`.trim());
+      else if (applied === "position-only-fk")
+        setModeBadge(`${live}pos-only FK`.trim());
+      else setModeBadge("bind pose");
       skinnedRef.current?.skeleton.bones.forEach((b) => b.updateMatrixWorld(true));
     }
 
@@ -424,9 +421,9 @@ export function EquipmentMeshPreview({
     const dx = pos[0]! - start[0]!;
     const dy = pos[1]! - start[1]!;
     const dz = pos[2]! - start[2]!;
-    const rest = restLocalRef.current;
+    const restLocal = restLocalRef.current;
     const delta = new THREE.Matrix4().makeTranslation(dx, dy, dz);
-    const composed = rest.clone().multiply(delta);
+    const composed = restLocal.clone().multiply(delta);
     racket.matrixAutoUpdate = false;
     racket.matrix.copy(composed);
     racket.matrixWorldNeedsUpdate = true;
@@ -493,9 +490,17 @@ export function EquipmentMeshPreview({
           const idx = pickRacketTrack(body.ani.tracks, attachPos);
           setTrackIndex(idx);
           setFrame(0);
-          const mode = resolveDriveMode(body.ani.hasRotations);
+          const mode = resolveDriveMode(body.ani.hasRotations, {
+            hierarchical: true,
+          });
           setDriveMode(mode);
-          setModeBadge(mode === "quat" ? "quat scrub" : "pos-only FK scrub");
+          setModeBadge(
+            mode === "quat"
+              ? "quat scrub"
+              : mode === "hierarchical-fk"
+                ? "hierarchical FK scrub"
+                : "pos-only FK scrub",
+          );
           setLabel(
             (prev) =>
               `${prev.split(" · ANI")[0]} · ANI ${member} · ${body.ani!.frameCount}f · track ${idx}` +
@@ -595,10 +600,10 @@ export function EquipmentMeshPreview({
         </div>
       )}
       <div className="empty">
-        Body: Three.js SkinnedMesh from /api/skin/parse + ordered 304-byte bone palette
-        (indices 0..N). ANI drive uses quats when{" "}
-        <code>hasRotations</code>, else position-only FK experiment. Racket still
-        uses Bone_Racket bind + float3 track delta.
+        Body: SkinnedMesh from /api/skin/parse + ordered 304-byte bone palette.
+        ANI drive: <code>quat</code> when rotations recover; else{" "}
+        <code>hierarchical-fk</code> (parent chain + look-at from float3 positions —
+        not full DX9 quat retarget). Racket uses Bone_Racket bind + float3 delta.
       </div>
     </div>
   );

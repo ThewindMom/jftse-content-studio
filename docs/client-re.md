@@ -315,17 +315,21 @@ Module: `python/bone_attach.py`
 
 ### ANI → bone drive
 
-- `driveMode`: `quat` only when `rotationHypothesis.confident`; else **`position-only-fk`**
+- Dense **unit float4 quats not found** on NikiAniA/B (A/C ≈ 55–60% unit samples as float4 noise; B ≈ 0%). Multi-clip C float3 is **not** a ≥90% xyz-compressed-quat channel either.
+- `driveMode` / `rotationHypothesis.recommendedDriveMode`:
+  - `quat` only when `rotationHypothesis.confident` (dense unit float4)
+  - else **`hierarchical-fk`** (default): parent chain + look-at swing from float3 position deltas on the ordered skeleton
+  - `position-only-fk` remains available as a flat/legacy experiment
 - Track labels optional via `?char=NIKI` (skeleton name order)
-- UI applies quats when present; otherwise sets `bone.position` from float3 tracks (experiment). No throw on missing quats.
+- UI: Equipment preview uses hierarchical-fk when `hasRotations` is false. No throw on missing quats.
 
 ## Honest remaining limits
 
 - Not a full Ghidra/DX9 renderer; topology still best-effort index recovery
 - Submesh **index ranges** per material not fully table-parsed (names + counts known)
-- Body SkinnedMesh bind pose works; animated skinning is **position-only FK experiment** until ANI quats are confident
-- Position-only FK is not hierarchical retarget parity — useful for scrubbing/index alignment, not final gameplay motion
-- `.ani` section B bitstream still unknown; section C not auto-promoted to quats (unit ratio ≪ 90%)
+- Body SkinnedMesh bind pose works; animation uses **hierarchical-fk** (position deltas + look-at) until a true ANI rotation channel is decoded
+- Hierarchical-fk is better than flat position dumps but is **not** full DX9 local-quat retarget parity
+- `.ani` section B bitstream still unknown; section C multi-clip float3 not proven as euler or compressed quats
 - FTM binary **read** is complete (FT-ResTool schema); studio ships a 2D inspect desk, not binary rewrite
 - Stage multi-draw compositor loads World + Object DATs with visibility toggles (draw cap); sky/collision optional; `.eft` effects not meshed
 

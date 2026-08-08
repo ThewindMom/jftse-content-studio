@@ -237,7 +237,7 @@ DESIGN.md               Product / visual language
 | Soft particle export + local install | Pixel-true DX9 Equipment silhouette |
 | Stage scene graph + **multi-draw World/Object compositor** (layer toggles, cap 6) | Full multi-material submesh ranges + VFX `.eft` meshing |
 | FTM placements + **2D desk** (select/focus) + **patched .ftm export** under `exports/` | Full FT-ResTool tile paint GUI / stock-client FTM install |
-| ANI float3 **multi-clip** stacks + scrub/play (`maxFrames=0`, `clipIndex`) + **`driveMode`** (`quat` \| `position-only-fk`) | Confident quat graph / section-B decode / hierarchical retarget parity |
+| ANI float3 **multi-clip** + **`driveMode`**: `quat` \| **`hierarchical-fk`** (look-at) \| `position-only-fk` | Dense unit-quat channel / section-B decode / DX9 local-quat parity |
 | Ordered **304 B skeleton palette** + body **SkinnedMesh** + Bone_Racket attach | Gameplay-accurate skin weights / material submesh ranges |
 | Mesh recovery + stride-aware edit + export | Blender-parity topology authoring |
 

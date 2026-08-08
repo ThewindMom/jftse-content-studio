@@ -375,16 +375,25 @@ def _probe_sections(data: bytes, header: AniHeader) -> dict[str, Any]:
             else f"Tail starts with {len(tail_clips)} float3 clip(s)"
         ),
     }
-    # Prefer section C as rotation candidate when unit ratio is high
+    # Prefer section C as dense float4 rotation candidate when unit ratio is high
     c_ratio = sections.get("C", {}).get("quatUnitSampleRatio") or 0.0
+    a_ratio = sections.get("A", {}).get("quatUnitSampleRatio") or 0.0
+    confident = bool(c_ratio >= 0.9)
     sections["rotationHypothesis"] = {
         "preferredSection": "C" if c_ratio >= 0.9 else None,
-        "confident": bool(c_ratio >= 0.9),
+        "confident": confident,
+        "sectionAUnitRatio": a_ratio,
+        "sectionCUnitRatio": c_ratio,
+        "recommendedDriveMode": "quat" if confident else "hierarchical-fk",
         "note": (
             "Section C looks like unit quaternions"
-            if c_ratio >= 0.9
-            else "No section has ≥90% unit-length float4 samples; "
-            "C float3 stacks may be euler/aux but not validated as quats"
+            if confident
+            else (
+                "No dense unit float4 quat graph in A/B/C/tail on Niki-class ANI "
+                f"(A≈{a_ratio:.0%} C≈{c_ratio:.0%} unit samples). "
+                "Use hierarchical-fk (parent chain + look-at from float3 positions) "
+                "until a true rotation channel is decoded."
+            )
         ),
     }
     return sections

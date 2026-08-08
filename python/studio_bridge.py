@@ -62,10 +62,15 @@ def _client_root(jftse: Path) -> Path:
 
 def _load_wind_assets():
     import importlib
+    import sys
+    from pathlib import Path as _P
 
-    # Optional sibling JFTSE tooling; resolved at runtime, not a package dep.
-    mod = importlib.import_module("tools.wind_dragon_slayer")
-    return mod.wind_assets
+    # Ensure JFTSE tools package is importable even if caller skipped _jftse_root().
+    root = _P(__import__("os").environ.get("JFTSE_ROOT", "")).expanduser()
+    if root.is_dir() and str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    mod = importlib.import_module("tools.wind_dragon_slayer.wind_assets")
+    return mod
 
 
 BANNED_ATLAS_MARKERS = (
@@ -1070,9 +1075,14 @@ def cmd_ani_parse(args: argparse.Namespace) -> dict[str, Any]:
         payload["sampleMaxFrames"] = max_frames
         payload["clipIndex"] = clip_index
         payload["channel"] = channel.upper()
-        payload["driveMode"] = (
-            "quat" if payload.get("hasRotations") else "position-only-fk"
-        )
+        # Prefer hierarchical-fk when dense quats not recovered (see rotationHypothesis).
+        if payload.get("hasRotations"):
+            payload["driveMode"] = "quat"
+        else:
+            hyp = (payload.get("sectionProbe") or {}).get("rotationHypothesis") or {}
+            payload["driveMode"] = str(
+                hyp.get("recommendedDriveMode") or "hierarchical-fk"
+            )
         if bone_names is not None:
             payload["boneNames"] = bone_names[: payload.get("trackCount", 0) or 0]
         return {"ok": True, "ani": payload}

@@ -10,6 +10,13 @@ import {
   type SkinParsePayload,
 } from "../web/skinnedBody";
 
+function restOf(
+  bones: THREE.Bone[],
+  parentIndex: (number | null)[],
+) {
+  return captureBoneRest(bones, parentIndex);
+}
+
 function bone(
   index: number,
   name: string,
@@ -79,17 +86,25 @@ describe("skinnedBody helpers", () => {
     (built!.mesh.material as THREE.Material).dispose();
   });
 
-  test("driveBonesFromAni uses position-only FK when no quats (no throw)", () => {
+  test("resolveDriveMode prefers hierarchical-fk when no quats", () => {
+    expect(resolveDriveMode(false)).toBe("hierarchical-fk");
+    expect(resolveDriveMode(true)).toBe("quat");
+    expect(resolveDriveMode(false, { hierarchical: false })).toBe(
+      "position-only-fk",
+    );
+  });
+
+  test("driveBonesFromAni hierarchical-fk applies position deltas (no throw)", () => {
     const palette = [bone(0, "root", null, 0), bone(1, "child", 0, 1)];
-    const { bones } = buildBoneHierarchy(palette);
-    const rest = captureBoneRest(bones);
+    const { bones, parentIndex } = buildBoneHierarchy(palette);
+    const rest = restOf(bones, parentIndex);
     const tracks = [
       {
         index: 0,
         name: "root",
         positions: [
           [0, 0, 0],
-          [3, 0, 0],
+          [0.5, 0, 0],
         ],
         hasRotations: false,
       },
@@ -98,29 +113,30 @@ describe("skinnedBody helpers", () => {
         name: "child",
         positions: [
           [1, 0, 0],
-          [1, 2, 0],
+          [1, 0.25, 0],
         ],
         hasRotations: false,
       },
     ];
-    expect(resolveDriveMode(false)).toBe("position-only-fk");
     const mode = driveBonesFromAni(
       bones,
       tracks,
       1,
-      "position-only-fk",
-      rest.positions,
-      rest.quats,
+      "hierarchical-fk",
+      rest,
     );
-    expect(mode).toBe("position-only-fk");
-    expect(bones[0]!.position.x).toBeCloseTo(3, 5);
-    expect(bones[1]!.position.y).toBeCloseTo(2, 5);
+    expect(mode).toBe("hierarchical-fk");
+    // delta frame1-frame0 applied on rest local
+    expect(bones[0]!.position.x).toBeCloseTo(rest.positions[0]!.x + 0.5, 5);
+    expect(bones[1]!.position.y).toBeCloseTo(rest.positions[1]!.y + 0.25, 5);
+    // child remains parented
+    expect(bones[1]!.parent).toBe(bones[0]!);
   });
 
   test("driveBonesFromAni applies quats when present", () => {
     const palette = [bone(0, "root", null, 0)];
-    const { bones } = buildBoneHierarchy(palette);
-    const rest = captureBoneRest(bones);
+    const { bones, parentIndex } = buildBoneHierarchy(palette);
+    const rest = restOf(bones, parentIndex);
     const q = new THREE.Quaternion().setFromAxisAngle(
       new THREE.Vector3(0, 1, 0),
       Math.PI / 2,
@@ -134,29 +150,21 @@ describe("skinnedBody helpers", () => {
         hasRotations: true,
       },
     ];
-    const mode = driveBonesFromAni(
-      bones,
-      tracks,
-      0,
-      "quat",
-      rest.positions,
-      rest.quats,
-    );
+    const mode = driveBonesFromAni(bones, tracks, 0, "quat", rest);
     expect(mode).toBe("quat");
     expect(bones[0]!.quaternion.y).toBeCloseTo(q.y, 5);
   });
 
   test("driveBonesFromAni missing quats falls back without throw", () => {
     const palette = [bone(0, "root", null, 0)];
-    const { bones } = buildBoneHierarchy(palette);
-    const rest = captureBoneRest(bones);
+    const { bones, parentIndex } = buildBoneHierarchy(palette);
+    const rest = restOf(bones, parentIndex);
     const mode = driveBonesFromAni(
       bones,
       [{ index: 0, name: "root", positions: [[1, 2, 3]], hasRotations: false }],
       0,
       "quat", // requested quat but track has none
-      rest.positions,
-      rest.quats,
+      rest,
     );
     expect(mode).toBe("position-only-fk");
     expect(bones[0]!.position.z).toBeCloseTo(3, 5);
