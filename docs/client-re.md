@@ -246,17 +246,16 @@ Header (28 B LE), verified NikiAniA/B:
 | A+B+C+28 | 1 067 545 (tail ~359 KB) | 1 211 353 (tail ~407 KB) |
 
 **Section probe (2026-08 session):**
-- **A** starts with plausible **float3 positions** (sample y≈6.37); track-major float3 is smooth.
-- Bytes/track-frame ≈ **202** if treated as uniform packing — far larger than pos(12)+quat(16).
-- **B** does not look like unit quats or clean float3 (near-zero unit ratio; garbage float sample).
-- **C** has **~58–60%** unit-length float4 samples in bulk scans — **not** ≥90%, so not attached as confident quat tracks yet.
-- Residual after one float3 block in A is still ~335 KB → more channels/clips remain undecoded.
-- Studio exposes `sectionProbe` on `/api/ani/parse` and only attaches `rotations` when unit ratio ≥0.9.
+- **A** packs **multiple consecutive float3 clips**:
+  - block size = `trackCount × frameCount × 12` (NikiAniA: 40×44×12 = **21120** B)
+  - NikiAniA: **16** smooth track-major clips + **18779** residual bytes
+  - clip0 root ≈ `(0, 6.37, 0)`; later clips include unit-axis-like roots
+- **B** ≈ same size as **C** on NikiAniA; **not** a dense bone-index u16 stream (u16&lt;40 ratio ≈1.4%). Encoding unknown.
+- **C** bulk float4 unit-length ratio ≈ **58–60%** — **not** ≥90%, so rotations are **not** auto-attached.
+- Tail after A+B+C is large (~359 KB) and does not parse as a second float3 block at offset 0.
+- Studio: `sectionProbe.multiClip` + `?clipIndex=N` selects which A-stack clip to decode.
 
-Dense float3 tracks recovered by scoring frame-major vs track-major. Bone names optional
-from body skeleton order. **Not** a full quat/skinning graph yet.
-
-API: `GET /api/ani/parse?archive=…&member=…&maxFrames=0`  
+API: `GET /api/ani/parse?archive=…&member=…&maxFrames=0&clipIndex=0`  
 Module: `python/ani_codec.py`
 
 ### Bone attach (DX9 Equipment socket)

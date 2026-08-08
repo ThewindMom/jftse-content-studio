@@ -173,6 +173,53 @@ def _extract_tracks(
     return tracks
 
 
+def _float3_block_size(header: AniHeader) -> int:
+    return header.trackCount * header.frameCount * 12
+
+
+def _discover_float3_clips(
+    data: bytes,
+    *,
+    header: AniHeader,
+    section_off: int,
+    section_size: int,
+    order: str = "track-major",
+) -> list[dict[str, Any]]:
+    """Find consecutive smooth float3 clips packed inside a section (e.g. A)."""
+    block = _float3_block_size(header)
+    if block <= 0 or section_size < block:
+        return []
+    clips: list[dict[str, Any]] = []
+    rel = 0
+    idx = 0
+    while rel + block <= section_size:
+        abs_off = section_off + rel
+        tracks = _extract_tracks(
+            data, header=header, data_off=abs_off, order=order
+        )
+        if tracks is None:
+            break
+        score = sum(_smoothness(t) for t in tracks[: min(8, len(tracks))])
+        root = tracks[0][0] if tracks and tracks[0] else None
+        # Require a minimum smoothness so we don't invent clips from noise
+        if score < 50:
+            break
+        clips.append(
+            {
+                "index": idx,
+                "offset": abs_off,
+                "relativeOffset": rel,
+                "order": order,
+                "score": round(score, 3),
+                "rootStart": root,
+                "byteLength": block,
+            }
+        )
+        idx += 1
+        rel += block
+    return clips
+
+
 def _probe_sections(data: bytes, header: AniHeader) -> dict[str, Any]:
     """Describe section A/B/C packing (evidence for quat/skinning RE)."""
     off = 28
@@ -195,20 +242,75 @@ def _probe_sections(data: bytes, header: AniHeader) -> dict[str, Any]:
             total += 1
             if 0.95 <= length <= 1.05:
                 unit += 1
+        # u16 stats for section B (index-like?)
+        u16_count = len(chunk) // 2
+        u16_lt40 = 0
+        if u16_count:
+            # sample first 20k u16s
+            sample_n = min(u16_count, 20_000)
+            for i in range(sample_n):
+                v = struct.unpack_from("<H", chunk, i * 2)[0]
+                if v < 40:
+                    u16_lt40 += 1
         sections[label] = {
             "offset": off,
             "size": size,
             "bytesPerTrackFrame": size / n_tf,
             "float3Capacity": size // 12,
             "float4Capacity": size // 16,
+            "float3BlockSize": _float3_block_size(header),
+            "float3ClipSlots": size // max(_float3_block_size(header), 1),
             "quatUnitSampleRatio": (unit / total) if total else None,
             "quatUnitSamples": unit,
             "quatSamples": total,
+            "u16Lt40SampleRatio": (u16_lt40 / sample_n) if u16_count else None,
         }
         off += size
     sections["tail"] = {
         "offset": off,
         "size": max(len(data) - off, 0),
+    }
+    # Multi-clip discovery in section A (track-major float3 stacks)
+    a_off = 28
+    clips_tm = _discover_float3_clips(
+        data,
+        header=header,
+        section_off=a_off,
+        section_size=header.sectionA,
+        order="track-major",
+    )
+    clips_fm = _discover_float3_clips(
+        data,
+        header=header,
+        section_off=a_off,
+        section_size=header.sectionA,
+        order="frame-major",
+    )
+    # Prefer order that finds more high-scoring clips
+    clips = clips_tm if len(clips_tm) >= len(clips_fm) else clips_fm
+    residual = header.sectionA - (len(clips) * _float3_block_size(header))
+    sections["multiClip"] = {
+        "section": "A",
+        "order": clips[0]["order"] if clips else None,
+        "clipCount": len(clips),
+        "clips": clips,
+        "residualBytes": residual,
+        "note": (
+            f"Section A packs {len(clips)} consecutive float3 clips "
+            f"({_float3_block_size(header)} B each = trackCount×frameCount×12)"
+            if clips
+            else "No stacked float3 clips detected in section A"
+        ),
+    }
+    # Section B: same size as C on NikiAniA; not bone-index dense
+    b_ratio = sections.get("B", {}).get("u16Lt40SampleRatio") or 0.0
+    sections["sectionBHypothesis"] = {
+        "sameSizeAsC": header.sectionB == header.sectionC,
+        "boneIndexLike": b_ratio >= 0.5,
+        "note": (
+            "Section B is not a dense bone-index u16 stream "
+            f"(u16<40 sample ratio={b_ratio:.3f}); encoding still unknown"
+        ),
     }
     # Prefer section C as rotation candidate when unit ratio is high
     c_ratio = sections.get("C", {}).get("quatUnitSampleRatio") or 0.0
@@ -276,33 +378,60 @@ def parse_ani_bytes(
     *,
     name: str = "",
     bone_names: list[str] | None = None,
+    clip_index: int = 0,
 ) -> ParsedAni:
     header = parse_ani_header(data)
     probe = _probe_sections(data, header)
-    best: tuple[float, str, int, list[list[list[float]]]] | None = None
-    # Prefer starts of section A (28) and a few nearby offsets used by older heuristics
-    for data_off in (28, 32, 24, 36, 48, 28 + header.sectionA):
-        for order in ("frame-major", "track-major"):
-            tracks = _extract_tracks(data, header=header, data_off=data_off, order=order)
-            if tracks is None:
-                continue
-            score = sum(_smoothness(t) for t in tracks[: min(8, len(tracks))])
-            # Prefer layouts where root-like track has meaningful motion footprint
-            if tracks:
-                xs = [p[0] for p in tracks[0]]
-                ys = [p[1] for p in tracks[0]]
-                zs = [p[2] for p in tracks[0]]
-                extent = (max(xs) - min(xs)) + (max(ys) - min(ys)) + (max(zs) - min(zs))
-                score += min(extent, 50.0)
-            # Prefer section-A aligned decode
-            if data_off == 28:
-                score += 5.0
-            label = f"{order}@+{data_off}"
-            if best is None or score > best[0]:
-                best = (score, label, data_off, tracks)
-    if best is None:
-        raise AniParseError("no valid float3 track layout found")
-    _score, layout, pos_off, raw_tracks = best
+    multi = probe.get("multiClip") or {}
+    clips: list[dict[str, Any]] = list(multi.get("clips") or [])
+
+    raw_tracks: list[list[list[float]]] | None = None
+    layout = ""
+    selected_clip: dict[str, Any] | None = None
+
+    if clips:
+        # Clamp clip index into discovered multi-clip range
+        if clip_index < 0 or clip_index >= len(clips):
+            raise AniParseError(
+                f"clipIndex {clip_index} out of range (0..{len(clips) - 1})"
+            )
+        selected_clip = clips[clip_index]
+        order = str(selected_clip.get("order") or "track-major")
+        data_off = int(selected_clip["offset"])
+        raw_tracks = _extract_tracks(
+            data, header=header, data_off=data_off, order=order
+        )
+        if raw_tracks is None:
+            raise AniParseError(f"failed to decode multi-clip {clip_index}")
+        layout = f"multi-clip[{clip_index}/{len(clips)}] {order}@+{data_off}"
+    else:
+        best: tuple[float, str, int, list[list[list[float]]]] | None = None
+        for data_off in (28, 32, 24, 36, 48, 28 + header.sectionA):
+            for order in ("frame-major", "track-major"):
+                tracks = _extract_tracks(
+                    data, header=header, data_off=data_off, order=order
+                )
+                if tracks is None:
+                    continue
+                score = sum(_smoothness(t) for t in tracks[: min(8, len(tracks))])
+                if tracks:
+                    xs = [p[0] for p in tracks[0]]
+                    ys = [p[1] for p in tracks[0]]
+                    zs = [p[2] for p in tracks[0]]
+                    extent = (
+                        (max(xs) - min(xs))
+                        + (max(ys) - min(ys))
+                        + (max(zs) - min(zs))
+                    )
+                    score += min(extent, 50.0)
+                if data_off == 28:
+                    score += 5.0
+                label = f"{order}@+{data_off}"
+                if best is None or score > best[0]:
+                    best = (score, label, data_off, tracks)
+        if best is None:
+            raise AniParseError("no valid float3 track layout found")
+        _score, layout, _pos_off, raw_tracks = best
 
     # Experimental quat attach: only when section probe is confident
     rot_tracks: list[list[list[float]]] | None = None
@@ -333,6 +462,14 @@ def parse_ani_bytes(
                 rotations=rots,
             )
         )
+    # Annotate selected clip on probe for API consumers
+    if selected_clip is not None:
+        probe = {
+            **probe,
+            "selectedClip": selected_clip,
+            "clipIndex": clip_index,
+            "clipCount": len(clips),
+        }
     return ParsedAni(
         name=name,
         header=header,
@@ -349,7 +486,10 @@ def load_ani_member(
     member: str,
     *,
     bone_names: list[str] | None = None,
+    clip_index: int = 0,
 ) -> ParsedAni:
     with zipfile.ZipFile(client_root / archive_rel) as zf:
         data = zf.read(member)
-    return parse_ani_bytes(data, name=member, bone_names=bone_names)
+    return parse_ani_bytes(
+        data, name=member, bone_names=bone_names, clip_index=clip_index
+    )

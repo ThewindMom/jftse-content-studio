@@ -663,7 +663,36 @@ describe("content studio production API", () => {
     expect(body.ani.sectionProbe.C.size).toBeGreaterThan(1000);
     expect(body.ani.sectionProbe.rotationHypothesis).toBeDefined();
     expect(typeof body.ani.sectionProbe.rotationHypothesis.confident).toBe("boolean");
+    // Multi-clip stack in section A (NikiAniA has 16 float3 clips)
+    expect(body.ani.sectionProbe.multiClip).toBeDefined();
+    expect(body.ani.sectionProbe.multiClip.clipCount).toBeGreaterThanOrEqual(2);
+    expect(body.ani.sectionProbe.clipIndex ?? body.ani.clipIndex ?? 0).toBe(0);
+    expect(String(body.ani.layout)).toMatch(/multi-clip/);
   }, 60000);
+
+  test("ANI clipIndex selects alternate multi-clip float3 stack", async () => {
+    const response = await fetch(
+      `${base}/api/ani/parse?archive=${encodeURIComponent("Res/Player/PlayerA/AniA.res")}&member=${encodeURIComponent("NikiAniA.ani")}&maxFrames=2&clipIndex=1`,
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.ani.clipIndex).toBe(1);
+    expect(body.ani.sectionProbe.selectedClip.index).toBe(1);
+    expect(body.ani.tracks[0].positions.length).toBeGreaterThan(0);
+  }, 60000);
+
+  test("ANI clipIndex out of range fails structured", async () => {
+    const response = await fetch(
+      `${base}/api/ani/parse?archive=${encodeURIComponent("Res/Player/PlayerA/AniA.res")}&member=${encodeURIComponent("NikiAniA.ani")}&clipIndex=999`,
+    );
+    const body = await response.json();
+    expect([200, 400, 500]).toContain(response.status);
+    if (response.status === 200) {
+      expect(body.ok).toBe(false);
+      expect(String(body.detail ?? body.error)).toMatch(/clipIndex|out of range|ANI/i);
+    }
+  }, 30000);
 
   test("stage-scene lists World + Object layers for Emerald Beach compositor", async () => {
     const response = await fetch(

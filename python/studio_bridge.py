@@ -991,6 +991,7 @@ def cmd_ani_parse(args: argparse.Namespace) -> dict[str, Any]:
 
     ``--max-frames``: positive = compact sample; ``0`` or negative = all frames
     (for ANI scrubbers / live attach). Default remains 8 for light API clients.
+    ``--clip-index``: multi-clip float3 stack index inside section A (default 0).
     """
     from ani_codec import AniParseError, load_ani_member
 
@@ -1002,13 +1003,18 @@ def cmd_ani_parse(args: argparse.Namespace) -> dict[str, Any]:
         max_frames_int = int(raw_max)
     except (TypeError, ValueError):
         max_frames_int = 8
+    try:
+        clip_index = int(getattr(args, "clip_index", 0) or 0)
+    except (TypeError, ValueError):
+        clip_index = 0
     # 0 / negative → full tracks (None in to_dict)
     max_frames: int | None = None if max_frames_int <= 0 else max_frames_int
     try:
-        ani = load_ani_member(client, archive, member)
+        ani = load_ani_member(client, archive, member, clip_index=clip_index)
         payload = ani.to_dict(max_frames=max_frames)
         payload["sampled"] = max_frames is not None
         payload["sampleMaxFrames"] = max_frames
+        payload["clipIndex"] = clip_index
         return {"ok": True, "ani": payload}
     except AniParseError as exc:
         return {"ok": False, "error": "ANI_PARSE_FAILED", "detail": str(exc)}
@@ -1321,6 +1327,7 @@ def main() -> None:
     p_ani.add_argument("--archive", required=True)
     p_ani.add_argument("--member", required=True)
     p_ani.add_argument("--max-frames", type=int, default=8)
+    p_ani.add_argument("--clip-index", type=int, default=0)
 
     p_bone = sub.add_parser("bone-attach")
     p_bone.add_argument("--char", default="NIKI")

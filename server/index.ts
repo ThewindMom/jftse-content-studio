@@ -435,6 +435,7 @@ const server = Bun.serve({
         const member = url.searchParams.get("member");
         if (!archive || !member) return bad("ARCHIVE_AND_MEMBER_REQUIRED");
         const maxFrames = url.searchParams.get("maxFrames") ?? "8";
+        const clipIndex = url.searchParams.get("clipIndex") ?? "0";
         return safeBridge(() =>
           runBridge([
             "ani-parse",
@@ -444,6 +445,8 @@ const server = Bun.serve({
             member,
             "--max-frames",
             maxFrames,
+            "--clip-index",
+            clipIndex,
           ]),
         );
       },

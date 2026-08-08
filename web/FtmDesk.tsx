@@ -48,8 +48,14 @@ export function FtmDesk() {
   const [selected, setSelected] = useState<number | null>(null);
   const [draftX, setDraftX] = useState("");
   const [draftY, setDraftY] = useState("");
+  const [draftScaleH, setDraftScaleH] = useState("");
+  const [draftScaleW, setDraftScaleW] = useState("");
+  const [draftRotY, setDraftRotY] = useState("");
+  const [draftRotX, setDraftRotX] = useState("");
   const [exportPath, setExportPath] = useState("");
+  const [copyHint, setCopyHint] = useState("");
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const exportPanelRef = useRef<HTMLDivElement | null>(null);
 
   const objects = ftm?.sceneObjects ?? [];
   const selectedObj = selected != null ? objects[selected] ?? null : null;
@@ -58,16 +64,30 @@ export function FtmDesk() {
     if (!selectedObj) {
       setDraftX("");
       setDraftY("");
+      setDraftScaleH("");
+      setDraftScaleW("");
+      setDraftRotY("");
+      setDraftRotX("");
       return;
     }
     setDraftX(String(selectedObj.x));
     setDraftY(String(selectedObj.y));
+    setDraftScaleH(String(selectedObj.scaleHeight));
+    setDraftScaleW(String(selectedObj.scaleWidth));
+    setDraftRotY(String(selectedObj.rotationY));
+    setDraftRotX(String(selectedObj.rotationX));
+    // Bring export panel into view after select (select → edit → export path)
+    window.requestAnimationFrame(() => {
+      exportPanelRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
   }, [selectedObj]);
 
   const load = useCallback(async () => {
     setBusy(true);
     setError("");
     setSelected(null);
+    setExportPath("");
+    setCopyHint("");
     setStatus("Parsing FTM…");
     try {
       const qs = new URLSearchParams();
@@ -111,14 +131,19 @@ export function FtmDesk() {
       }
       setKind("ftm");
       setFtm(body.ftm);
+      const count = body.ftm.sceneObjectCount ?? body.ftm.sceneObjects?.length ?? 0;
+      // Auto-select first placement so export path is one edit away
+      if ((body.ftm.sceneObjects?.length ?? 0) > 0) {
+        setSelected(0);
+      }
       setStatus(
-        `${member} · ${body.ftm.tileCountX}×${body.ftm.tileCountY} · ${body.ftm.sceneObjectCount ?? objects.length} placements · ${body.ftm.blockedTileCount ?? 0} blocked · ${body.ftm.interactableTileCount ?? 0} interactables`,
+        `${member} · ${body.ftm.tileCountX}×${body.ftm.tileCountY} · ${count} placements · ${body.ftm.blockedTileCount ?? 0} blocked · ${body.ftm.interactableTileCount ?? 0} interactables` +
+          (count > 0 ? " · placement #0 selected — edit & export below" : ""),
       );
     } catch (err) {
       setFtm(null);
       setError(err instanceof Error ? err.message : String(err));
-      setStatus("FTM request failed");
-    } finally {
+      setStatus("FTM request failed");    } finally {
       setBusy(false);
     }
   }, [archive, member, objects.length]);
@@ -239,11 +264,16 @@ export function FtmDesk() {
     setBusy(true);
     setError("");
     setExportPath("");
+    setCopyHint("");
     try {
       const x = Number(draftX);
       const y = Number(draftY);
-      if (!Number.isFinite(x) || !Number.isFinite(y)) {
-        throw new Error("x/y must be numbers");
+      const scaleHeight = Number(draftScaleH);
+      const scaleWidth = Number(draftScaleW);
+      const rotationY = Number(draftRotY);
+      const rotationX = Number(draftRotX);
+      if (![x, y, scaleHeight, scaleWidth, rotationY, rotationX].every(Number.isFinite)) {
+        throw new Error("placement fields must be finite numbers");
       }
       const response = await fetch("/api/ftm/export", {
         method: "POST",
@@ -251,7 +281,17 @@ export function FtmDesk() {
         body: JSON.stringify({
           archive: archive.trim(),
           member: member.trim(),
-          patches: [{ index: selected, x: Math.trunc(x), y: Math.trunc(y) }],
+          patches: [
+            {
+              index: selected,
+              x: Math.trunc(x),
+              y: Math.trunc(y),
+              scaleHeight,
+              scaleWidth,
+              rotationY,
+              rotationX,
+            },
+          ],
         }),
       });
       const body = (await response.json()) as {
@@ -266,13 +306,22 @@ export function FtmDesk() {
       }
       setExportPath(body.path ?? "");
       setStatus(
-        `Exported patched FTM · ${body.sceneObjectCount ?? "?"} placements → ${body.path}`,
+        `Exported patched FTM · placement #${selected} → ${body.path} (studio exports/ only)`,
       );
-      // refresh local selection coords for honesty
       setFtm({
         ...ftm,
         sceneObjects: objects.map((obj, i) =>
-          i === selected ? { ...obj, x: Math.trunc(x), y: Math.trunc(y) } : obj,
+          i === selected
+            ? {
+                ...obj,
+                x: Math.trunc(x),
+                y: Math.trunc(y),
+                scaleHeight,
+                scaleWidth,
+                rotationY,
+                rotationX,
+              }
+            : obj,
         ),
       });
     } catch (err) {
@@ -280,6 +329,16 @@ export function FtmDesk() {
       setStatus("FTM export failed");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const copyExportPath = async () => {
+    if (!exportPath) return;
+    try {
+      await navigator.clipboard.writeText(exportPath);
+      setCopyHint("Copied path");
+    } catch {
+      setCopyHint("Copy failed — select path manually");
     }
   };
 
@@ -348,16 +407,16 @@ export function FtmDesk() {
             ))}
           </div>
           {selectedObj && (
-            <>
-              <div className="mono">
-                selected: prefabIndex={selectedObj.prefabIndex} x={selectedObj.x} y={selectedObj.y}{" "}
-                scaleHeight={selectedObj.scaleHeight} scaleWidth={selectedObj.scaleWidth} rotationY=
-                {selectedObj.rotationY} rotationX={selectedObj.rotationX}
-                {selectedObj.prefabObjId ? ` objId=${selectedObj.prefabObjId}` : ""}
+            <div className="ftm-export-panel" ref={exportPanelRef}>
+              <strong>Export path · placement #{selected}</strong>
+              <div className="mono empty">
+                prefabIndex={selectedObj.prefabIndex}
+                {selectedObj.prefabName ? ` · ${selectedObj.prefabName}` : ""}
+                {selectedObj.prefabObjId ? ` · objId=${selectedObj.prefabObjId}` : ""}
               </div>
               <div className="field-grid">
                 <label>
-                  Patch x (tile)
+                  x (tile)
                   <input
                     value={draftX}
                     onChange={(e) => setDraftX(e.target.value)}
@@ -366,12 +425,48 @@ export function FtmDesk() {
                   />
                 </label>
                 <label>
-                  Patch y (tile)
+                  y (tile)
                   <input
                     value={draftY}
                     onChange={(e) => setDraftY(e.target.value)}
                     inputMode="numeric"
                     aria-label="Placement tile Y"
+                  />
+                </label>
+                <label>
+                  scaleHeight
+                  <input
+                    value={draftScaleH}
+                    onChange={(e) => setDraftScaleH(e.target.value)}
+                    inputMode="decimal"
+                    aria-label="Scale height"
+                  />
+                </label>
+                <label>
+                  scaleWidth
+                  <input
+                    value={draftScaleW}
+                    onChange={(e) => setDraftScaleW(e.target.value)}
+                    inputMode="decimal"
+                    aria-label="Scale width"
+                  />
+                </label>
+                <label>
+                  rotationY
+                  <input
+                    value={draftRotY}
+                    onChange={(e) => setDraftRotY(e.target.value)}
+                    inputMode="decimal"
+                    aria-label="Rotation Y"
+                  />
+                </label>
+                <label>
+                  rotationX
+                  <input
+                    value={draftRotX}
+                    onChange={(e) => setDraftRotX(e.target.value)}
+                    inputMode="decimal"
+                    aria-label="Rotation X"
                   />
                 </label>
               </div>
@@ -382,16 +477,29 @@ export function FtmDesk() {
                   disabled={busy}
                   onClick={() => void exportPatched()}
                 >
-                  {busy ? "Exporting…" : "Export patched FTM"}
+                  {busy ? "Exporting…" : "Export patched FTM to exports/"}
                 </button>
+                {exportPath && (
+                  <button className="btn" type="button" onClick={() => void copyExportPath()}>
+                    Copy export path
+                  </button>
+                )}
               </div>
-              {exportPath && <div className="mono empty">Wrote {exportPath}</div>}
-            </>
+              {exportPath && (
+                <div className="mono empty" role="status">
+                  Wrote {exportPath}
+                  {copyHint ? ` · ${copyHint}` : ""}
+                </div>
+              )}
+              <p className="empty">
+                Flow: Parse → select placement (auto #0) → edit fields → export. Writes only under
+                studio <code>exports/</code> — never the stock client.
+              </p>
+            </div>
           )}
-          <p className="empty">
-            Placement inspect + patch export (FT-ResTool schema). Writes only under studio{" "}
-            <code>exports/</code> — never the stock client. Full tile paint GUI still out of scope.
-          </p>
+          {!selectedObj && objects.length > 0 && (
+            <p className="empty">Select a placement marker or list row to open the export panel.</p>
+          )}
         </>
       )}
     </div>
