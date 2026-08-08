@@ -14,7 +14,8 @@ from equipment_author import (
     list_catalog_max_index,
     patch_item_mesh_catalog,
 )
-from content_pack import build_content_pack, playtest_content_pack
+from content_pack import build_content_pack
+from playtest_preflight import run_local_preflight, verify_install_plan
 from sql_apply import apply_sql_file
 from ftm_codec import (
     FtmParseError,
@@ -286,78 +287,36 @@ def make_handlers(
 
     def cmd_content_pack_playtest(args: Namespace) -> dict[str, Any]:
         payload = json.loads(Path(args.payload).read_text(encoding="utf-8"))
-        plan = list(payload.get("installPlan") or [])
-        return playtest_content_pack(Path(args.target_client), plan)
+        plan = [
+            {
+                "source": str(entry.get("source", "")),
+                "destRelative": str(entry.get("destRelative", "")),
+            }
+            for entry in list(payload.get("installPlan") or [])
+            if isinstance(entry, dict)
+        ]
+        result = verify_install_plan(Path(args.target_client), plan)
+        return {"ok": True, "ready": result["ok"], **result}
 
     def cmd_content_pack_playtest_full(args: Namespace) -> dict[str, Any]:
-        """Files + optional SQL audit + launch script readiness."""
-        import os
-
         payload = json.loads(Path(args.payload).read_text(encoding="utf-8"))
-        jftse = jftse_fn()
         target = Path(args.target_client).expanduser()
-        plan = list(payload.get("installPlan") or [])
-        file_check = playtest_content_pack(target, plan)
-        checklist: list[dict[str, Any]] = [
+        plan = [
             {
-                "id": "local-client",
-                "ok": target.is_dir(),
-                "label": f"Local client → {target}",
-            },
+                "source": str(entry.get("source", "")),
+                "destRelative": str(entry.get("destRelative", "")),
+            }
+            for entry in list(payload.get("installPlan") or [])
+            if isinstance(entry, dict)
         ]
-        for c in file_check.get("checks") or []:
-            checklist.append(
-                {
-                    "id": f"file-{c.get('destRelative')}",
-                    "ok": bool(c.get("ok")),
-                    "label": f"Installed {c.get('destRelative')}",
-                    "path": c.get("path"),
-                }
-            )
-        sql_path = payload.get("sqlPath")
-        if sql_path:
-            sql_result = apply_sql_file(Path(str(sql_path)), dry_run=True)
-            checklist.append(
-                {
-                    "id": "sql-dry-run",
-                    "ok": bool(sql_result.get("ok") and sql_result.get("audit", {}).get("safe")),
-                    "label": f"SQL dry-run safe · {sql_path}",
-                }
-            )
-        launch_sh = jftse / "FantaTennis-Local-Client" / "START-FANTA-TENNIS.sh"
-        launch_alt = jftse / "FantaTennis-Local-Client" / "client" / "START-FANTA-TENNIS.sh"
-        launch = launch_sh if launch_sh.is_file() else launch_alt
-        checklist.append(
-            {
-                "id": "launch-script",
-                "ok": launch.is_file(),
-                "label": f"Launch script → {launch}",
-            }
+        receipt_raw = payload.get("sqlApplyReceipt")
+        receipt = dict(receipt_raw) if isinstance(receipt_raw, dict) else None
+        return run_local_preflight(
+            target,
+            plan,
+            sql_path=str(payload.get("sqlPath") or "") or None,
+            sql_apply_receipt=receipt,
         )
-        db = (os.environ.get("JFTSE_DATABASE_URL") or os.environ.get("DATABASE_URL") or "").strip()
-        checklist.append(
-            {
-                "id": "database-url",
-                "ok": bool(db),
-                "label": "JFTSE_DATABASE_URL set"
-                if db
-                else "JFTSE_DATABASE_URL unset (SQL apply live disabled)",
-            }
-        )
-        # Ready when local client + all install files OK (DB URL optional for file playtest)
-        file_ok = all(
-            c["ok"] for c in checklist if str(c["id"]).startswith("file-") or c["id"] == "local-client"
-        )
-        sql_ok = all(c["ok"] for c in checklist if c["id"] == "sql-dry-run") if sql_path else True
-        ready = file_ok and sql_ok and target.is_dir()
-        return {
-            "ok": True,
-            "ready": ready,
-            "checklist": checklist,
-            "targetClient": str(target),
-            "launchCommand": str(launch) if launch.is_file() else None,
-            "fileCheck": file_check,
-        }
 
     def cmd_sql_apply(args: Namespace) -> dict[str, Any]:
         payload = json.loads(Path(args.payload).read_text(encoding="utf-8"))

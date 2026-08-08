@@ -34,7 +34,10 @@ function bad(error: string, status = 400): Response {
 
 type SetupCheck = { id: string; ok: boolean; label: string };
 
-function buildSetup(health: Record<string, unknown>) {
+function buildSetup(
+  health: Record<string, unknown>,
+  preflight: Record<string, unknown>,
+) {
   const stockExists = existsSync(config.stockClient);
   const localExists = existsSync(config.localClient);
   const particleRes = Boolean(health.particleRes);
@@ -44,6 +47,7 @@ function buildSetup(health: Record<string, unknown>) {
     join(config.localClient, "Res/Effect/Particle.res"),
   );
   const installReady = localExists || Boolean(process.env.JFTSE_LOCAL_CLIENT);
+  const launchReady = preflight.launchScriptExists === true;
   const checklist: SetupCheck[] = [
     {
       id: "jftse-root",
@@ -84,6 +88,13 @@ function buildSetup(health: Record<string, unknown>) {
         ? "Local client has Res/Effect/Particle.res"
         : "Local Particle.res will be created on first install",
     },
+    {
+      id: "launch-script",
+      ok: launchReady,
+      label: launchReady
+        ? `Executable launch script → ${String(preflight.launchScript)}`
+        : "Executable local-client launch script not found",
+    },
   ];
   const ready = checklist
     .filter((row) => row.id !== "local-particle")
@@ -99,6 +110,9 @@ function buildSetup(health: Record<string, unknown>) {
     itemRes,
     stageInfo,
     installReady,
+    launchReady,
+    launchCommand: preflight.launchCommand ?? null,
+    manualHandoff: preflight.manualHandoff ?? null,
     checklist,
   };
 }
@@ -196,15 +210,19 @@ const server = Bun.serve({
     "/api/health": {
       GET: async () =>
         safeBridge(async () => {
-          const health = await runBridge(["health"]);
-          const setup = buildSetup(health);
+          const [health, preflight] = await Promise.all([
+            runBridge(["health"]),
+            runBridge(["playtest-status"]),
+          ]);
+          const setup = buildSetup(health, preflight);
           return {
             ok: true,
             ...health,
             port: config.port,
             localClient: config.localClient,
             stockClient: config.stockClient,
-            launchHint: `cd ${join(config.jftseRoot, "FantaTennis-Local-Client")} && ./START-FANTA-TENNIS.sh`,
+            launchHint: preflight.launchCommand ?? null,
+            preflight,
             setup,
           };
         }),
@@ -1120,7 +1138,10 @@ const server = Bun.serve({
     },
     "/api/workflow": {
       GET: async () =>
-        json({
+        safeBridge(async () => {
+          const preflight = await runBridge(["playtest-status"]);
+          return {
+            ok: true,
           steps: [
             {
               id: "item",
@@ -1153,7 +1174,9 @@ const server = Bun.serve({
             name: preset.name,
             summary: preset.summary,
           })),
-          launchHint: `cd ${join(config.jftseRoot, "FantaTennis-Local-Client")} && ./START-FANTA-TENNIS.sh`,
+            launchHint: preflight.launchCommand ?? null,
+            preflight,
+          };
         }),
     },
   },

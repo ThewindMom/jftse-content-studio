@@ -34,6 +34,7 @@ from mesh_codec import (
     write_positions_into_dat,
 )
 from stage_validation import validate_stage_script
+from playtest_preflight import run_local_preflight
 
 
 def _jftse_root() -> Path:
@@ -1314,63 +1315,23 @@ def cmd_effect_slot_fields(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_playtest_status(args: argparse.Namespace) -> dict[str, Any]:
-    jftse = _jftse_root()
     local = Path(os.environ.get("JFTSE_LOCAL_CLIENT", "")).expanduser()
-    if not str(local):
-        local = jftse / "FantaTennis-Local-Client" / "client"
     particle = local / "Res" / "Effect" / "Particle.res"
-    launch_sh = jftse / "FantaTennis-Local-Client" / "START-FANTA-TENNIS.sh"
-    launch_alt = jftse / "FantaTennis-Local-Client" / "client" / "START-FANTA-TENNIS.sh"
-    launch = launch_sh if launch_sh.is_file() else launch_alt
     export_path = Path(args.export_archive).expanduser() if getattr(args, "export_archive", "") else None
-    export_matches = None
-    if export_path and export_path.is_file() and particle.is_file():
-        export_matches = export_path.read_bytes() == particle.read_bytes()
-    checklist = [
-        {
-            "id": "local-client",
-            "ok": local.is_dir(),
-            "label": f"Local client dir → {local}",
-        },
-        {
-            "id": "particle-installed",
-            "ok": particle.is_file(),
-            "label": f"Particle.res present → {particle}",
-        },
-        {
-            "id": "launch-script",
-            "ok": launch.is_file(),
-            "label": f"Launch script → {launch}",
-        },
-        {
-            "id": "export-match",
-            "ok": export_matches is not False,
-            "label": (
-                "Installed particle matches last export"
-                if export_matches
-                else (
-                    "No export compared (optional)"
-                    if export_matches is None
-                    else "Installed particle differs from last export"
-                )
-            ),
-        },
-    ]
-    ready = all(row["ok"] for row in checklist if row["id"] != "export-match") and (
-        export_matches is not False
+    plan = (
+        [
+            {
+                "source": str(export_path),
+                "destRelative": "Res/Effect/Particle.res",
+            }
+        ]
+        if export_path
+        else []
     )
-    # ready requires local+particle+launch; export match soft-fails only when compared and unequal
-    hard_ready = all(row["ok"] for row in checklist if row["id"] in {"local-client", "particle-installed", "launch-script"})
     return {
-        "ok": True,
-        "ready": hard_ready,
+        **run_local_preflight(local, plan),
         "installPresent": particle.is_file(),
-        "launchScriptExists": launch.is_file(),
-        "localClient": str(local),
         "particlePath": str(particle),
-        "launchScript": str(launch),
-        "exportMatches": export_matches,
-        "checklist": checklist,
     }
 
 

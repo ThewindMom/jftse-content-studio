@@ -221,30 +221,3 @@ def build_content_pack(
     }
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     return manifest
-
-
-def playtest_content_pack(
-    target_client: Path,
-    install_plan: list[dict[str, str]],
-) -> dict[str, Any]:
-    """Verify installed files exist under target client (post-install smoke)."""
-    checks: list[dict[str, Any]] = []
-    for entry in install_plan:
-        dest = target_client / entry["destRelative"].lstrip("/")
-        checks.append(
-            {
-                "destRelative": entry["destRelative"],
-                "ok": dest.is_file(),
-                "path": str(dest),
-                "bytes": dest.stat().st_size if dest.is_file() else 0,
-            }
-        )
-    ready = all(c["ok"] for c in checks) and len(checks) > 0
-    return {
-        "ok": True,
-        "ready": ready,
-        "targetClient": str(target_client),
-        "checks": checks,
-        "passed": sum(1 for c in checks if c["ok"]),
-        "total": len(checks),
-    }

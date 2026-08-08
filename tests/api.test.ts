@@ -26,7 +26,9 @@ const oneShotPattern =
   /^(payload|maps|mesh-transform|mesh-tex|map-pack|client-install|map-create|stage-set-write|ftm-author|content-pack|content-pack-install|content-pack-playtest|content-pack-playtest-full|sql-apply)-/;
 
 let serverProc: ReturnType<typeof Bun.spawn> | null = null;
+let disposableRoot = "";
 let disposableClient = "";
+let launchScript = "";
 let initialArtifacts = new Map<string, Set<string>>();
 let fakeMysqlDir = "";
 let fakeMysqlArgs = "";
@@ -174,7 +176,10 @@ const softPayload = {
 
 beforeAll(async () => {
   initialArtifacts = snapshotArtifacts();
-  disposableClient = mkdtempSync(join(tmpdir(), "jftse-studio-client-"));
+  disposableRoot = mkdtempSync(join(tmpdir(), "jftse-studio-client-"));
+  disposableClient = join(disposableRoot, "client");
+  launchScript = join(disposableRoot, "START-FANTA-TENNIS.sh");
+  mkdirSync(disposableClient, { recursive: true });
   fakeMysqlDir = mkdtempSync(join(tmpdir(), "jftse-studio-mysql-"));
   fakeMysqlArgs = join(fakeMysqlDir, "args.txt");
   fakeMysqlEnv = join(fakeMysqlDir, "env.txt");
@@ -208,6 +213,10 @@ cat >/dev/null
   );
   chmodSync(fakeUv, 0o755);
   chmodSync(fakeMysql, 0o755);
+  await Bun.write(join(disposableClient, "FantaTennis.exe"), "MZ-fixture");
+  await Bun.write(join(disposableClient, "jftse.dll"), "DLL-fixture");
+  await Bun.write(launchScript, "#!/bin/sh\nexit 0\n");
+  chmodSync(launchScript, 0o755);
   await Bun.write(join(disposableClient, "Res/Effect/.keep"), "");
   cpSync(
     join(stockClient, "Res/Effect/Particle.res"),
@@ -251,8 +260,8 @@ afterAll(async () => {
     await serverProc.exited;
   }
   serverProc = null;
-  if (disposableClient && existsSync(disposableClient)) {
-    rmSync(disposableClient, { recursive: true, force: true });
+  if (disposableRoot && existsSync(disposableRoot)) {
+    rmSync(disposableRoot, { recursive: true, force: true });
   }
   if (fakeMysqlDir && existsSync(fakeMysqlDir)) {
     rmSync(fakeMysqlDir, { recursive: true, force: true });
@@ -1490,11 +1499,15 @@ describe("content studio production API", () => {
     const body = await response.json();
     expect(response.status).toBe(200);
     expect(body.ok).toBe(true);
+    expect(body.preflightPassed).toBe(true);
+    expect(body.ready).toBe(body.preflightPassed);
     expect(typeof body.ready).toBe("boolean");
     expect(typeof body.installPresent).toBe("boolean");
     expect(typeof body.launchScriptExists).toBe("boolean");
     expect(Array.isArray(body.checklist)).toBe(true);
     expect(body.checklist.length).toBeGreaterThan(0);
+    expect(body.launchCommand).toBe(launchScript);
+    expect(String(body.manualHandoff)).toContain("DX9");
   });
 
   test("map studio export pack writes relational SQL bundle", async () => {
@@ -1907,13 +1920,16 @@ describe("content studio production API", () => {
         files: pack.installPlan,
       }),
     });
+    const sqlApply = await postSql({ path: pack.sqlPath, dryRun: false });
+    expect(sqlApply.response.status).toBe(200);
     const full = await fetch(`${base}/api/content-pack/playtest-full`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         targetClient: disposableClient,
         installPlan: pack.installPlan,
-        sqlPath: pack.parts?.map?.sql,
+        sqlPath: pack.sqlPath,
+        sqlApplyReceipt: sqlApply.body,
       }),
     });
     const body = await full.json();
@@ -1921,8 +1937,193 @@ describe("content studio production API", () => {
     expect(body.ok).toBe(true);
     expect(body.ready).toBe(true);
     expect(body.checklist.length).toBeGreaterThan(2);
-    expect(body.checklist.some((c: { id: string }) => c.id === "sql-dry-run")).toBe(
+    expect(body.checklist.some((c: { id: string }) => c.id === "sql-audit")).toBe(
       true,
+    );
+    expect(body.checklist.some((c: { id: string }) => c.id === "sql-apply")).toBe(
+      true,
+    );
+  });
+
+  test("content pack preflight rejects missing client executable", async () => {
+    const executable = join(disposableClient, "FantaTennis.exe");
+    rmSync(executable);
+    try {
+      const response = await fetch(`${base}/api/content-pack/playtest-full`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ targetClient: disposableClient, installPlan: [] }),
+      });
+      const body = await response.json();
+      expect(body.preflightPassed).toBe(false);
+      expect(
+        body.checklist.find((check: { id: string }) => check.id === "client-exe")
+          ?.ok,
+      ).toBe(false);
+    } finally {
+      await Bun.write(executable, "MZ-fixture");
+    }
+  });
+
+  test("content pack preflight rejects missing client DLL", async () => {
+    const dll = join(disposableClient, "jftse.dll");
+    rmSync(dll);
+    try {
+      const response = await fetch(`${base}/api/content-pack/playtest-full`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ targetClient: disposableClient, installPlan: [] }),
+      });
+      const body = await response.json();
+      expect(body.preflightPassed).toBe(false);
+      expect(
+        body.checklist.find((check: { id: string }) => check.id === "client-dll")
+          ?.ok,
+      ).toBe(false);
+    } finally {
+      await Bun.write(dll, "DLL-fixture");
+    }
+  });
+
+  test("content pack preflight rejects missing or non-executable launch script", async () => {
+    rmSync(launchScript);
+    const missing = await fetch(`${base}/api/content-pack/playtest-full`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ targetClient: disposableClient, installPlan: [] }),
+    }).then((response) => response.json());
+    expect(missing.preflightPassed).toBe(false);
+    expect(missing.launchCommand).toBeNull();
+
+    await Bun.write(launchScript, "#!/bin/sh\nexit 0\n");
+    chmodSync(launchScript, 0o644);
+    try {
+      const blocked = await fetch(`${base}/api/content-pack/playtest-full`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ targetClient: disposableClient, installPlan: [] }),
+      }).then((response) => response.json());
+      expect(blocked.preflightPassed).toBe(false);
+      expect(
+        blocked.checklist.find(
+          (check: { id: string }) => check.id === "launch-script",
+        )?.ok,
+      ).toBe(false);
+    } finally {
+      chmodSync(launchScript, 0o755);
+    }
+  });
+
+  test("content pack preflight rejects installed byte mismatch", async () => {
+    const source = join(
+      studioRoot,
+      "exports",
+      `preflight-source-${crypto.randomUUID()}.res`,
+    );
+    const destRelative = `Res/Script/Preflight-${crypto.randomUUID()}.res`;
+    await Bun.write(source, "source-bytes");
+    const destination = join(disposableClient, ...destRelative.split("/"));
+    mkdirSync(join(disposableClient, "Res", "Script"), { recursive: true });
+    await Bun.write(destination, "different-bytes");
+    const response = await fetch(`${base}/api/content-pack/playtest-full`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        targetClient: disposableClient,
+        installPlan: [{ source, destRelative }],
+      }),
+    });
+    const body = await response.json();
+    expect(body.preflightPassed).toBe(false);
+    expect(body.fileCheck.checks[0].matches).toBe(false);
+  });
+
+  test("content pack preflight rejects missing aggregate SQL", async () => {
+    const response = await fetch(`${base}/api/content-pack/playtest-full`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        targetClient: disposableClient,
+        installPlan: [],
+        sqlPath: join(
+          studioRoot,
+          "exports",
+          `missing-${crypto.randomUUID()}.sql`,
+        ),
+      }),
+    });
+    const body = await response.json();
+    expect(body.preflightPassed).toBe(false);
+    expect(
+      body.checklist.find((check: { id: string }) => check.id === "sql-audit")
+        ?.ok,
+    ).toBe(false);
+  });
+
+  test("content pack preflight rejects unsafe aggregate SQL", async () => {
+    const sqlPath = await writeExportSql("UPDATE S_Maps SET id = 1;");
+    const response = await fetch(`${base}/api/content-pack/playtest-full`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        targetClient: disposableClient,
+        installPlan: [],
+        sqlPath,
+      }),
+    });
+    const body = await response.json();
+    expect(body.preflightPassed).toBe(false);
+    expect(
+      body.checklist.find((check: { id: string }) => check.id === "sql-audit")
+        ?.ok,
+    ).toBe(false);
+  });
+
+  test("content pack preflight passes exact files SQL binaries and launcher", async () => {
+    const source = join(
+      studioRoot,
+      "exports",
+      `preflight-source-${crypto.randomUUID()}.res`,
+    );
+    const destRelative = `Res/Script/Preflight-${crypto.randomUUID()}.res`;
+    await Bun.write(source, "matching-bytes");
+    const installed = await postInstall(disposableClient, [
+      { source, destRelative },
+    ]);
+    expect(installed.response.status).toBe(200);
+    const sqlPath = await writeExportSql(
+      "INSERT INTO S_Maps (id) VALUES (202);",
+    );
+    const sqlApply = await postSql({ path: sqlPath, dryRun: false });
+    expect(sqlApply.response.status).toBe(200);
+    const response = await fetch(`${base}/api/content-pack/playtest-full`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        targetClient: disposableClient,
+        installPlan: [{ source, destRelative }],
+        sqlPath,
+        sqlApplyReceipt: sqlApply.body,
+      }),
+    });
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.preflightPassed).toBe(true);
+    expect(body.ready).toBe(true);
+    expect(body.launchCommand).toBe(launchScript);
+    expect(body.fileCheck.checks[0].matches).toBe(true);
+    expect(
+      body.checklist.find((check: { id: string }) => check.id === "sql-audit")
+        ?.ok,
+    ).toBe(true);
+    expect(String(body.manualHandoff)).toContain("run the launch command");
+    expect(String(body.manualHandoff)).toContain("log in");
+    expect(String(body.manualHandoff)).toContain("Equipment");
+    expect(String(body.manualHandoff)).toContain("map");
+    expect(String(body.manualHandoff)).toContain("visually verify");
+    expect(String(body.manualHandoff)).toContain("DX9");
+    expect(String(body.manualHandoff).toLowerCase()).not.toContain(
+      "client launched",
     );
   });
 
