@@ -1926,7 +1926,7 @@ describe("content studio production API", () => {
     );
   });
 
-  test("content pack builds equipment+map and installs + playtest ready", async () => {
+  test("aggregate content pack SQL orders equipment before map", async () => {
     const buildRes = await fetch(`${base}/api/content-pack/build`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -1956,6 +1956,27 @@ describe("content studio production API", () => {
     expect(pack.parts?.equipment?.sql).toBeTruthy();
     expect(pack.parts?.map?.sql).toBeTruthy();
     expect(pack.parts?.ftm?.archive).toBeTruthy();
+    expect(pack.sqlPath).toBe(join(pack.outDir, "content-pack.sql"));
+    expect(pack.sqlParts).toEqual([
+      pack.parts.equipment.sql,
+      pack.parts.map.sql,
+    ]);
+    const equipmentSql = (await Bun.file(pack.parts.equipment.sql).text()).trim();
+    const mapSql = (await Bun.file(pack.parts.map.sql).text()).trim();
+    const aggregateSql = await Bun.file(pack.sqlPath).text();
+    expect(aggregateSql).toBe(`${equipmentSql}\n\n${mapSql}\n`);
+    expect(aggregateSql.indexOf("S_Product")).toBeLessThan(
+      aggregateSql.indexOf("S_Maps"),
+    );
+    const manifest = await Bun.file(join(pack.outDir, "manifest.json")).json();
+    expect(manifest.sqlPath).toBe(pack.sqlPath);
+    expect(manifest.sqlParts).toEqual(pack.sqlParts);
+    const aggregateDryRun = await postSql({
+      path: pack.sqlPath,
+      dryRun: true,
+    });
+    expect(aggregateDryRun.response.status).toBe(200);
+    expect(aggregateDryRun.body.audit?.insertCount).toBeGreaterThan(1);
 
     const installRes = await fetch(`${base}/api/client/install`, {
       method: "POST",

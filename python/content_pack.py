@@ -20,7 +20,7 @@ from ftm_codec import (
     serialize_ftm,
     set_blocked_tiles,
 )
-from map_author import build_create_map_sql, create_map_row
+from map_author import build_create_map_sql, create_map_row, write_aggregate_sql
 from map_sql_export import parse_s_maps
 from stage_set_author import write_stage_set
 
@@ -198,11 +198,17 @@ def build_content_pack(
         )
         parts["particle"] = particle
 
+    sql_parts = [str(parts[part]["sql"]) for part in ("equipment", "map")
+                 if isinstance(parts.get(part), dict) and parts[part].get("sql")]
+    aggregate_sql_path = write_aggregate_sql(out_dir, sql_parts)
+
     manifest = {
         "ok": True,
         "name": name,
         "outDir": str(out_dir),
         "parts": parts,
+        "sqlPath": aggregate_sql_path,
+        "sqlParts": sql_parts,
         "installPlan": install_plan,
         "fileCount": len(install_plan),
         "playtest": {

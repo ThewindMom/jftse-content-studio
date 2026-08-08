@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Mapping
 
 from map_sql_export import (
@@ -15,6 +16,22 @@ from map_sql_export import (
     format_s_maps_insert,
 )
 from map_sql_models import apply_map_draft
+
+
+def write_aggregate_sql(out_dir: Path, sql_parts: list[str]) -> str | None:
+    """Join generated SQL parts in caller-supplied deterministic order."""
+    if not sql_parts:
+        return None
+    aggregate = out_dir / "content-pack.sql"
+    _ = aggregate.write_text(
+        "\n\n".join(
+            Path(part_path).read_text(encoding="utf-8").strip()
+            for part_path in sql_parts
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return str(aggregate)
 
 
 def next_map_ids(existing: list[SMapRow]) -> tuple[int, int]:
