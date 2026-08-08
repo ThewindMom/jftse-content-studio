@@ -379,6 +379,14 @@ def probe_section_b(
         }
     )
 
+    # Phase-shifted sparse / keyframe / delta (odd B length → phase 1 often float-aligned)
+    from ani_sparse_probe import score_sparse_phase_b
+
+    sparse = score_sparse_phase_b(
+        blob, track_count=track_count, frame_count=frame_count, phase=1
+    )
+    candidates.extend(sparse)
+
     viable = next((c["name"] for c in candidates if c.get("viable")), None)
     return {
         "offset": off_b,
@@ -394,7 +402,8 @@ def probe_section_b(
             else (
                 "No confident rotation encoding in section B (or whole-file dense float4 "
                 "block). Tried float3/float4, s16 quat, s16 xyz-compress, f16, zlib-raw, "
-                "odd-pad drop, contiguous float4 scans. Prefer hierarchical-fk drive."
+                "odd-pad drop, contiguous float4 scans, byte-phase/bitstream, and "
+                "phase1 sparse/keyframe/delta harvests. Prefer hierarchical-fk drive."
             )
         ),
     }

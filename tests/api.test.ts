@@ -685,6 +685,19 @@ describe("content studio production API", () => {
     const bNames = bHyp.encodingProbe.candidates.map((c: { name: string }) => c.name);
     expect(bNames).toContain("float4-unit-byte-phases");
     expect(bNames).toContain("bitstream-48bit-3x15-plus-index");
+    // Phase1 sparse / keyframe / delta rotation hypotheses (not dense float4)
+    expect(bNames).toContain("sparse-unit-run-harvest-phase1");
+    expect(bNames).toContain("sparse-exact-nf-unit-runs");
+    expect(bNames).toContain("float4-additive-delta-phase1");
+    expect(bNames).toContain("float4-mul-delta-phase1");
+    expect(bNames).toContain("window-unit-density-phase1");
+    const sparseHarvest = bHyp.encodingProbe.candidates.find(
+      (c: { name: string }) => c.name === "sparse-unit-run-harvest-phase1",
+    );
+    expect(sparseHarvest).toBeDefined();
+    expect(typeof sparseHarvest.unitRatio).toBe("number");
+    // Still not a confident rotation channel on Niki
+    expect(sparseHarvest.viable).toBe(false);
     const tHyp = body.ani.sectionProbe.tailHypothesis;
     expect(tHyp.encodingProbe).toBeDefined();
     expect(Array.isArray(tHyp.encodingProbe.candidates)).toBe(true);
