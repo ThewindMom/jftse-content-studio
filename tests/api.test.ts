@@ -1307,6 +1307,96 @@ describe("content studio production API", () => {
     expect(existsSync(body.infoArchive)).toBe(true);
   });
 
+  test("content pack builds equipment+map and installs + playtest ready", async () => {
+    const buildRes = await fetch(`${base}/api/content-pack/build`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "ulw-product-pack",
+        equipment: {
+          meshIndex: 214,
+          char: "NIKI",
+          desc: "ULW Pack Racket",
+        },
+        map: {
+          draft: { name: "ULW Pack Court", playTime: 120, breathTime: 100 },
+          scenarioIds: [1],
+          stageScript: "1_Emerald_Beach.set",
+        },
+        ftm: {
+          archive: "Res/MapSet/FantaCastle.res",
+          member: "FantaCastleOutSide.ftm",
+          patches: [{ index: 0, x: 7, y: 8 }],
+        },
+      }),
+    });
+    const pack = await buildRes.json();
+    expect(buildRes.status).toBe(200);
+    expect(pack.ok).toBe(true);
+    expect(pack.installPlan?.length).toBeGreaterThanOrEqual(2);
+    expect(pack.parts?.equipment?.sql).toBeTruthy();
+    expect(pack.parts?.map?.sql).toBeTruthy();
+    expect(pack.parts?.ftm?.archive).toBeTruthy();
+
+    const installRes = await fetch(`${base}/api/client/install`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        targetClient: disposableClient,
+        files: pack.installPlan,
+      }),
+    });
+    const installed = await installRes.json();
+    expect(installRes.status).toBe(200);
+    expect(installed.ok).toBe(true);
+
+    const playRes = await fetch(`${base}/api/content-pack/playtest`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        targetClient: disposableClient,
+        installPlan: pack.installPlan,
+      }),
+    });
+    const play = await playRes.json();
+    expect(playRes.status).toBe(200);
+    expect(play.ready).toBe(true);
+    expect(play.passed).toBe(play.total);
+  });
+
+  test("item mesh resolve exposes multi-material silhouette stems", async () => {
+    const response = await fetch(
+      `${base}/api/item-mesh/resolve?meshIndex=214&char=NIKI&metaOnly=1`,
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.silhouette?.stemCount).toBeGreaterThan(0);
+    expect(Array.isArray(body.silhouette?.stems)).toBe(true);
+    expect(body.hasMultiMaterial === true || body.equipmentMaterialTable != null).toBe(
+      true,
+    );
+  });
+
+  test("ftm tile paint sets layer cell", async () => {
+    const response = await fetch(`${base}/api/ftm/author`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        archive: "Res/MapSet/FantaCastle.res",
+        member: "FantaCastleOutSide.ftm",
+        tilePaint: {
+          layerIndex: 0,
+          cells: [{ x: 0, y: 0, value: 1 }],
+        },
+      }),
+    });
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(existsSync(body.path)).toBe(true);
+  });
+
   test("mesh-from-obj authors new topology studio DAT", async () => {
     const objPath = join(disposableClient, "tiny.obj");
     await Bun.write(

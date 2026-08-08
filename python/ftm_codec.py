@@ -581,3 +581,51 @@ def set_blocked_tiles(
     blocked = [BlockedTile(x=int(t["x"]), y=int(t["y"])) for t in tiles]
     return _copy_ftm(ftm, blocked_tiles=blocked)
 
+
+def paint_tile_layer(
+    ftm: ParsedFtm,
+    *,
+    layer_index: int,
+    cells: list[dict[str, int]],
+) -> ParsedFtm:
+    """Set tile resource indices on one layer. cells: {x, y, value}."""
+    if layer_index < 0 or layer_index >= len(ftm.tileLayers):
+        raise FtmParseError(
+            f"tile layer index {layer_index} out of range (0..{len(ftm.tileLayers) - 1})"
+        )
+    layers = list(ftm.tileLayers)
+    layer = layers[layer_index]
+    indices = list(layer.indices)
+    w = layer.tileCountX
+    h = layer.tileCountY
+    for cell in cells:
+        x = int(cell["x"])
+        y = int(cell["y"])
+        value = int(cell["value"])
+        if x < 0 or y < 0 or x >= w or y >= h:
+            raise FtmParseError(f"tile cell ({x},{y}) out of range for layer {layer_index}")
+        indices[y * w + x] = value
+    layers[layer_index] = TileLayerData(
+        layerName=layer.layerName,
+        tileCountX=layer.tileCountX,
+        tileCountY=layer.tileCountY,
+        indices=indices,
+    )
+    return ParsedFtm(
+        mapPath=ftm.mapPath,
+        tileCountX=ftm.tileCountX,
+        tileCountY=ftm.tileCountY,
+        unkI2=ftm.unkI2,
+        indoorMode=ftm.indoorMode,
+        unkI3=ftm.unkI3,
+        unkI4=ftm.unkI4,
+        tileLayerDefinitions=list(ftm.tileLayerDefinitions),
+        tileLayers=layers,
+        prefabs=list(ftm.prefabs),
+        sceneObjects=list(ftm.sceneObjects),
+        interactableTiles=list(ftm.interactableTiles),
+        blockedTiles=list(ftm.blockedTiles),
+        unknownBytes=ftm.unknownBytes,
+        byteLength=ftm.byteLength,
+    )
+

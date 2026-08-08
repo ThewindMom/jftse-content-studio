@@ -940,6 +940,95 @@ const server = Bun.serve({
         );
       },
     },
+    "/api/content-pack/build": {
+      POST: async (req) => {
+        let body: Record<string, unknown>;
+        try {
+          body = (await req.json()) as Record<string, unknown>;
+        } catch {
+          return bad("INVALID_JSON");
+        }
+        const payloadPath = join(
+          config.tmpDir,
+          `content-pack-${crypto.randomUUID()}.json`,
+        );
+        const outDir = join(
+          config.exportsDir,
+          `content-pack-${Date.now()}`,
+        );
+        await Bun.write(payloadPath, JSON.stringify(body, null, 2));
+        return safeBridge(() =>
+          runBridge([
+            "content-pack-build",
+            "--payload",
+            payloadPath,
+            "--out-dir",
+            outDir,
+          ]),
+        );
+      },
+    },
+    "/api/content-pack/install": {
+      POST: async (req) => {
+        let body: Record<string, unknown>;
+        try {
+          body = (await req.json()) as Record<string, unknown>;
+        } catch {
+          return bad("INVALID_JSON");
+        }
+        const targetClient = String(body.targetClient ?? config.localClient);
+        const files = body.installPlan ?? body.files;
+        if (!Array.isArray(files) || files.length === 0) {
+          return bad("INSTALL_PLAN_REQUIRED");
+        }
+        const payloadPath = join(
+          config.tmpDir,
+          `content-pack-install-${crypto.randomUUID()}.json`,
+        );
+        await Bun.write(payloadPath, JSON.stringify({ files }, null, 2));
+        const installed = await safeBridge(() =>
+          runBridge([
+            "client-install",
+            "--target-client",
+            targetClient,
+            "--payload",
+            payloadPath,
+          ]),
+        );
+        // safeBridge returns Response - need raw bridge for chaining
+        return installed;
+      },
+    },
+    "/api/content-pack/playtest": {
+      POST: async (req) => {
+        let body: Record<string, unknown>;
+        try {
+          body = (await req.json()) as Record<string, unknown>;
+        } catch {
+          return bad("INVALID_JSON");
+        }
+        const targetClient = String(body.targetClient ?? config.localClient);
+        const installPlan = body.installPlan;
+        if (!Array.isArray(installPlan)) return bad("INSTALL_PLAN_REQUIRED");
+        const payloadPath = join(
+          config.tmpDir,
+          `content-pack-playtest-${crypto.randomUUID()}.json`,
+        );
+        await Bun.write(
+          payloadPath,
+          JSON.stringify({ installPlan }, null, 2),
+        );
+        return safeBridge(() =>
+          runBridge([
+            "content-pack-playtest",
+            "--target-client",
+            targetClient,
+            "--payload",
+            payloadPath,
+          ]),
+        );
+      },
+    },
     "/api/packs": {
       GET: async () => {
         const files = readdirSync(config.packsDir).filter((name) =>

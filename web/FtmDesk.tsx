@@ -24,6 +24,11 @@ type FtmPayload = {
   readonly interactableTileCount?: number;
   readonly blockedTileCount?: number;
   readonly tileLayerDefinitions?: Array<{ name: string; visible?: number }>;
+  readonly tileLayers?: Array<{
+    layerName?: string;
+    tileCountX?: number;
+    tileCountY?: number;
+  }>;
   readonly blockedTiles?: Array<{ x: number; y: number }>;
 };
 
@@ -55,9 +60,17 @@ export function FtmDesk() {
   const [exportPath, setExportPath] = useState("");
   const [copyHint, setCopyHint] = useState("");
   const [paintBlocked, setPaintBlocked] = useState(false);
+  const [paintTile, setPaintTile] = useState(false);
+  const [tilePaintValue, setTilePaintValue] = useState("1");
+  const [tileLayerIndex, setTileLayerIndex] = useState(0);
+  const [tilePaintCells, setTilePaintCells] = useState<
+    Array<{ x: number; y: number; value: number }>
+  >([]);
   const [blockedDraft, setBlockedDraft] = useState<Array<{ x: number; y: number }>>(
     [],
   );
+  const [draftPrefab, setDraftPrefab] = useState("0");
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const exportPanelRef = useRef<HTMLDivElement | null>(null);
 
@@ -80,6 +93,7 @@ export function FtmDesk() {
     setDraftScaleW(String(selectedObj.scaleWidth));
     setDraftRotY(String(selectedObj.rotationY));
     setDraftRotX(String(selectedObj.rotationX));
+    setDraftPrefab(String(selectedObj.prefabIndex));
     // Bring export panel into view after select (select → edit → export path)
     window.requestAnimationFrame(() => {
       exportPanelRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -136,6 +150,7 @@ export function FtmDesk() {
       setKind("ftm");
       setFtm(body.ftm);
       setBlockedDraft(body.ftm.blockedTiles ?? []);
+      setTilePaintCells([]);
       const count = body.ftm.sceneObjectCount ?? body.ftm.sceneObjects?.length ?? 0;
       // Auto-select first placement so export path is one edit away
       if ((body.ftm.sceneObjects?.length ?? 0) > 0) {
@@ -241,9 +256,10 @@ export function FtmDesk() {
     const ox = pad + (w - pad * 2 - cell * cols) / 2;
     const oy = pad + (h - pad * 2 - cell * rows) / 2;
 
+    const tx = Math.floor((mx - ox) / cell);
+    const ty = Math.floor((my - oy) / cell);
+
     if (paintBlocked) {
-      const tx = Math.floor((mx - ox) / cell);
-      const ty = Math.floor((my - oy) / cell);
       if (tx < 0 || ty < 0 || tx >= cols || ty >= rows) return;
       setBlockedDraft((prev) => {
         const exists = prev.some((t) => t.x === tx && t.y === ty);
@@ -254,6 +270,22 @@ export function FtmDesk() {
       return;
     }
 
+    if (paintTile) {
+      if (tx < 0 || ty < 0 || tx >= cols || ty >= rows) return;
+      const value = Number(tilePaintValue);
+      if (!Number.isFinite(value)) {
+        setError("tile paint value must be a number");
+        return;
+      }
+      setTilePaintCells((prev) => {
+        const rest = prev.filter((c) => !(c.x === tx && c.y === ty));
+        return [...rest, { x: tx, y: ty, value: Math.trunc(value) }];
+      });
+      setStatus(`Tile layer #${tileLayerIndex} paint · (${tx},${ty})=${Math.trunc(value)}`);
+      return;
+    }
+
+    // Drag placement mode: if clicking near selected placement, start drag
     let best = -1;
     let bestDist = Infinity;
     objects.forEach((obj, i) => {
@@ -267,7 +299,34 @@ export function FtmDesk() {
     });
     if (best >= 0 && bestDist < (Math.max(cell, 8) * 2) ** 2) {
       setSelected(best);
+      setDragIndex(best);
     }
+  };
+
+  const onCanvasMouseUp = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    if (dragIndex == null || !ftm || !canvasRef.current || paintBlocked || paintTile) {
+      setDragIndex(null);
+      return;
+    }
+    const rect = canvasRef.current.getBoundingClientRect();
+    const scaleX = canvasRef.current.width / rect.width;
+    const scaleY = canvasRef.current.height / rect.height;
+    const mx = (event.clientX - rect.left) * scaleX;
+    const my = (event.clientY - rect.top) * scaleY;
+    const cols = Math.max(ftm.tileCountX, 1);
+    const rows = Math.max(ftm.tileCountY, 1);
+    const pad = 12;
+    const w = canvasRef.current.width;
+    const h = canvasRef.current.height;
+    const cell = Math.min((w - pad * 2) / cols, (h - pad * 2) / rows);
+    const ox = pad + (w - pad * 2 - cell * cols) / 2;
+    const oy = pad + (h - pad * 2 - cell * rows) / 2;
+    const tx = Math.max(0, Math.min(cols - 1, Math.floor((mx - ox) / cell)));
+    const ty = Math.max(0, Math.min(rows - 1, Math.floor((my - oy) / cell)));
+    setDraftX(String(tx));
+    setDraftY(String(ty));
+    setStatus(`Dragged placement #${dragIndex} → (${tx},${ty}) — export to apply`);
+    setDragIndex(null);
   };
 
   const exportBlockedPaint = async () => {
@@ -282,6 +341,10 @@ export function FtmDesk() {
           archive: archive.trim(),
           member: member.trim(),
           blockedTiles: blockedDraft,
+          tilePaint:
+            tilePaintCells.length > 0
+              ? { layerIndex: tileLayerIndex, cells: tilePaintCells }
+              : undefined,
         }),
       });
       const body = (await response.json()) as {
@@ -297,11 +360,13 @@ export function FtmDesk() {
       }
       setExportPath(body.path ?? body.archive ?? "");
       setStatus(
-        `Exported blocked tiles · ${body.blockedTileCount ?? blockedDraft.length} → ${body.path}`,
+        `Exported map paint · blocked ${body.blockedTileCount ?? blockedDraft.length}` +
+          (tilePaintCells.length ? ` · tile cells ${tilePaintCells.length}` : "") +
+          ` → ${body.path}`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-      setStatus("Blocked tile export failed");
+      setStatus("Map paint export failed");
     } finally {
       setBusy(false);
     }
@@ -340,6 +405,7 @@ export function FtmDesk() {
           patches: [
             {
               index: selected,
+              prefabIndex: Math.trunc(Number(draftPrefab)) || selectedObj.prefabIndex,
               x: Math.trunc(x),
               y: Math.trunc(y),
               scaleHeight,
@@ -365,12 +431,14 @@ export function FtmDesk() {
       setStatus(
         `Exported authored FTM · placement #${selected} → ${body.path} (+ MapSet RES)`,
       );
+      const prefabIndex = Math.trunc(Number(draftPrefab)) || selectedObj.prefabIndex;
       setFtm({
         ...ftm,
         sceneObjects: objects.map((obj, i) =>
           i === selected
             ? {
                 ...obj,
+                prefabIndex,
                 x: Math.trunc(x),
                 y: Math.trunc(y),
                 scaleHeight,
@@ -397,7 +465,10 @@ export function FtmDesk() {
     setBusy(true);
     setError("");
     try {
-      const prefabIndex = selectedObj?.prefabIndex ?? 0;
+      const prefabIndex =
+        Number(draftPrefab) >= 0
+          ? Math.trunc(Number(draftPrefab))
+          : (selectedObj?.prefabIndex ?? 0);
       const response = await fetch("/api/ftm/author", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -561,9 +632,24 @@ export function FtmDesk() {
           type="button"
           disabled={busy || !ftm}
           data-active={paintBlocked}
-          onClick={() => setPaintBlocked((v) => !v)}
+          onClick={() => {
+            setPaintBlocked((v) => !v);
+            setPaintTile(false);
+          }}
         >
           {paintBlocked ? "Paint blocked: ON" : "Paint blocked tiles"}
+        </button>
+        <button
+          className="btn"
+          type="button"
+          disabled={busy || !ftm}
+          data-active={paintTile}
+          onClick={() => {
+            setPaintTile((v) => !v);
+            setPaintBlocked(false);
+          }}
+        >
+          {paintTile ? "Paint tile layer: ON" : "Paint tile layer"}
         </button>
         <button
           className="btn primary"
@@ -571,9 +657,34 @@ export function FtmDesk() {
           disabled={busy || !ftm}
           onClick={() => void exportBlockedPaint()}
         >
-          Export blocked paint
+          Export map paint
         </button>
       </div>
+      {ftm && paintTile && (
+        <div className="field-grid">
+          <label>
+            Layer index
+            <input
+              type="number"
+              min={0}
+              value={tileLayerIndex}
+              onChange={(e) => setTileLayerIndex(Number(e.target.value) || 0)}
+            />
+          </label>
+          <label>
+            Tile value
+            <input
+              value={tilePaintValue}
+              onChange={(e) => setTilePaintValue(e.target.value)}
+              inputMode="numeric"
+            />
+          </label>
+          <div className="empty mono">
+            layers: {(ftm.tileLayerDefinitions ?? []).map((l) => l.name).join(", ") || "—"} ·
+            painted cells {tilePaintCells.length}
+          </div>
+        </div>
+      )}
       <div className="empty">{status}</div>
       {error && (
         <div className="mono" style={{ color: "var(--danger)" }} role="alert">
@@ -593,6 +704,8 @@ export function FtmDesk() {
             height={360}
             aria-label="FTM placement map"
             onClick={onCanvasClick}
+            onMouseUp={onCanvasMouseUp}
+            onMouseLeave={() => setDragIndex(null)}
           />
           <div className="list ftm-object-list" role="listbox" aria-label="Scene placements">
             {objects.length === 0 && <p className="empty">No scene objects in this FTM.</p>}
@@ -620,6 +733,23 @@ export function FtmDesk() {
                 {selectedObj.prefabObjId ? ` · objId=${selectedObj.prefabObjId}` : ""}
               </div>
               <div className="field-grid">
+                <label>
+                  Prefab
+                  <select
+                    value={draftPrefab}
+                    onChange={(e) => setDraftPrefab(e.target.value)}
+                    aria-label="Prefab index"
+                  >
+                    {(ftm.prefabs ?? []).map((p, i) => (
+                      <option key={`${p.name}-${i}`} value={String(i)}>
+                        #{i} {p.name}
+                      </option>
+                    ))}
+                    {!(ftm.prefabs?.length) && (
+                      <option value={draftPrefab}>#{draftPrefab}</option>
+                    )}
+                  </select>
+                </label>
                 <label>
                   x (tile)
                   <input

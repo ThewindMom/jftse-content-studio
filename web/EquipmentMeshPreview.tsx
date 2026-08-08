@@ -31,6 +31,18 @@ type ResolvedMesh = {
     materials?: Array<{ name?: string; texCandidate?: string }>;
     confidence?: { solidArea?: number; score?: number };
   };
+  equipmentMaterialTable?: {
+    count: number;
+    stems: string[];
+    records?: Array<{ index: number; stem: string; texCandidate: string }>;
+  } | null;
+  hasMultiMaterial?: boolean;
+  silhouette?: {
+    mode?: string;
+    stemCount?: number;
+    stems?: string[];
+    note?: string;
+  };
 };
 
 type BoneAttach = {
@@ -225,12 +237,23 @@ export function EquipmentMeshPreview({
             ` · palette ${skinBody.skeleton?.boneCount ?? "?"} bones` +
             (skinBody.skeletonCoversSkin ? " (covers indices)" : "");
         }
+        const stems =
+          data.silhouette?.stems ??
+          data.equipmentMaterialTable?.stems ??
+          data.mesh.materials?.map((m) => m.name).filter(Boolean) ??
+          [];
+        const matNote =
+          stems.length > 0
+            ? ` · mats ${stems.slice(0, 4).join(",")}${stems.length > 4 ? "…" : ""}`
+            : "";
         setLabel(
           `${data.resolved.member} · mesh#${data.resolved.index} · ${data.mesh.vertexCount} verts` +
             (attach
               ? ` · socket ${attach.name} (${attach.position.map((v) => v.toFixed(2)).join(", ")})`
               : " · no Bone_Racket (origin fallback)") +
             skinNote +
+            matNote +
+            (data.hasMultiMaterial ? " · multi-mat" : "") +
             (data.resolved.desc ? ` · ${data.resolved.desc}` : ""),
         );
         setModeBadge(attach ? "bind pose" : "origin fallback");

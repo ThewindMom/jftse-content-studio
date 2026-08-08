@@ -866,7 +866,29 @@ def cmd_item_mesh_resolve(args: argparse.Namespace) -> dict[str, Any]:
     include_geometry = not bool(getattr(args, "meta_only", False))
     mesh = decode_member(client, resolved["archive"], resolved["member"])
     payload = decoded_to_dict(mesh, include_geometry=include_geometry)
-    return {"ok": True, "resolved": resolved, "mesh": payload}
+    # Multi-material equipment table (positional stems → .tex candidates)
+    from mesh_meta import analyze_member
+
+    meta = analyze_member(client, resolved["archive"], resolved["member"])
+    equip_table = meta.get("equipmentMaterialTable")
+    materials = meta.get("materials") or payload.get("materials") or []
+    return {
+        "ok": True,
+        "resolved": resolved,
+        "mesh": payload,
+        "equipmentMaterialTable": equip_table,
+        "materials": materials,
+        "hasMultiMaterial": bool(meta.get("hasMultiMaterial")),
+        "silhouette": {
+            "mode": "equipment-material-table"
+            if equip_table
+            else "recovered-materials",
+            "stemCount": (equip_table or {}).get("count") or len(materials),
+            "stems": (equip_table or {}).get("stems")
+            or [m.get("name") for m in materials if isinstance(m, dict)],
+            "note": "Studio draws best-effort multi-stem albedo; not full DX9 FVF submesh ranges.",
+        },
+    }
 
 
 def cmd_stage_set_decrypt(args: argparse.Namespace) -> dict[str, Any]:
@@ -1573,6 +1595,14 @@ def main() -> None:
     p_ani_b.add_argument("--archive", default="Res/Player/PlayerA/AniA.res")
     p_ani_b.add_argument("--member", default="NikiAniA.ani")
     p_ani_b.add_argument("--char", default="NIKI")
+
+    p_cp = sub.add_parser("content-pack-build")
+    p_cp.add_argument("--payload", required=True)
+    p_cp.add_argument("--out-dir", required=True)
+
+    p_cpp = sub.add_parser("content-pack-playtest")
+    p_cpp.add_argument("--target-client", required=True)
+    p_cpp.add_argument("--payload", required=True)
 
     args = parser.parse_args()
     from author_cmds import make_handlers as make_author_handlers

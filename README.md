@@ -156,7 +156,8 @@ See [`docs/client-re.md`](docs/client-re.md) for field-level detail and remainin
 | Stage RE | `/api/stage-set/decrypt`, **`POST /api/stage-set/write`**, `/api/stage-scene`, `/api/map-catalog` |
 | FTM / ANI / bones | `/api/ftm/parse`, `POST /api/ftm/export`, **`POST /api/ftm/author`**, `/api/ani/parse`, `/api/bone-attach` |
 | Meshes | `/api/mesh-studio/*` + **`POST /api/mesh-studio/import-obj`**, **`POST /api/tex/encode`** |
-| Equipment / skin | `/api/item-mesh/resolve`, `/api/skin/parse`, **`POST /api/equipment/pack`**, **`POST /api/client/install`** |
+| Equipment / skin | `/api/item-mesh/resolve` (multi-mat silhouette), `/api/skin/parse`, **`POST /api/equipment/pack`**, **`POST /api/client/install`** |
+| Content pack | **`POST /api/content-pack/build`**, **`/playtest`** (unified equipment+map+stage+FTM install plan) |
 | Packs | `GET/POST /api/packs`, `GET /api/packs/:name` |
 
 ### Bridge CLI (Python)

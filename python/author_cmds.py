@@ -14,10 +14,12 @@ from equipment_author import (
     list_catalog_max_index,
     patch_item_mesh_catalog,
 )
+from content_pack import build_content_pack, playtest_content_pack
 from ftm_codec import (
     FtmParseError,
     add_scene_object,
     load_ftm_from_res,
+    paint_tile_layer,
     parse_ftm_bytes,
     patch_scene_objects,
     remove_scene_object,
@@ -207,6 +209,13 @@ def make_handlers(
                 ftm = add_scene_object(ftm, add)
             if "blockedTiles" in payload:
                 ftm = set_blocked_tiles(ftm, list(payload["blockedTiles"]))
+            tile_paint = payload.get("tilePaint")
+            if isinstance(tile_paint, dict) and tile_paint.get("cells"):
+                ftm = paint_tile_layer(
+                    ftm,
+                    layer_index=int(tile_paint.get("layerIndex", 0)),
+                    cells=list(tile_paint["cells"]),
+                )
             raw = serialize_ftm(ftm)
             verify = parse_ftm_bytes(raw)
             if len(verify.sceneObjects) != len(ftm.sceneObjects):
@@ -252,6 +261,21 @@ def make_handlers(
     def cmd_eft_parse(args: Namespace) -> dict[str, Any]:
         _jftse, client = _jftse_and_client(jftse_fn, client_fn)
         return load_eft_from_path(client, str(args.path))
+
+    def cmd_content_pack_build(args: Namespace) -> dict[str, Any]:
+        jftse, client = _jftse_and_client(jftse_fn, client_fn)
+        payload = json.loads(Path(args.payload).read_text(encoding="utf-8"))
+        return build_content_pack(
+            client,
+            jftse,
+            Path(args.out_dir),
+            payload,
+        )
+
+    def cmd_content_pack_playtest(args: Namespace) -> dict[str, Any]:
+        payload = json.loads(Path(args.payload).read_text(encoding="utf-8"))
+        plan = list(payload.get("installPlan") or [])
+        return playtest_content_pack(Path(args.target_client), plan)
 
     def cmd_ani_section_b_status(args: Namespace) -> dict[str, Any]:
         """Expose honest section-B / float4 probe status for the studio UI."""
@@ -323,4 +347,6 @@ def make_handlers(
         "mesh-from-obj": cmd_mesh_from_obj,
         "eft-parse": cmd_eft_parse,
         "ani-section-b-status": cmd_ani_section_b_status,
+        "content-pack-build": cmd_content_pack_build,
+        "content-pack-playtest": cmd_content_pack_playtest,
     }
