@@ -281,29 +281,51 @@ Niki recovers **~20k+** skinned verts across many submesh runs; bone indices are
 
 API: `GET /api/skin/parse?char=NIKI` (+ `includeVertices=1&maxVertices=2000`)  
 Module: `python/skin_codec.py`  
-This unblocks Three.js `SkinnedMesh` experiments once bind-pose bones are ordered to match indices — full animated skinning still needs ANI quats (not yet confident).
+Response includes **`skeleton`**: ordered palette `bones[i]` with `name`, `parent`/`parentIndex`, local `matrix4` (@+96), `worldMatrix4` (@+224), `auxMatrix4` (@+160). Niki: **64** bones, skin `boneIndexMax=24` → `skeletonCoversSkin=true`.
+
+### Skeleton table (304 B records) — verified
+
+Body DAT stores a fixed-stride hierarchy starting at root `Bip01` (parent `None`):
+
+| Offset | Field |
+|-------:|--------|
+| 0 | `name[32]` |
+| 32 | `parent[32]` |
+| 96 | local bind 4×4 (column-major) |
+| 160 | aux 4×4 |
+| 224 | world bind 4×4 |
+| **304** | **record size** |
+
+Index order = skin blend indices / Three.js `Skeleton.bones[i]`.
+
+UI: `EquipmentMeshPreview` builds `THREE.SkinnedMesh` from skin vertices + palette (`web/skinnedBody.ts`).
 
 ### Bone attach (DX9 Equipment socket)
 
-Body mesh DAT embeds bind 4×4 matrices next to bone names. `Bone_Racket` on Niki:
+Body mesh DAT embeds bind 4×4 matrices next to bone names. `Bone_Racket` on Niki is palette index **52** (parent `Bip01_R_Hand`):
 
-- position ≈ `(5.86, 7.87, 4.16)`
-- full `matrix4` is **D3D/Three column-major** (translation @ indices 12–14 matches
-  position with distance 0). Pass directly to Three.js `Matrix4.fromArray` —
-  **do not transpose**. Earlier “row-major” wording was incorrect.
+- local `matrix4` translation ≈ `(5.03, 8.19, -0.25)` (column-major @ 12–14)
+- full `matrix4` is **D3D/Three column-major** — pass to `Matrix4.fromArray` (**do not transpose**)
 
 Runtime script proof (`Rtm00.set`): `AttachBone=Bone_Racket`, `AttachPath=…/Niki_prop02.dat`.
 
-API: `GET /api/bone-attach?char=NIKI&attachBone=Bone_Racket`  
-UI: `EquipmentMeshPreview` places racket mesh via attach matrix (pink socket marker).  
+API: `GET /api/bone-attach?char=NIKI&attachBone=Bone_Racket` (also returns full `skeleton`)  
+UI: racket at attach matrix + pink marker; body SkinnedMesh alongside.  
 Module: `python/bone_attach.py`
+
+### ANI → bone drive
+
+- `driveMode`: `quat` only when `rotationHypothesis.confident`; else **`position-only-fk`**
+- Track labels optional via `?char=NIKI` (skeleton name order)
+- UI applies quats when present; otherwise sets `bone.position` from float3 tracks (experiment). No throw on missing quats.
 
 ## Honest remaining limits
 
 - Not a full Ghidra/DX9 renderer; topology still best-effort index recovery
 - Submesh **index ranges** per material not fully table-parsed (names + counts known)
-- Equipment preview: bind-matrix attach + optional ANI **float3 delta** scrub on the racket (not full body skinning)
-- `.ani` files are much larger than float3 tracks alone (`NikiAniA.ani` ~1.4 MB vs ~21 KB float3) — remaining payload (likely rot/scale or extra clips) not fully decoded; no quat skinning graph yet
+- Body SkinnedMesh bind pose works; animated skinning is **position-only FK experiment** until ANI quats are confident
+- Position-only FK is not hierarchical retarget parity — useful for scrubbing/index alignment, not final gameplay motion
+- `.ani` section B bitstream still unknown; section C not auto-promoted to quats (unit ratio ≪ 90%)
 - FTM binary **read** is complete (FT-ResTool schema); studio ships a 2D inspect desk, not binary rewrite
 - Stage multi-draw compositor loads World + Object DATs with visibility toggles (draw cap); sky/collision optional; `.eft` effects not meshed
 

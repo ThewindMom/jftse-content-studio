@@ -668,6 +668,15 @@ describe("content studio production API", () => {
     expect(body.ani.sectionProbe.multiClip.clipCount).toBeGreaterThanOrEqual(2);
     expect(body.ani.sectionProbe.clipIndex ?? body.ani.clipIndex ?? 0).toBe(0);
     expect(String(body.ani.layout)).toMatch(/multi-clip/);
+    // Drive mode: quats only when confident; Niki falls back to position-only FK
+    expect(["quat", "position-only-fk"]).toContain(body.ani.driveMode);
+    if (body.ani.hasRotations) {
+      expect(body.ani.driveMode).toBe("quat");
+      expect(body.ani.tracks[0].hasRotations).toBe(true);
+    } else {
+      expect(body.ani.driveMode).toBe("position-only-fk");
+      expect(body.ani.tracks[0].hasRotations).toBe(false);
+    }
   }, 60000);
 
   test("ANI clipIndex selects alternate multi-clip float3 stack", async () => {
@@ -739,6 +748,29 @@ describe("content studio production API", () => {
     expect(body.skin.runs[0].sample[0].indices.length).toBe(4);
   }, 120000);
 
+  test("skin-parse includes ordered skeleton palette covering skin indices", async () => {
+    const response = await fetch(
+      `${base}/api/skin/parse?char=NIKI&includeVertices=1&maxVertices=64`,
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.skeleton).toBeDefined();
+    expect(body.skeleton.recordSize).toBe(304);
+    expect(body.skeleton.boneCount).toBeGreaterThanOrEqual(25);
+    expect(body.skeleton.bones[0].index).toBe(0);
+    expect(body.skeleton.bones[0].name).toMatch(/Bip01/i);
+    expect(body.skeleton.bones[0].matrix4.length).toBe(16);
+    expect(body.skeleton.matrixLayout).toBe("column-major");
+    // Skin blend indices must fall inside the palette
+    expect(body.skeletonCoversSkin).toBe(true);
+    expect(body.skin.boneIndexMax).toBeLessThan(body.skeleton.boneCount);
+    expect(Array.isArray(body.vertices)).toBe(true);
+    expect(body.vertices.length).toBeGreaterThan(0);
+    expect(body.vertices[0].indices.length).toBe(4);
+    expect(body.vertices[0].weights.length).toBe(4);
+  }, 120000);
+
   test("skin-parse LUCY uses PlayerD body", async () => {
     const response = await fetch(`${base}/api/skin/parse?char=LUCY`);
     const body = await response.json();
@@ -789,6 +821,34 @@ describe("content studio production API", () => {
     expect(body.attach.matrix4[12]).toBeCloseTo(body.attach.position[0], 5);
     expect(body.attach.matrix4[13]).toBeCloseTo(body.attach.position[1], 5);
     expect(body.attach.matrix4[14]).toBeCloseTo(body.attach.position[2], 5);
+  }, 60000);
+
+  test("bone-attach returns ordered skeleton palette 0..N with parents", async () => {
+    const response = await fetch(
+      `${base}/api/bone-attach?char=NIKI&attachBone=Bone_Racket`,
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.skeleton.boneCount).toBeGreaterThanOrEqual(40);
+    expect(body.skeleton.bones.length).toBe(body.skeleton.boneCount);
+    expect(body.skeleton.bones[0].name).toBe("Bip01");
+    expect(body.skeleton.bones[0].parent).toBeNull();
+    // Contiguous indices 0..N-1
+    body.skeleton.bones.forEach((b: { index: number }, i: number) => {
+      expect(b.index).toBe(i);
+    });
+    const racket = body.skeleton.bones.find(
+      (b: { name: string }) => /Racket/i.test(b.name),
+    );
+    expect(racket).toBeDefined();
+    expect(racket.matrix4.length).toBe(16);
+    expect(typeof racket.parentIndex === "number" || racket.parentIndex === null).toBe(
+      true,
+    );
+    // API bones list mirrors palette order
+    expect(body.bones[0].name).toBe(body.skeleton.bones[0].name);
+    expect(body.bones[0].matrix4.length).toBe(16);
   }, 60000);
 
   test("bone-attach LUCY loads Lucy.dat under PlayerD (not Dhanpir)", async () => {
@@ -972,7 +1032,82 @@ describe("content studio production API", () => {
     expect(sql).toContain("INSERT INTO S_Maps");
     expect(sql).toContain("Map_2_Scenarios");
     expect(sql).toContain("Guardian_2_Maps");
+    expect(sql).toContain("M_Scenarios");
     expect(sql).toContain("Emerald Beach");
     expect(sql).toContain("1_Emerald_Beach.set");
+    expect(sql).toContain("playTime=VALUES(playTime)");
+    expect(sql).toContain("ON DUPLICATE KEY UPDATE");
+  });
+
+  test("map studio catalog exposes wiki S_Maps timing columns", async () => {
+    const response = await fetch(`${base}/api/map-studio/catalog`);
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    const atlantis = body.maps.find((row: { name: string }) => row.name === "Atlantis");
+    expect(atlantis).toBeDefined();
+    expect(atlantis.bossPlayTime).toBe(5);
+    expect(atlantis.playTime).toBe(8);
+    expect(atlantis.triggerBossTime).toBe(4);
+    expect(atlantis.breathTime).toBe(100);
+    expect(atlantis.isBossStage).toBe(true);
+    const scn = body.scenarios.find((row: { id: number }) => row.id === 1);
+    expect(scn?.gameMode).toBe("GUARDIAN");
+  });
+
+  test("map studio export pack preserves seed timing and applies draft overrides", async () => {
+    const response = await fetch(`${base}/api/map-studio/export-pack`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        mapIds: [11],
+        includeGuardians: true,
+        includeScenarios: true,
+        draft: {
+          name: "Atlantis Custom",
+          isBossStage: true,
+        },
+      }),
+    });
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.scenarioDefCount).toBeGreaterThan(0);
+    const sql = await Bun.file(body.path).text();
+    expect(sql).toContain("Atlantis Custom");
+    // Seed Atlantis: bossPlayTime=5, breathTime=100, playTime=8, triggerBossTime=4
+    expect(sql).toMatch(
+      /INSERT INTO S_Maps[\s\S]*VALUES\(11,\s*NOW\(6\),\s*NOW\(6\),\s*5,\s*100,\s*NULL,\s*1,\s*10,\s*'Atlantis Custom',\s*8,\s*4,\s*0\)/,
+    );
+    expect(sql).toContain("INSERT INTO M_Scenarios");
+    expect(sql).toContain("gameMode=VALUES(gameMode)");
+    expect(sql).toContain(
+      "ON DUPLICATE KEY UPDATE side=VALUES(side), boss_guardian_id=VALUES(boss_guardian_id)",
+    );
+    expect(sql).toContain(
+      "ON DUPLICATE KEY UPDATE scenario_id=VALUES(scenario_id), map_id=VALUES(map_id)",
+    );
+  });
+
+  test("map sql bulk export includes relations and full S_Maps columns", async () => {
+    const response = await fetch(`${base}/api/maps/export-sql`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        maps: [{ map: 2, name: "Twinkle Town Draft" }],
+        includeRelations: true,
+      }),
+    });
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    const sql = await Bun.file(body.path).text();
+    expect(sql).toContain("Twinkle Town Draft");
+    // Twinkle Town seed: bossPlayTime=10, playTime=15, triggerBossTime=10
+    expect(sql).toMatch(/VALUES\(3,\s*NOW\(6\),\s*NOW\(6\),\s*10,\s*100,/);
+    expect(sql).toContain(", 15, 10, 0)");
+    expect(sql).toContain("Map_2_Scenarios");
+    expect(sql).toContain("Guardian_2_Maps");
+    expect(sql).toContain("M_Scenarios");
   });
 });

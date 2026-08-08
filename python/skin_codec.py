@@ -21,7 +21,12 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from bone_attach import _mesh_archive_rel, _prefer_body_member
+from bone_attach import (
+    _mesh_archive_rel,
+    _prefer_body_member,
+    extract_skeleton_palette,
+    skeleton_to_api,
+)
 
 RECORD_SIZE = 56
 
@@ -172,8 +177,9 @@ def load_body_skin(
     char: str = "NIKI",
     include_vertices: bool = False,
     max_vertices: int = 2000,
+    include_skeleton: bool = True,
 ) -> dict[str, Any]:
-    """Load character body DAT and extract skinned vertex runs."""
+    """Load character body DAT and extract skinned vertex runs + bone palette."""
     archive = _mesh_archive_rel(char)
     with zipfile.ZipFile(client_root / archive) as zf:
         member = _prefer_body_member(list(zf.namelist()), char)
@@ -188,6 +194,16 @@ def load_body_skin(
         "byteLength": len(data),
         "skin": summary,
     }
+    palette = extract_skeleton_palette(data) if include_skeleton else []
+    if include_skeleton:
+        skeleton = skeleton_to_api(palette)
+        payload["skeleton"] = skeleton
+        bone_max = summary.get("boneIndexMax")
+        palette_len = len(palette)
+        payload["skeletonCoversSkin"] = (
+            bone_max is None or (palette_len > 0 and int(bone_max) < palette_len)
+        )
+        payload["bonePaletteCount"] = palette_len
     if include_vertices and runs:
         # Flatten top runs up to max_vertices for preview pipelines
         verts: list[dict[str, Any]] = []

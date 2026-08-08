@@ -97,7 +97,7 @@ Relational map desk + stage preview:
 1. Browse `S_Maps` with scenario / guardian links.
 2. Bind / validate `Stage/Info.res` scripts (World / Sky / Collision).
 3. Preview court geometry with stock textures.
-4. Export SQL packs (`S_Maps`, scenarios, guardians).
+4. Export SQL packs (`S_Maps` full timing columns, `M_Scenarios`, `Map_2_Scenarios`, `Guardian_2_Maps` with UPSERTs).
 
 Also exposes decrypted **map catalogs** (`MapObjRes`, `MapTileRes`, `MapHouseRes`) and full **FTM** placement parsing (see below).
 
@@ -213,6 +213,8 @@ python/
   client_crypto.py      AES .set / key material
   stage_scene.py        Stage Info.res scene graph
   map_catalog.py        MapObj / Tile / House catalogs
+  map_sql_models.py     S_Maps / M_Scenarios / relation row types + drafts
+  map_sql_export.py     Parse JFTSE scripts/sql seeds + emit wiki-aligned UPSERT packs
   ftm_codec.py          FTM/PRJ parse + serialize (FT-ResTool-compatible)
   char_player.py        Canonical Char → Player* folder map
   ani_codec.py          Character .ani tracks
@@ -235,8 +237,8 @@ DESIGN.md               Product / visual language
 | Soft particle export + local install | Pixel-true DX9 Equipment silhouette |
 | Stage scene graph + **multi-draw World/Object compositor** (layer toggles, cap 6) | Full multi-material submesh ranges + VFX `.eft` meshing |
 | FTM placements + **2D desk** (select/focus) + **patched .ftm export** under `exports/` | Full FT-ResTool tile paint GUI / stock-client FTM install |
-| ANI float3 **multi-clip** stacks + scrub/play (`maxFrames=0`, `clipIndex`) | Full quat skinning graph / section-B decode / skinned body mesh |
-| Bone_Racket bind matrix + **live ANI delta attach** | Live full hierarchical DX9 skeleton retarget |
+| ANI float3 **multi-clip** stacks + scrub/play (`maxFrames=0`, `clipIndex`) + **`driveMode`** (`quat` \| `position-only-fk`) | Confident quat graph / section-B decode / hierarchical retarget parity |
+| Ordered **304 B skeleton palette** + body **SkinnedMesh** + Bone_Racket attach | Gameplay-accurate skin weights / material submesh ranges |
 | Mesh recovery + stride-aware edit + export | Blender-parity topology authoring |
 
 ---

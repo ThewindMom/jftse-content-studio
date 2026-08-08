@@ -437,21 +437,24 @@ const server = Bun.serve({
         const maxFrames = url.searchParams.get("maxFrames") ?? "8";
         const clipIndex = url.searchParams.get("clipIndex") ?? "0";
         const channel = url.searchParams.get("channel") ?? "A";
-        return safeBridge(() =>
-          runBridge([
-            "ani-parse",
-            "--archive",
-            archive,
-            "--member",
-            member,
-            "--max-frames",
-            maxFrames,
-            "--clip-index",
-            clipIndex,
-            "--channel",
-            channel,
-          ]),
-        );
+        const char = url.searchParams.get("char") ?? "";
+        const args = [
+          "ani-parse",
+          "--archive",
+          archive,
+          "--member",
+          member,
+          "--max-frames",
+          maxFrames,
+          "--clip-index",
+          clipIndex,
+          "--channel",
+          channel,
+        ];
+        if (char.trim()) {
+          args.push("--char", char.trim());
+        }
+        return safeBridge(() => runBridge(args));
       },
     },
     "/api/bone-attach": {

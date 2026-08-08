@@ -1,6 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import {
+  buildSkinnedMesh,
+  captureBoneRest,
+  driveBonesFromAni,
+  resolveDriveMode,
+  type DriveMode,
+  type SkinParsePayload,
+} from "./skinnedBody";
 
 type ResolvedMesh = {
   ok?: boolean;
@@ -33,7 +41,8 @@ type BoneAttach = {
     position: number[];
     matrix4: number[];
   } | null;
-  bones?: Array<{ name: string; position: number[] }>;
+  bones?: Array<{ name: string; position: number[]; matrix4?: number[] }>;
+  skeleton?: SkinParsePayload["skeleton"];
 };
 
 type AniTrack = {
@@ -42,6 +51,8 @@ type AniTrack = {
   frameCount: number;
   times: number[];
   positions: number[][];
+  rotations?: number[][] | null;
+  hasRotations?: boolean;
   start?: number[] | null;
   end?: number[] | null;
 };
@@ -56,6 +67,8 @@ type AniPayload = {
     trackCount: number;
     layout?: string;
     sampled?: boolean;
+    hasRotations?: boolean;
+    driveMode?: string;
     tracks: AniTrack[];
   };
 };
@@ -71,10 +84,7 @@ function pickRacketTrack(
   tracks: AniTrack[],
   attachPos: number[] | null,
 ): number {
-  // Prefer name match
-  const named = tracks.findIndex(
-    (t) => t.name && /racket/i.test(t.name),
-  );
+  const named = tracks.findIndex((t) => t.name && /racket/i.test(t.name));
   if (named >= 0) return named;
   if (!attachPos) return 0;
   let best = 0;
@@ -91,20 +101,16 @@ function pickRacketTrack(
   return best;
 }
 
-function sampleTrack(
-  track: AniTrack,
-  frame: number,
-): number[] | null {
+function sampleTrack(track: AniTrack, frame: number): number[] | null {
   if (!track.positions.length) return null;
   const i = Math.max(0, Math.min(track.positions.length - 1, frame));
   return track.positions[i] ?? null;
 }
 
 /**
- * Equipment mesh + Bone_Racket attach pose, optional ANI scrub for live socket sample.
- * RE: Rtm00 AttachBone=Bone_Racket; body DAT stores 4×4 bind pose at socket.
- * matrix4 is D3D/Three column-major (tx @ 12–14) — use Matrix4.fromArray as-is.
- * Live mode samples ANI float3 tracks (not full DX9 quat skinning).
+ * Equipment mesh + body SkinnedMesh (skin/parse + ordered bone palette).
+ * ANI drives bones with quats when present, else position-only FK experiment.
+ * Racket still places via Bone_Racket bind matrix + optional float3 delta.
  */
 export function EquipmentMeshPreview({
   meshIndex,
@@ -116,10 +122,15 @@ export function EquipmentMeshPreview({
   const mountRef = useRef<HTMLDivElement | null>(null);
   const racketRef = useRef<THREE.Mesh | null>(null);
   const markerRef = useRef<THREE.Mesh | null>(null);
+  const skinnedRef = useRef<THREE.SkinnedMesh | null>(null);
+  const skeletonBonesRef = useRef<THREE.Bone[]>([]);
+  const restPosRef = useRef<THREE.Vector3[]>([]);
+  const restQuatRef = useRef<THREE.Quaternion[]>([]);
   const bindMatrixRef = useRef<THREE.Matrix4 | null>(null);
   const restLocalRef = useRef<THREE.Matrix4>(new THREE.Matrix4());
   const [label, setLabel] = useState("Resolving equipment mesh…");
   const [modeBadge, setModeBadge] = useState("bind pose");
+  const [driveMode, setDriveMode] = useState<DriveMode>("bind");
   const [ani, setAni] = useState<AniPayload["ani"] | null>(null);
   const [trackIndex, setTrackIndex] = useState(0);
   const [frame, setFrame] = useState(0);
@@ -139,43 +150,38 @@ export function EquipmentMeshPreview({
     return `${t.toFixed(3)}s · frame ${frame}/${frameCount - 1}`;
   }, [ani, duration, frame, frameCount]);
 
-  // Load mesh + bind attach
+  // Load racket mesh + bind attach + body skinned mesh
   useEffect(() => {
     let cancelled = false;
     let cleanup: (() => void) | undefined;
     void (async () => {
       try {
-        const [meshRes, attachRes] = await Promise.all([
+        const [meshRes, attachRes, skinRes] = await Promise.all([
           fetch(
             `/api/item-mesh/resolve?meshIndex=${encodeURIComponent(meshIndex)}&char=${encodeURIComponent(char)}`,
           ),
           fetch(
             `/api/bone-attach?char=${encodeURIComponent(char)}&attachBone=Bone_Racket`,
           ),
+          fetch(
+            `/api/skin/parse?char=${encodeURIComponent(char)}&includeVertices=1&maxVertices=8000`,
+          ),
         ]);
         const data = (await meshRes.json()) as ResolvedMesh;
         const attachBody = (await attachRes.json()) as BoneAttach;
+        const skinBody = (await skinRes.json()) as SkinParsePayload;
         if (!meshRes.ok || !data.ok) {
           throw new Error(data.error ?? `HTTP ${meshRes.status}`);
         }
         if (cancelled) return;
 
         const attach = attachBody.hasAttach ? attachBody.attach : null;
-        // Best-effort skin table stats for body (does not block mesh preview)
         let skinNote = "";
-        try {
-          const skinRes = await fetch(
-            `/api/skin/parse?char=${encodeURIComponent(char)}`,
-          );
-          const skinBody = (await skinRes.json()) as {
-            ok?: boolean;
-            skin?: { vertexCount?: number; runCount?: number; boneIndexCount?: number };
-          };
-          if (skinRes.ok && skinBody.ok && skinBody.skin) {
-            skinNote = ` · skin ${skinBody.skin.vertexCount ?? "?"}v/${skinBody.skin.runCount ?? "?"} runs/${skinBody.skin.boneIndexCount ?? "?"} bones`;
-          }
-        } catch {
-          /* optional */
+        if (skinRes.ok && skinBody.ok && skinBody.skin) {
+          skinNote =
+            ` · skin ${skinBody.skin.vertexCount ?? "?"}v` +
+            ` · palette ${skinBody.skeleton?.boneCount ?? "?"} bones` +
+            (skinBody.skeletonCoversSkin ? " (covers indices)" : "");
         }
         setLabel(
           `${data.resolved.member} · mesh#${data.resolved.index} · ${data.mesh.vertexCount} verts` +
@@ -186,6 +192,7 @@ export function EquipmentMeshPreview({
             (data.resolved.desc ? ` · ${data.resolved.desc}` : ""),
         );
         setModeBadge(attach ? "bind pose" : "origin fallback");
+        setDriveMode("bind");
 
         const mount = mountRef.current;
         if (!mount) return;
@@ -211,8 +218,28 @@ export function EquipmentMeshPreview({
         const fill = new THREE.DirectionalLight(0x88aaff, 0.25);
         fill.position.set(-6, 2, -4);
         scene.add(fill);
-
         scene.add(new THREE.AxesHelper(2));
+
+        // Body SkinnedMesh from skin vertices + ordered bone palette
+        let skinnedDispose: (() => void) | undefined;
+        if (skinRes.ok && skinBody.ok) {
+          const built = buildSkinnedMesh(skinBody);
+          if (built) {
+            scene.add(built.mesh);
+            skinnedRef.current = built.mesh;
+            skeletonBonesRef.current = built.bones;
+            const rest = captureBoneRest(built.bones);
+            restPosRef.current = rest.positions;
+            restQuatRef.current = rest.quats;
+            skinnedDispose = () => {
+              built.mesh.geometry.dispose();
+              const mat = built.mesh.material;
+              if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+              else mat.dispose();
+            };
+          }
+        }
+
         if (attach?.position) {
           const marker = new THREE.Mesh(
             new THREE.SphereGeometry(0.12, 14, 14),
@@ -232,6 +259,7 @@ export function EquipmentMeshPreview({
           markerRef.current = null;
         }
 
+        // Racket equipment mesh at Bone_Racket
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(data.mesh.positions.length * 3);
         data.mesh.positions.forEach((p, i) => {
@@ -258,7 +286,6 @@ export function EquipmentMeshPreview({
           side: THREE.DoubleSide,
         });
         const stem = data.resolved.member.replace(/\.dat$/i, "");
-        // Prefer equipment material stem from meta when present
         const texCandidates = [
           ...(data.mesh.materials ?? [])
             .map((m) => m.texCandidate)
@@ -304,13 +331,13 @@ export function EquipmentMeshPreview({
         } else {
           bindMatrixRef.current = null;
         }
-        // Capture post-bind matrix as rest for live offsets
         racket.updateMatrix();
         restLocalRef.current.copy(racket.matrix);
         scene.add(racket);
         racketRef.current = racket;
 
-        const box = new THREE.Box3().setFromObject(racket);
+        const focusObj = skinnedRef.current ?? racket;
+        const box = new THREE.Box3().setFromObject(focusObj);
         const center = new THREE.Vector3();
         const size = new THREE.Vector3();
         box.getCenter(center);
@@ -340,8 +367,11 @@ export function EquipmentMeshPreview({
           renderer.dispose();
           geometry.dispose();
           material.dispose();
+          skinnedDispose?.();
           racketRef.current = null;
           markerRef.current = null;
+          skinnedRef.current = null;
+          skeletonBonesRef.current = [];
           mount.replaceChildren();
         };
       } catch (err) {
@@ -356,15 +386,41 @@ export function EquipmentMeshPreview({
     };
   }, [meshIndex, char]);
 
-  // Apply live frame to racket + marker
+  // Apply live frame: skeleton drive + racket delta
   useEffect(() => {
+    const bones = skeletonBonesRef.current;
+    if (ani && bones.length > 0) {
+      const mode = resolveDriveMode(ani.hasRotations);
+      const applied = driveBonesFromAni(
+        bones,
+        ani.tracks,
+        frame,
+        mode,
+        restPosRef.current,
+        restQuatRef.current,
+      );
+      setDriveMode(applied);
+      setModeBadge(
+        applied === "quat"
+          ? playing
+            ? "live quat FK"
+            : "quat scrub"
+          : applied === "position-only-fk"
+            ? playing
+              ? "live pos-only FK"
+              : "pos-only FK scrub"
+            : "bind pose",
+      );
+      // Keep skinned mesh matrices current
+      skinnedRef.current?.skeleton.bones.forEach((b) => b.updateMatrixWorld(true));
+    }
+
     const racket = racketRef.current;
     if (!racket || !activeTrack) return;
     const pos = sampleTrack(activeTrack, frame);
     if (!pos) return;
     const start = activeTrack.start ?? activeTrack.positions[0];
     if (!start) return;
-    // Delta from track start → apply as translation on rest bind pose
     const dx = pos[0]! - start[0]!;
     const dy = pos[1]! - start[1]!;
     const dz = pos[2]! - start[2]!;
@@ -375,13 +431,10 @@ export function EquipmentMeshPreview({
     racket.matrix.copy(composed);
     racket.matrixWorldNeedsUpdate = true;
     if (markerRef.current) {
-      // Same composed matrix origin as the racket root (bind * ANI delta)
       markerRef.current.position.setFromMatrixPosition(composed);
     }
-    setModeBadge(playing ? "live scrub" : "scrub");
-  }, [activeTrack, frame, playing]);
+  }, [activeTrack, frame, playing, ani]);
 
-  // Play loop
   useEffect(() => {
     if (!playing || !ani || frameCount < 2 || reducedMotion) return;
     const fps = frameCount / Math.max(duration, 0.001);
@@ -397,7 +450,6 @@ export function EquipmentMeshPreview({
     setAniError("");
     setPlaying(false);
     try {
-      // Canonical char → Player folder (matches python/char_player.py + body meshes)
       const playerMap: Record<string, string> = {
         NIKI: "PlayerA",
         LUN: "PlayerB",
@@ -408,14 +460,12 @@ export function EquipmentMeshPreview({
         SHUA: "PlayerE",
         POCHI: "PlayerF",
         AL: "PlayerG",
-        // aliases kept for old UI tokens
         PIKARO: "PlayerE",
         RONA: "PlayerF",
       };
       const charKey = char.toUpperCase();
       const folder = playerMap[charKey] ?? "PlayerA";
       const archive = `Res/Player/${folder}/AniA.res`;
-      // Prefer common member names (body mesh stems)
       const stemByFolder: Record<string, string> = {
         PlayerA: "Niki",
         PlayerB: "LunLun",
@@ -430,12 +480,11 @@ export function EquipmentMeshPreview({
       let lastErr = "ANI not found";
       for (const member of members) {
         const res = await fetch(
-          `/api/ani/parse?archive=${encodeURIComponent(archive)}&member=${encodeURIComponent(member)}&maxFrames=0`,
+          `/api/ani/parse?archive=${encodeURIComponent(archive)}&member=${encodeURIComponent(member)}&maxFrames=0&char=${encodeURIComponent(char)}`,
         );
         const body = (await res.json()) as AniPayload;
         if (res.ok && body.ok && body.ani) {
           setAni(body.ani);
-          // Need attach position — re-fetch light
           const attachRes = await fetch(
             `/api/bone-attach?char=${encodeURIComponent(char)}&attachBone=Bone_Racket`,
           );
@@ -444,11 +493,14 @@ export function EquipmentMeshPreview({
           const idx = pickRacketTrack(body.ani.tracks, attachPos);
           setTrackIndex(idx);
           setFrame(0);
-          setModeBadge("scrub");
+          const mode = resolveDriveMode(body.ani.hasRotations);
+          setDriveMode(mode);
+          setModeBadge(mode === "quat" ? "quat scrub" : "pos-only FK scrub");
           setLabel(
             (prev) =>
               `${prev.split(" · ANI")[0]} · ANI ${member} · ${body.ani!.frameCount}f · track ${idx}` +
-              (body.ani!.layout ? ` · ${body.ani!.layout}` : ""),
+              (body.ani!.layout ? ` · ${body.ani!.layout}` : "") +
+              ` · drive ${body.ani!.driveMode ?? mode}`,
           );
           setAniBusy(false);
           return;
@@ -470,13 +522,16 @@ export function EquipmentMeshPreview({
       <div
         className="mesh-viewport equipment-viewport"
         ref={mountRef}
-        aria-label="Equipment mesh preview"
+        aria-label="Equipment and skinned body preview"
         style={{ minHeight: 220 }}
       />
       <div className="path-row">
-        <span className={`chip ${modeBadge.includes("live") || modeBadge === "scrub" ? "ok" : ""}`}>
+        <span
+          className={`chip ${modeBadge.includes("live") || modeBadge.includes("scrub") || modeBadge.includes("FK") ? "ok" : ""}`}
+        >
           {modeBadge}
         </span>
+        <span className="chip">{driveMode}</span>
         <div className="mono empty">{label}</div>
       </div>
       <div className="actions">
@@ -540,8 +595,10 @@ export function EquipmentMeshPreview({
         </div>
       )}
       <div className="empty">
-        Racket at Bone_Racket bind matrix. ANI scrub applies float3 track delta onto the bind pose
-        (not full DX9 quat skinning). Prefer isolated local client for playtest truth.
+        Body: Three.js SkinnedMesh from /api/skin/parse + ordered 304-byte bone palette
+        (indices 0..N). ANI drive uses quats when{" "}
+        <code>hasRotations</code>, else position-only FK experiment. Racket still
+        uses Bone_Racket bind + float3 track delta.
       </div>
     </div>
   );
