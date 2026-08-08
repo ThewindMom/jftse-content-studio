@@ -131,6 +131,69 @@ def _zlib_raw_score(blob: bytes) -> dict[str, Any]:
     return {"viable": False, "note": "zlib raw inflate failed for skips 0..16"}
 
 
+def _phase_float4_unit_ratios(blob: bytes) -> list[dict[str, Any]]:
+    """Unit ratio of float4 streams at byte phases 0..3 (odd sections need phase hunt)."""
+    out: list[dict[str, Any]] = []
+    for phase in range(4):
+        ratio = _unit_ratio_float4(blob[phase:])
+        out.append(
+            {
+                "phase": phase,
+                "unitRatio": ratio,
+                "viable": bool(ratio is not None and ratio >= _CONFIDENT),
+            }
+        )
+    return out
+
+
+def _first_clip_float4_unit(
+    blob: bytes, track_count: int, frame_count: int
+) -> list[dict[str, Any]]:
+    """Unit ratio of the first trackCount×frameCount float4 block at each phase."""
+    need = _float4_block(track_count, frame_count)
+    out: list[dict[str, Any]] = []
+    for phase in range(4):
+        chunk = blob[phase : phase + need]
+        if len(chunk) < need:
+            out.append({"phase": phase, "unitRatio": None, "viable": False})
+            continue
+        ratio = _unit_ratio_float4(chunk, max_samples=track_count * frame_count)
+        out.append(
+            {
+                "phase": phase,
+                "unitRatio": ratio,
+                "viable": bool(ratio is not None and ratio >= _CONFIDENT),
+            }
+        )
+    return out
+
+
+def _bit48_unitish_ratio(blob: bytes, n_samples: int) -> float | None:
+    """3×15-bit components + 2-bit index (LE bit order) reconstructable unitish ratio."""
+    need_bytes = (n_samples * 48 + 7) // 8
+    if len(blob) < need_bytes or n_samples <= 0:
+        return None
+    bits: list[int] = []
+    for b in blob[:need_bytes]:
+        for i in range(8):
+            bits.append((b >> i) & 1)
+    ok = 0
+    for i in range(n_samples):
+        base = i * 48
+        if base + 48 > len(bits):
+            break
+        comps: list[float] = []
+        for c in range(3):
+            v = 0
+            for bi in range(15):
+                v |= bits[base + 2 + c * 15 + bi] << bi
+            comps.append((v - 16384) / 16384.0)
+        m2 = sum(x * x for x in comps)
+        if m2 <= 1.0:
+            ok += 1
+    return ok / n_samples
+
+
 def _scan_contiguous_float4_block(
     data: bytes,
     *,
@@ -256,8 +319,63 @@ def probe_section_b(
             "skipped": True,
             "note": (
                 "Skipped in API path for latency; offline RE: NikiAniA best ≈0.61 unit "
-                "at +397340 (not confident)"
+                "(not confident)"
             ),
+        }
+    )
+
+    # Odd-size phase hunt (B is odd-length; phase1 often looks float-like)
+    phase_ratios = _phase_float4_unit_ratios(blob)
+    candidates.append(
+        {
+            "name": "float4-unit-byte-phases",
+            "phases": phase_ratios,
+            "viable": any(p.get("viable") for p in phase_ratios),
+            "bestPhaseUnitRatio": max(
+                (p.get("unitRatio") or 0.0) for p in phase_ratios
+            ),
+        }
+    )
+    clip_phases = _first_clip_float4_unit(blob, track_count, frame_count)
+    candidates.append(
+        {
+            "name": "float4-first-clip-byte-phases",
+            "phases": clip_phases,
+            "viable": any(p.get("viable") for p in clip_phases),
+            "bestPhaseUnitRatio": max(
+                (p.get("unitRatio") or 0.0) for p in clip_phases
+            ),
+        }
+    )
+    # Also try blob[1:] (drop leading odd pad) first-clip
+    if len(blob) % 2 == 1:
+        clip_drop = _first_clip_float4_unit(blob[1:], track_count, frame_count)
+        candidates.append(
+            {
+                "name": "float4-first-clip-drop-leading-byte",
+                "phases": clip_drop,
+                "viable": any(p.get("viable") for p in clip_drop),
+                "bestPhaseUnitRatio": max(
+                    (p.get("unitRatio") or 0.0) for p in clip_drop
+                ),
+            }
+        )
+
+    n_tf = track_count * frame_count
+    b48 = _bit48_unitish_ratio(blob, n_tf)
+    candidates.append(
+        {
+            "name": "bitstream-48bit-3x15-plus-index",
+            "unitishRatio": b48,
+            "viable": bool(b48 is not None and b48 >= _CONFIDENT),
+        }
+    )
+    b48_16 = _bit48_unitish_ratio(blob, n_tf * 16)
+    candidates.append(
+        {
+            "name": "bitstream-48bit-16clips",
+            "unitishRatio": b48_16,
+            "viable": bool(b48_16 is not None and b48_16 >= _CONFIDENT),
         }
     )
 
@@ -277,6 +395,89 @@ def probe_section_b(
                 "No confident rotation encoding in section B (or whole-file dense float4 "
                 "block). Tried float3/float4, s16 quat, s16 xyz-compress, f16, zlib-raw, "
                 "odd-pad drop, contiguous float4 scans. Prefer hierarchical-fk drive."
+            )
+        ),
+    }
+
+
+def probe_tail(
+    data: bytes,
+    *,
+    section_a: int,
+    section_b: int,
+    section_c: int,
+    track_count: int,
+    frame_count: int,
+) -> dict[str, Any]:
+    """Score tail residual after A|B|C for rotation / float packing candidates."""
+    off_t = 28 + section_a + section_b + section_c
+    blob = data[off_t:] if off_t < len(data) else b""
+    candidates: list[dict[str, Any]] = []
+
+    f3 = _float3_finite_ratio(blob, track_count, frame_count)
+    candidates.append(
+        {
+            "name": "float3-dense-first-clip",
+            "finiteRatio": f3,
+            "viable": bool(f3 is not None and f3 >= 0.95),
+        }
+    )
+    f4 = _unit_ratio_float4(blob)
+    candidates.append(
+        {
+            "name": "float4-unit-sample",
+            "unitRatio": f4,
+            "viable": bool(f4 is not None and f4 >= _CONFIDENT),
+        }
+    )
+    z = _zlib_raw_score(blob)
+    candidates.append({"name": "zlib-raw-inflate", **z})
+    phase_ratios = _phase_float4_unit_ratios(blob)
+    candidates.append(
+        {
+            "name": "float4-unit-byte-phases",
+            "phases": phase_ratios,
+            "viable": any(p.get("viable") for p in phase_ratios),
+            "bestPhaseUnitRatio": max(
+                (p.get("unitRatio") or 0.0) for p in phase_ratios
+            ),
+        }
+    )
+    clip_phases = _first_clip_float4_unit(blob, track_count, frame_count)
+    candidates.append(
+        {
+            "name": "float4-first-clip-byte-phases",
+            "phases": clip_phases,
+            "viable": any(p.get("viable") for p in clip_phases),
+            "bestPhaseUnitRatio": max(
+                (p.get("unitRatio") or 0.0) for p in clip_phases
+            ),
+        }
+    )
+    n_tf = track_count * frame_count
+    t48 = _bit48_unitish_ratio(blob, n_tf)
+    candidates.append(
+        {
+            "name": "bitstream-48bit-3x15-plus-index",
+            "unitishRatio": t48,
+            "viable": bool(t48 is not None and t48 >= _CONFIDENT),
+        }
+    )
+
+    viable = next((c["name"] for c in candidates if c.get("viable")), None)
+    return {
+        "offset": off_t,
+        "size": len(blob),
+        "oddSized": len(blob) % 2 == 1,
+        "candidates": candidates,
+        "viableRotationEncoding": viable,
+        "note": (
+            f"Viable tail rotation encoding: {viable}"
+            if viable
+            else (
+                "Tail residual is high-entropy and not a clean float3 multi-clip or "
+                "confident unit-float4 stream (phase hunt ~56% unit max on Niki). "
+                "Encoding unknown (possible custom compression)."
             )
         ),
     }

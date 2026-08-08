@@ -368,7 +368,9 @@ def _probe_sections(data: bytes, header: AniHeader) -> dict[str, Any]:
             f"and not a dense bone-index u16 stream (u16<40 sample ratio={b_ratio:.3f})."
         ),
     }
-    # Tail after A|B|C: large residual; not a clean float3 stack at offset 0
+    # Tail after A|B|C: large residual; encoding probe (see ani_rotation_probe.probe_tail)
+    from ani_rotation_probe import probe_tail
+
     tail_clips = _discover_float3_clips(
         data,
         header=header,
@@ -378,10 +380,21 @@ def _probe_sections(data: bytes, header: AniHeader) -> dict[str, Any]:
         min_score=50.0,
         max_clips=2,
     )
+    tail_probe = probe_tail(
+        data,
+        section_a=header.sectionA,
+        section_b=header.sectionB,
+        section_c=header.sectionC,
+        track_count=header.trackCount,
+        frame_count=header.frameCount,
+    )
     sections["tailHypothesis"] = {
         "size": tail_size,
         "leadingFloat3Clips": len(tail_clips),
-        "note": (
+        "encodingProbe": tail_probe,
+        "viableRotationEncoding": tail_probe.get("viableRotationEncoding"),
+        "note": tail_probe.get("note")
+        or (
             "Tail does not begin with a high-smoothness float3 multi-clip; "
             "likely compressed/other payload or unparsed channel"
             if not tail_clips
@@ -539,9 +552,10 @@ def parse_ani_bytes(
     b_probe = (probe.get("sectionBHypothesis") or {}).get("encodingProbe")
     # Skip expensive extract when probe already says no candidate
     hyp = probe.get("rotationHypothesis") or {}
+    t_probe = (probe.get("tailHypothesis") or {}).get("encodingProbe")
     if hyp.get("candidateConfident") or (
         b_probe and b_probe.get("viableRotationEncoding")
-    ):
+    ) or (t_probe and t_probe.get("viableRotationEncoding")):
         rot_tracks, rot_meta = try_extract_confident_quats(
             data,
             track_count=header.trackCount,
@@ -557,7 +571,7 @@ def parse_ani_bytes(
             "selectedUnitRatio": None,
             "confident": False,
             "skipped": True,
-            "note": "extract skipped: no rotation candidate from probe",
+            "note": "extract skipped: no rotation candidate from B/C/tail probe",
         }
 
     if rot_tracks is not None and rot_meta.get("confident"):

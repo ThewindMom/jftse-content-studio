@@ -250,9 +250,9 @@ Header (28 B LE), verified NikiAniA/B:
 | Region | Structure |
 |--------|-----------|
 | **A** | **Primary multi-clip float3 stack** — block = `trackCount×frameCount×12` (NikiAniA: 21120 B). **16** high-smoothness track-major clips + residual. clip0 root ≈ `(0, 6.37, 0)`. |
-| **B** | **Same byte length as C** on NikiAniA/B; invariant **A−B = 1290**. All of A/B/C are **odd-sized**. Exhaustive probe (`ani_rotation_probe.py`): not float3/float4/s16-quat/f16/zlib-raw; no contiguous unit float4 block ≥90%. Encoding still **unknown**. |
+| **B** | **Same byte length as C** on NikiAniA/B; invariant **A−B = 1290**. All of A/B/C are **odd-sized**. Exhaustive probe (`ani_rotation_probe.py`): not float3/float4/s16-quat/f16/zlib-raw/48-bit; phase-1 float4 stream ~56% unit (medn=1) but first-clip ≤42%; no contiguous unit float4 block ≥90%. Custom bitstream still **unknown**. |
 | **C** | **Secondary float3-shaped multi-clip stack** (same block size, lower smoothness than A). Bulk float4 unit-length ≈ 58–60% — **not** ≥90%, so **not** auto-promoted to quaternions. Possible euler/aux channel — unproven. |
-| **Tail** | Large residual after A\|B\|C (~359 KB AniA). Does **not** start with a high-smoothness float3 multi-clip. |
+| **Tail** | Large residual after A\|B\|C (~359 KB AniA, high entropy ~7.5). Phase-3 float4 ~56% unit; not zlib; not float3 multi-clip; first-clip unit ~57% < 0.9. Encoding **unknown**. `tailHypothesis.encodingProbe` scores candidates. |
 
 Studio API:
 - `sectionProbe.multiClip` (channel A), `multiClipC` (channel C)
@@ -316,10 +316,11 @@ Module: `python/bone_attach.py`
 ### ANI → bone drive
 
 - Dense **unit float4 quats not found** on NikiAniA/B after exhaustive probe:
-  - A/C ≈ 55–60% unit samples as float4 noise; B ≈ 0% as float4
-  - Section B candidates scored: float3, float4, s16×4, s16 xyz-compress, f16, zlib-raw, odd-pad drop, contiguous float4 block scan (B + whole file) — **none ≥ 0.9 unit**
+  - A/C ≈ 55–60% unit samples as float4 noise; B phase0 ≈ 0% as float4
+  - Section B candidates: float3, float4, s16×4, s16 xyz-compress, f16, zlib-raw, odd-pad, byte-phase float4 (phase1 ~56% unit), first-clip phases (≤42%), 48-bit 3×15 bitstream, contiguous float4-in-B — **none ≥ 0.9 unit**
+  - Tail probe: phase3 ~56% unit, not zlib/float3 multi-clip, first-clip ~57% — **not confident**
   - Multi-clip C float3 is **not** a ≥90% xyz-compressed-quat channel either
-- API: `sectionProbe.sectionBHypothesis.encodingProbe.candidates[]` carries the score table
+- API: `sectionBHypothesis.encodingProbe` + `tailHypothesis.encodingProbe` carry score tables
 - `driveMode` / `rotationHypothesis.recommendedDriveMode`:
   - `quat` only when extract confirms dense unit float4 (`rotationHypothesis.confident`)
   - else **`hierarchical-fk`** (default): parent chain + look-at swing from float3 position deltas

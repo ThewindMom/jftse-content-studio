@@ -673,14 +673,22 @@ describe("content studio production API", () => {
       body.ani.driveMode,
     );
     expect(body.ani.sectionProbe.rotationHypothesis.recommendedDriveMode).toBeDefined();
-    // Section B encoding probe always present with scored candidates
+    // Section B + tail encoding probes always present with scored candidates
     const bHyp = body.ani.sectionProbe.sectionBHypothesis;
     expect(bHyp.encodingProbe).toBeDefined();
     expect(Array.isArray(bHyp.encodingProbe.candidates)).toBe(true);
-    expect(bHyp.encodingProbe.candidates.length).toBeGreaterThanOrEqual(5);
+    expect(bHyp.encodingProbe.candidates.length).toBeGreaterThanOrEqual(8);
     expect(bHyp.encodingProbe.candidates.every((c: { name: string }) => c.name)).toBe(
       true,
     );
+    // Phase / bitstream scorers for custom B packing
+    const bNames = bHyp.encodingProbe.candidates.map((c: { name: string }) => c.name);
+    expect(bNames).toContain("float4-unit-byte-phases");
+    expect(bNames).toContain("bitstream-48bit-3x15-plus-index");
+    const tHyp = body.ani.sectionProbe.tailHypothesis;
+    expect(tHyp.encodingProbe).toBeDefined();
+    expect(Array.isArray(tHyp.encodingProbe.candidates)).toBe(true);
+    expect(tHyp.encodingProbe.candidates.length).toBeGreaterThanOrEqual(4);
     if (body.ani.hasRotations) {
       expect(body.ani.driveMode).toBe("quat");
       expect(body.ani.tracks[0].hasRotations).toBe(true);
@@ -689,8 +697,9 @@ describe("content studio production API", () => {
       expect(body.ani.driveMode).toBe("hierarchical-fk");
       expect(body.ani.tracks[0].hasRotations).toBe(false);
       expect(body.ani.sectionProbe.rotationHypothesis.confident).toBe(false);
-      // Niki: no viable B rotation encoding yet
+      // Niki: no viable B/tail rotation encoding yet
       expect(bHyp.viableRotationEncoding).toBeNull();
+      expect(tHyp.viableRotationEncoding).toBeNull();
     }
   }, 60000);
 
