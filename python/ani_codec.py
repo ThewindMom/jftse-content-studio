@@ -651,6 +651,10 @@ def parse_ani_bytes(
             if si < len(motion_names):
                 sc["motionName"] = motion_names[si].get("name")
             selected_clip = sc
+    # Motion catalog (name → clipIndex) from client name table + sequential clips
+    from ani_client_re import build_motion_catalog
+
+    motion_catalog = build_motion_catalog(data)
     # Annotate selected clip on probe for API consumers
     probe = {
         **probe,
@@ -659,6 +663,7 @@ def parse_ani_bytes(
         "clipCount": len(clips),
         "channel": channel_u,
         "motionNames": motion_names,
+        "motionCatalog": motion_catalog,
     }
     return ParsedAni(
         name=name,

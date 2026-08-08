@@ -438,6 +438,7 @@ const server = Bun.serve({
         const clipIndex = url.searchParams.get("clipIndex") ?? "0";
         const channel = url.searchParams.get("channel") ?? "A";
         const char = url.searchParams.get("char") ?? "";
+        const motion = url.searchParams.get("motion") ?? "";
         const args = [
           "ani-parse",
           "--archive",
@@ -453,6 +454,9 @@ const server = Bun.serve({
         ];
         if (char.trim()) {
           args.push("--char", char.trim());
+        }
+        if (motion.trim()) {
+          args.push("--motion", motion.trim());
         }
         return safeBridge(() => runBridge(args));
       },

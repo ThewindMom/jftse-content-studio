@@ -133,6 +133,61 @@ describe("skinnedBody helpers", () => {
     expect(bones[1]!.parent).toBe(bones[0]!);
   });
 
+  test("hierarchical-fk multi-child look-at derives non-rest local rotation", () => {
+    // root with two non-collinear children; raise only the second so average dir tilts
+    const palette = [
+      bone(0, "root", null, 0),
+      bone(1, "a", 0, 1),
+      bone(2, "b", 0, 1),
+    ];
+    const { bones, parentIndex } = buildBoneHierarchy(palette);
+    bones[1]!.position.set(1, 0, 0);
+    bones[2]!.position.set(0, 1, 0);
+    for (const b of bones) b!.updateMatrix();
+    bones[0]!.updateMatrixWorld(true);
+    const rest = restOf(bones, parentIndex);
+    const restQ = rest.quats[0]!.clone();
+    const tracks = [
+      {
+        index: 0,
+        name: "root",
+        positions: [
+          [0, 0, 0],
+          [0, 0, 0],
+        ],
+        hasRotations: false,
+      },
+      {
+        index: 1,
+        name: "a",
+        positions: [
+          [1, 0, 0],
+          [1, 0, 0],
+        ],
+        hasRotations: false,
+      },
+      {
+        index: 2,
+        name: "b",
+        positions: [
+          [0, 1, 0],
+          [0, 1, 0.5],
+        ],
+        hasRotations: false,
+      },
+    ];
+    const mode = driveBonesFromAni(
+      bones,
+      tracks,
+      1,
+      "hierarchical-fk",
+      rest,
+    );
+    expect(mode).toBe("hierarchical-fk");
+    const angle = restQ.angleTo(bones[0]!.quaternion);
+    expect(angle).toBeGreaterThan(1e-4);
+  });
+
   test("driveBonesFromAni applies quats when present", () => {
     const palette = [bone(0, "root", null, 0)];
     const { bones, parentIndex } = buildBoneHierarchy(palette);

@@ -1030,9 +1030,11 @@ def cmd_ani_parse(args: argparse.Namespace) -> dict[str, Any]:
     ``--max-frames``: positive = compact sample; ``0`` or negative = all frames
     (for ANI scrubbers / live attach). Default remains 8 for light API clients.
     ``--clip-index``: multi-clip float3 stack index (default 0).
+    ``--motion``: motion name (e.g. RunForward.ani); overrides clip-index when found.
     ``--channel``: ``A`` (primary positions) or ``C`` (secondary float3 stack).
     ``--char``: optional character token to label tracks from body skeleton order.
     """
+    from ani_client_re import resolve_motion_clip_index
     from ani_codec import AniParseError, load_ani_member
     from bone_attach import extract_skeleton_palette, _mesh_archive_rel, _prefer_body_member
 
@@ -1048,6 +1050,7 @@ def cmd_ani_parse(args: argparse.Namespace) -> dict[str, Any]:
         clip_index = int(getattr(args, "clip_index", 0) or 0)
     except (TypeError, ValueError):
         clip_index = 0
+    motion = str(getattr(args, "motion", "") or "").strip()
     channel = str(getattr(args, "channel", "A") or "A")
     char = str(getattr(args, "char", "") or "").strip()
     # 0 / negative → full tracks (None in to_dict)
@@ -1062,6 +1065,20 @@ def cmd_ani_parse(args: argparse.Namespace) -> dict[str, Any]:
         except (OSError, KeyError, zipfile.BadZipFile):
             bone_names = None
     try:
+        # Resolve motion name → clipIndex from on-disk name table when provided
+        resolved_motion: str | None = None
+        if motion:
+            with zipfile.ZipFile(client / archive) as zf:
+                raw = zf.read(member)
+            resolved = resolve_motion_clip_index(raw, motion)
+            if resolved is None:
+                return {
+                    "ok": False,
+                    "error": "ANI_MOTION_NOT_FOUND",
+                    "detail": f"motion {motion!r} not in name table",
+                }
+            clip_index = resolved
+            resolved_motion = motion
         ani = load_ani_member(
             client,
             archive,
@@ -1075,6 +1092,8 @@ def cmd_ani_parse(args: argparse.Namespace) -> dict[str, Any]:
         payload["sampleMaxFrames"] = max_frames
         payload["clipIndex"] = clip_index
         payload["channel"] = channel.upper()
+        if resolved_motion is not None:
+            payload["motion"] = resolved_motion
         # Prefer hierarchical-fk when dense quats not recovered (see rotationHypothesis).
         if payload.get("hasRotations"):
             payload["driveMode"] = "quat"
@@ -1430,6 +1449,11 @@ def main() -> None:
     p_ani.add_argument("--max-frames", type=int, default=8)
     p_ani.add_argument("--clip-index", type=int, default=0)
     p_ani.add_argument("--channel", default="A")
+    p_ani.add_argument(
+        "--motion",
+        default="",
+        help="Motion name from name table (e.g. RunForward.ani); overrides --clip-index",
+    )
     p_ani.add_argument(
         "--char",
         default="",

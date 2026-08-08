@@ -30,13 +30,11 @@ RUNTIME_CHANNELS: Final[tuple[dict[str, Any], ...]] = (
     {"name": "float7", "floatsPerSample": 7, "role": "unknown", "readerVa": 0x5DD680},
 )
 
-
 def _is_unit(q: tuple[float, float, float, float]) -> bool:
     if not all(math.isfinite(v) for v in q):
         return False
     length = math.sqrt(sum(v * v for v in q))
     return _UNIT_LO <= length <= _UNIT_HI
-
 
 def _unit_ratio_f4(blob: bytes, *, max_samples: int = 2000) -> float | None:
     n = len(blob) // 16
@@ -50,7 +48,6 @@ def _unit_ratio_f4(blob: bytes, *, max_samples: int = 2000) -> float | None:
         if _is_unit(q):
             unit += 1
     return unit / total if total else None
-
 
 def probe_client_stream_header(data: bytes) -> dict[str, Any]:
     """Score the 12-byte dword-count stream header against file length."""
@@ -96,7 +93,6 @@ def probe_client_stream_header(data: bytes) -> dict[str, Any]:
         ),
     }
 
-
 def _parse_name_table(table: bytes) -> list[dict[str, Any]]:
     """Parse fixed 129-byte motion name records at stream mid/end."""
     out: list[dict[str, Any]] = []
@@ -115,7 +111,6 @@ def _parse_name_table(table: bytes) -> list[dict[str, Any]]:
         field16 = struct.unpack_from("<I", rec, 16)[0] if len(rec) >= 20 else None
         out.append({"index": i, "name": name, "fieldU32At16": field16})
     return out
-
 
 def walk_client_bulk(data: bytes) -> dict[str, Any]:
     """Walk ANI bulk with client stream semantics; score float4 extract candidates."""
@@ -150,8 +145,6 @@ def walk_client_bulk(data: bytes) -> dict[str, Any]:
             best_r, best_off = ratio, scan_off
             if ratio >= _CONFIDENT:
                 break
-    mid_start = payload_start + 16 * f3
-    mid = data[mid_start:main_end] if mid_start < main_end else b""
     confident = bool(best_off is not None and best_r >= _CONFIDENT)
     return {
         "ok": True,
@@ -172,13 +165,20 @@ def walk_client_bulk(data: bytes) -> dict[str, Any]:
             "bestFileOffset": best_off,
             "blockBytes": f4,
         },
-        "midAfter16Float3Clips": {
-            "fileOffset": mid_start,
-            "bytes": len(mid),
-            "unitRatioSample": _unit_ratio_f4(mid) if mid else None,
-        },
         "confidentExtract": confident,
         "recommendedDriveMode": "quat" if confident else "hierarchical-fk",
+        "motionCatalog": [
+            {
+                "index": (idx := int(m.get("index") or i)),
+                "name": str(m.get("name") or ""),
+                "clipIndex": idx if idx < float3_clips and f3 > 0 else None,
+                "offset": (
+                    payload_start + idx * f3 if idx < float3_clips and f3 > 0 else None
+                ),
+                "hasFloat3Clip": bool(idx < float3_clips and f3 > 0),
+            }
+            for i, m in enumerate(motions)
+        ],
         "note": (
             f"Main region: {float3_clips} sequential float3 clips ({f3}B); "
             f"name table {len(motions)}×{_NAME_REC}B; dense float4 best unit "
@@ -192,6 +192,8 @@ def try_extract_from_client_walk(
 ) -> tuple[list[list[list[float]]] | None, dict[str, Any]]:
     """Extract dense float4 only when walk scan hits unit ratio ≥ 0.9."""
     walk = walk_client_bulk(data)
+    scan = walk.get("denseFloat4Scan") or {}
+    off, ratio = scan.get("bestFileOffset"), scan.get("bestUnitRatio")
     meta: dict[str, Any] = {
         "source": "client-bulk-walk",
         "confident": False,
@@ -204,12 +206,9 @@ def try_extract_from_client_walk(
                 "confidentExtract",
             )
         },
+        "note": walk.get("note"),
     }
-    scan = walk.get("denseFloat4Scan") or {}
-    off = scan.get("bestFileOffset")
-    ratio = scan.get("bestUnitRatio")
     if off is None or ratio is None or float(ratio) < _CONFIDENT:
-        meta["note"] = walk.get("note")
         return None, meta
     need = track_count * frame_count * 16
     blob = data[int(off) : int(off) + need]
@@ -228,15 +227,36 @@ def try_extract_from_client_walk(
                 unit += 1
             tracks[ti].append(q)
     decode_ratio = unit / total if total else 0.0
-    meta["selectedOffset"] = int(off)
-    meta["decodeUnitRatio"] = decode_ratio
-    meta["order"] = "track-major"
+    meta.update(
+        {"selectedOffset": int(off), "decodeUnitRatio": decode_ratio, "order": "track-major"}
+    )
     if decode_ratio < _CONFIDENT:
         meta["note"] = f"block unit {decode_ratio:.3f} < {_CONFIDENT}"
         return None, meta
     meta["confident"] = True
     meta["note"] = f"client-walk dense float4 @+{off} ratio={decode_ratio:.3f}"
     return tracks, meta
+
+
+def build_motion_catalog(data: bytes) -> list[dict[str, Any]]:
+    """Pair name-table motions with sequential float3 clip slots."""
+    return list((walk_client_bulk(data) or {}).get("motionCatalog") or [])
+
+
+def resolve_motion_clip_index(data: bytes, motion: str) -> int | None:
+    """Resolve motion name (with or without .ani) to clipIndex."""
+    key = motion.strip().lower()
+    if not key:
+        return None
+    key_ani = key if key.endswith(".ani") else f"{key}.ani"
+    stem = key_ani[:-4]
+    for entry in build_motion_catalog(data):
+        name = str(entry.get("name") or "").lower()
+        nstem = name[:-4] if name.endswith(".ani") else name
+        if name in (key, key_ani) or nstem == stem:
+            ci = entry.get("clipIndex")
+            return int(ci) if ci is not None else None
+    return None
 
 
 def build_client_decoder_hypothesis(data: bytes) -> dict[str, Any]:
@@ -250,6 +270,7 @@ def build_client_decoder_hypothesis(data: bytes) -> dict[str, Any]:
         "runtimeChannels": list(RUNTIME_CHANNELS),
         "streamHeader": walk.get("streamHeader") or probe_client_stream_header(data),
         "bulkWalk": walk,
+        "motionCatalog": walk.get("motionCatalog") or [],
         "rotationChannel": {
             "encoding": "float4",
             "readerVa": "0x5DD640",
@@ -257,8 +278,8 @@ def build_client_decoder_hypothesis(data: bytes) -> dict[str, Any]:
             "confidentExtract": confident,
             "bestUnitRatio": (walk.get("denseFloat4Scan") or {}).get("bestUnitRatio"),
             "note": (
-                "Runtime float4; on-disk main region is sequential float3 clips + "
-                "129B motion names; dense float4 unit <0.9 on Niki → hierarchical-fk."
+                "Runtime float4; on-disk float3 multi-clips + motion names; "
+                "unit <0.9 → hierarchical-fk multi-child look-at."
             ),
         },
         "viableRotationEncoding": "client-bulk-dense-float4" if confident else None,

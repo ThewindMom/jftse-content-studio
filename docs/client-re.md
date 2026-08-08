@@ -257,7 +257,11 @@ Read-only disassembly of PE32 `FantaTennis.exe` (image base `0x400000`). **Stock
 | `[12+n1×4 : EOF)` | **Motion name table** — **40 × 129 B** records (`Rootidle.ani`, `RunForward.ani`, …) |
 | Dense float4 scan | Best unit ratio **≈0.62** ≪ 0.9 — **no confident quat extract** |
 
-**Runtime rotation channel:** float4 (`0x5DD640`). On-disk main payload is position multi-clips + labels; **`driveMode=hierarchical-fk`** until extract ≥0.9. API: `sectionProbe.clientDecoderHypothesis.bulkWalk` + `motionNames`.
+**Runtime rotation channel:** float4 (`0x5DD640`). On-disk main payload is position multi-clips + labels; **`driveMode=hierarchical-fk`** until extract ≥0.9.
+
+**Named multi-clip set:** `motionCatalog` pairs each of 40 name-table labels with sequential float3 `clipIndex`/`offset`. API: `?motion=RunForward.ani` (overrides `clipIndex`). Preview derives **local bone rotations** via multi-child look-at hierarchical FK from the selected clip’s float3 tracks (not on-disk quats).
+
+API: `sectionProbe.clientDecoderHypothesis.bulkWalk` + `motionCatalog` + `motionNames`.
 
 Header (28 B LE view + stream 12 B dword counts), verified NikiAniA/B:
 

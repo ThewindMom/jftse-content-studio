@@ -1,6 +1,7 @@
 /**
  * ANI → skeleton drive modes for Fantasy Tennis previews.
- * Quats when recovered; otherwise hierarchical look-at FK from float3.
+ * Quats when recovered; otherwise hierarchical multi-child look-at FK from float3.
+ * Local rotations are derived from the named multi-clip position set (not on-disk quats).
  */
 import * as THREE from "three";
 import type { AniTrackJson, BoneRestState, DriveMode } from "./skinnedBody";
@@ -34,6 +35,8 @@ const _wpA = new THREE.Vector3();
 const _wpB = new THREE.Vector3();
 const _restDir = new THREE.Vector3();
 const _animDir = new THREE.Vector3();
+const _restAcc = new THREE.Vector3();
+const _animAcc = new THREE.Vector3();
 const _qDelta = new THREE.Quaternion();
 const _qWorld = new THREE.Quaternion();
 const _qParent = new THREE.Quaternion();
@@ -177,34 +180,47 @@ function driveHierarchical(
     bones[i]?.updateMatrixWorld(true);
   }
 
+  // Multi-child look-at: average rest/anim directions to all children so local
+  // rotations follow the full multi-clip limb fan (not only kids[0]).
   let appliedLook = false;
   for (const i of topoOrder) {
     const bone = bones[i];
     const kids = children[i];
-    if (!bone || !kids?.length) continue;
-    const ci = kids[0]!;
-    const child = bones[ci];
     const restParent = restW[i];
-    const restChild = restW[ci];
-    if (!child || !restParent || !restChild) continue;
+    const restLocalQ = restQ[i];
+    if (!bone || !kids?.length || !restParent || !restLocalQ) continue;
 
-    _restDir.subVectors(restChild, restParent);
-    if (_restDir.lengthSq() < 1e-10) continue;
-    _restDir.normalize();
-
+    _restAcc.set(0, 0, 0);
+    _animAcc.set(0, 0, 0);
+    let nDir = 0;
     bone.getWorldPosition(_wpA);
-    child.getWorldPosition(_wpB);
-    _animDir.subVectors(_wpB, _wpA);
-    if (_animDir.lengthSq() < 1e-10) continue;
-    _animDir.normalize();
+    for (const ci of kids) {
+      const child = bones[ci];
+      const restChild = restW[ci];
+      if (!child || !restChild) continue;
+      _restDir.subVectors(restChild, restParent);
+      if (_restDir.lengthSq() < 1e-10) continue;
+      _restDir.normalize();
+      child.getWorldPosition(_wpB);
+      _animDir.subVectors(_wpB, _wpA);
+      if (_animDir.lengthSq() < 1e-10) continue;
+      _animDir.normalize();
+      _restAcc.add(_restDir);
+      _animAcc.add(_animDir);
+      nDir += 1;
+    }
+    if (nDir === 0) continue;
+    if (_restAcc.lengthSq() < 1e-10 || _animAcc.lengthSq() < 1e-10) continue;
+    _restAcc.normalize();
+    _animAcc.normalize();
 
-    _qDelta.setFromUnitVectors(_restDir, _animDir);
+    _qDelta.setFromUnitVectors(_restAcc, _animAcc);
     if (bone.parent && (bone.parent as THREE.Object3D).isObject3D) {
       bone.parent.getWorldQuaternion(_qParent);
     } else {
       _qParent.identity();
     }
-    _qWorld.copy(_qParent).multiply(restQ[i]!);
+    _qWorld.copy(_qParent).multiply(restLocalQ);
     _qWorld.premultiply(_qDelta);
     _qLocal.copy(_qParent).invert().multiply(_qWorld);
     bone.quaternion.copy(_qLocal);

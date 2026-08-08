@@ -602,7 +602,7 @@ export function EquipmentMeshPreview({
       <div className="empty">
         Body: SkinnedMesh from /api/skin/parse + ordered 304-byte bone palette.
         ANI drive: <code>quat</code> when rotations recover; else{" "}
-        <code>hierarchical-fk</code> (parent chain + look-at from float3 positions —
+        <code>hierarchical-fk</code> (parent chain + multi-child look-at local rotations from named float3 multi-clips —
         not full DX9 quat retarget). Racket uses Bone_Racket bind + float3 delta.
       </div>
     </div>

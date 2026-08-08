@@ -783,7 +783,41 @@ describe("content studio production API", () => {
     // Motion names surface on multi-clip / probe
     expect(Array.isArray(probe.motionNames)).toBe(true);
     expect(probe.motionNames.length).toBe(40);
+    // Motion catalog binds name → clipIndex/offset for named multi-clip set
+    const catalog = clientHyp.motionCatalog ?? probe.motionCatalog;
+    expect(Array.isArray(catalog)).toBe(true);
+    expect(catalog.length).toBe(40);
+    expect(catalog[0].name).toMatch(/Rootidle\.ani/i);
+    expect(catalog[0].clipIndex).toBe(0);
+    expect(catalog[0].hasFloat3Clip).toBe(true);
+    expect(typeof catalog[0].offset).toBe("number");
   }, 60000);
+
+  test("ANI motion=RunForward.ani resolves clipIndex from name table", async () => {
+    const response = await fetch(
+      `${base}/api/ani/parse?archive=${encodeURIComponent("Res/Player/PlayerA/AniA.res")}&member=${encodeURIComponent("NikiAniA.ani")}&maxFrames=2&motion=${encodeURIComponent("RunForward.ani")}`,
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.ani.motion).toMatch(/RunForward/i);
+    expect(body.ani.clipIndex).toBe(1);
+    expect(body.ani.tracks[0].positions.length).toBeGreaterThan(0);
+    // hierarchical-fk still default (no confident on-disk quats)
+    expect(body.ani.driveMode).toBe("hierarchical-fk");
+  }, 60000);
+
+  test("ANI motion unknown fails structured", async () => {
+    const response = await fetch(
+      `${base}/api/ani/parse?archive=${encodeURIComponent("Res/Player/PlayerA/AniA.res")}&member=${encodeURIComponent("NikiAniA.ani")}&motion=${encodeURIComponent("NoSuchMotion.ani")}`,
+    );
+    const body = await response.json();
+    expect([200, 400, 500]).toContain(response.status);
+    if (response.status === 200) {
+      expect(body.ok).toBe(false);
+      expect(String(body.error ?? body.detail)).toMatch(/MOTION|not found/i);
+    }
+  }, 30000);
 
   test("ANI channel=C decodes secondary float3 multi-clip stack", async () => {
     const response = await fetch(
