@@ -15,7 +15,10 @@ from equipment_author import (
     patch_item_mesh_catalog,
 )
 from ftm_codec import (
+    FtmParseError,
     add_scene_object,
+    load_ftm_from_res,
+    parse_ftm_bytes,
     patch_scene_objects,
     remove_scene_object,
     serialize_ftm,
@@ -24,11 +27,15 @@ from ftm_codec import (
 from local_install import InstallError, install_files
 from map_author import build_create_map_sql, create_map_row, patch_relations_sql
 from map_sql_export import parse_s_maps
+from mesh_obj_import import import_obj_into_dat
 from stage_set_author import write_stage_set
 from tex_codec import dds_to_tex, tex_to_dds, write_tex_from_dds
 
 
-def _jftse_and_client(bridge_jftse: Callable[[], Path], bridge_client: Callable[[Path], Path]):
+def _jftse_and_client(
+    bridge_jftse: Callable[[], Path],
+    bridge_client: Callable[[Path], Path],
+) -> tuple[Path, Path]:
     jftse = bridge_jftse()
     return jftse, bridge_client(jftse)
 
@@ -36,7 +43,7 @@ def _jftse_and_client(bridge_jftse: Callable[[], Path], bridge_client: Callable[
 def make_handlers(
     jftse_fn: Callable[[], Path],
     client_fn: Callable[[Path], Path],
-    parse_ftm_member: Callable[..., Any],
+    _parse_ftm_member: Callable[..., Any],
 ) -> dict[str, Callable[[Namespace], dict[str, Any]]]:
     def cmd_tex_encode(args: Namespace) -> dict[str, Any]:
         dds = Path(args.dds).expanduser().resolve()
@@ -57,7 +64,7 @@ def make_handlers(
         }
 
     def cmd_equipment_pack(args: Namespace) -> dict[str, Any]:
-        jftse, client = _jftse_and_client(jftse_fn, client_fn)
+        _jftse, client = _jftse_and_client(jftse_fn, client_fn)
         out_dir = Path(args.out_dir).expanduser().resolve()
         out_dir.mkdir(parents=True, exist_ok=True)
         dat_override = Path(args.dat) if args.dat else None
@@ -70,9 +77,11 @@ def make_handlers(
         )
         if not pack.get("ok"):
             return pack
-        new_index = int(args.new_index) if args.new_index else list_catalog_max_index(
-            client, args.char
-        ) + 1
+        new_index = (
+            int(args.new_index)
+            if args.new_index
+            else list_catalog_max_index(client, args.char) + 1
+        )
         catalog = patch_item_mesh_catalog(
             client,
             char=args.char,
@@ -99,10 +108,7 @@ def make_handlers(
             "sql": str(sql_path),
             "newIndex": new_index,
             "installPlan": [
-                {
-                    "source": pack["archive"],
-                    "destRelative": pack["destRelative"],
-                },
+                {"source": pack["archive"], "destRelative": pack["destRelative"]},
                 {
                     "source": catalog["itemArchive"],
                     "destRelative": catalog["destRelative"],
@@ -130,7 +136,9 @@ def make_handlers(
     def cmd_map_create(args: Namespace) -> dict[str, Any]:
         jftse = jftse_fn()
         payload = json.loads(Path(args.payload).read_text(encoding="utf-8"))
-        seed_text = (jftse / "scripts" / "sql" / "maps.sql").read_text(encoding="utf-8")
+        seed_text = (jftse / "scripts" / "sql" / "maps.sql").read_text(
+            encoding="utf-8"
+        )
         existing = parse_s_maps(seed_text)
         draft = dict(payload.get("draft") or payload)
         row = create_map_row(existing, draft)
@@ -162,7 +170,7 @@ def make_handlers(
         }
 
     def cmd_stage_set_write(args: Namespace) -> dict[str, Any]:
-        jftse, client = _jftse_and_client(jftse_fn, client_fn)
+        _jftse, client = _jftse_and_client(jftse_fn, client_fn)
         payload = json.loads(Path(args.payload).read_text(encoding="utf-8"))
         fields = {str(k): str(v) for k, v in dict(payload.get("fields") or {}).items()}
         return write_stage_set(
@@ -175,14 +183,10 @@ def make_handlers(
         )
 
     def cmd_ftm_author(args: Namespace) -> dict[str, Any]:
-        jftse, client = _jftse_and_client(jftse_fn, client_fn)
-        del jftse  # reserved for future jftse-relative maps
+        _jftse, client = _jftse_and_client(jftse_fn, client_fn)
         payload = json.loads(Path(args.payload).read_text(encoding="utf-8"))
         archive = str(payload.get("archive") or args.archive)
         member = str(payload.get("member") or args.member)
-        # load_ftm_from_res is the supported entry (no bare load_ftm symbol).
-        from ftm_codec import FtmParseError, load_ftm_from_res, parse_ftm_bytes
-
         try:
             ftm = load_ftm_from_res(client, archive, member)
             for patch in payload.get("patches") or []:
@@ -231,17 +235,13 @@ def make_handlers(
         }
 
     def cmd_mesh_obj_import(args: Namespace) -> dict[str, Any]:
-        from mesh_obj_import import import_obj_into_dat
-
-        jftse, client = _jftse_and_client(jftse_fn, client_fn)
-        del jftse
-        out = Path(args.out)
+        _jftse, client = _jftse_and_client(jftse_fn, client_fn)
         return import_obj_into_dat(
             client,
-            args.archive,
-            args.member,
+            str(args.archive),
+            str(args.member),
             Path(args.obj),
-            out,
+            Path(args.out),
         )
 
     return {
