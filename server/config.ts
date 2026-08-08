@@ -51,6 +51,6 @@ export function bridgeEnv(): Record<string, string> {
     JFTSE_ROOT: config.jftseRoot,
     JFTSE_STOCK_CLIENT: config.stockClient,
     JFTSE_LOCAL_CLIENT: config.localClient,
-    JFTSE_INSTALL_ALLOW_PREFIX: config.exportsDir,
+    JFTSE_STUDIO_EXPORTS: config.exportsDir,
   };
 }

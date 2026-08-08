@@ -2,9 +2,11 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   cpSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   rmSync,
+  symlinkSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,6 +25,21 @@ const artifactRoots = ["exports", "content-packs", ".tmp"].map((name) =>
 let serverProc: ReturnType<typeof Bun.spawn> | null = null;
 let disposableClient = "";
 let initialArtifacts = new Map<string, Set<string>>();
+
+async function postInstall(
+  targetClient: string,
+  files: Array<{ source: string; destRelative: string }>,
+): Promise<{ response: Response; body: Record<string, unknown> }> {
+  const response = await fetch(`${base}/api/client/install`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ targetClient, files }),
+  });
+  return {
+    response,
+    body: (await response.json()) as Record<string, unknown>,
+  };
+}
 
 function snapshotArtifacts(): Map<string, Set<string>> {
   return new Map(
@@ -326,6 +343,109 @@ describe("content studio production API", () => {
     expect(body.installed.particle).toContain("Particle.res");
     expect(await Bun.file(body.installed.particle).exists()).toBe(true);
   }, 120000);
+
+  test("install containment rejects tmp-like target", async () => {
+    const target = mkdtempSync("/var/tmp/jftse-looks-like-tmp-");
+    const source = join(studioRoot, "exports", `containment-${Date.now()}.res`);
+    await Bun.write(source, "generated");
+    try {
+      const { response, body } = await postInstall(target, [
+        { source, destRelative: "Res/Script/Test.res" },
+      ]);
+      expect(response.status).toBe(400);
+      expect(body.error).toBe("TARGET_NOT_ALLOWLISTED");
+    } finally {
+      rmSync(target, { recursive: true, force: true });
+    }
+  });
+
+  test("install containment rejects export-prefix sibling target", async () => {
+    const target = join(studioRoot, `exports-evil-client-${Date.now()}`);
+    const source = join(studioRoot, "exports", `containment-${Date.now()}.res`);
+    await Bun.write(source, "generated");
+    try {
+      const { response, body } = await postInstall(target, [
+        { source, destRelative: "Res/Script/Test.res" },
+      ]);
+      expect(response.status).toBe(400);
+      expect(body.error).toBe("TARGET_NOT_ALLOWLISTED");
+    } finally {
+      rmSync(target, { recursive: true, force: true });
+    }
+  });
+
+  test("install containment rejects symlink alias to stock", async () => {
+    const aliasRoot = mkdtempSync(join(tmpdir(), "jftse-stock-alias-"));
+    const alias = join(aliasRoot, "client");
+    symlinkSync(stockClient, alias, "dir");
+    const source = join(studioRoot, "exports", `containment-${Date.now()}.res`);
+    await Bun.write(source, "generated");
+    try {
+      const { response, body } = await postInstall(alias, [
+        { source, destRelative: "Res/Script/Test.res" },
+      ]);
+      expect(response.status).toBe(400);
+      expect(body.error).toBe("REFUSE_STOCK_CLIENT");
+    } finally {
+      rmSync(aliasRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("install containment rejects source outside exports", async () => {
+    const { response, body } = await postInstall(disposableClient, [
+      { source: "/etc/hosts", destRelative: "Res/Script/Hosts.res" },
+    ]);
+    expect(response.status).toBe(400);
+    expect(body.error).toBe("SOURCE_OUTSIDE_EXPORTS");
+  });
+
+  test("install containment rejects symlink source inside exports", async () => {
+    const source = join(studioRoot, "exports", `containment-link-${Date.now()}.res`);
+    symlinkSync("/etc/hosts", source);
+    const { response, body } = await postInstall(disposableClient, [
+      { source, destRelative: "Res/Script/Hosts.res" },
+    ]);
+    expect(response.status).toBe(400);
+    expect(body.error).toBe("SOURCE_SYMLINK");
+  });
+
+  for (const destRelative of [
+    "../FantaTennis.exe",
+    "/Res/Script/Absolute.res",
+    "FantaTennis.exe",
+    "Res/../jftse.dll",
+  ]) {
+    test(`install containment rejects destination ${destRelative}`, async () => {
+      const source = join(studioRoot, "exports", `containment-${Date.now()}.res`);
+      await Bun.write(source, "generated");
+      const { response, body } = await postInstall(disposableClient, [
+        { source, destRelative },
+      ]);
+      expect(response.status).toBe(400);
+      expect(body.error).toBe("INVALID_DEST_PATH");
+    });
+  }
+
+  test("install containment rejects destination symlink escape", async () => {
+    const outside = mkdtempSync(join(tmpdir(), "jftse-install-escape-"));
+    const segment = `Escape-${Date.now()}`;
+    const link = join(disposableClient, "Res", segment);
+    mkdirSync(join(disposableClient, "Res"), { recursive: true });
+    symlinkSync(outside, link, "dir");
+    const source = join(studioRoot, "exports", `containment-${Date.now()}.res`);
+    await Bun.write(source, "generated");
+    try {
+      const { response, body } = await postInstall(disposableClient, [
+        { source, destRelative: `Res/${segment}/Escaped.res` },
+      ]);
+      expect(response.status).toBe(400);
+      expect(body.error).toBe("DEST_SYMLINK_ESCAPE");
+      expect(existsSync(join(outside, "Escaped.res"))).toBe(false);
+    } finally {
+      rmSync(link, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
 
   test("presets endpoint lists designer presets", async () => {
     const response = await fetch(`${base}/api/presets`);
@@ -1301,7 +1421,7 @@ describe("content studio production API", () => {
     expect(sql).toContain("M_Scenarios");
   });
 
-  test("equipment pack builds mesh+catalog+sql and installs to disposable client", async () => {
+  test("install containment accepts generated equipment with verified receipts", async () => {
     const packRes = await fetch(`${base}/api/equipment/pack`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -1329,8 +1449,15 @@ describe("content studio production API", () => {
     const installed = await installRes.json();
     expect(installRes.status).toBe(200);
     expect(installed.ok).toBe(true);
-    expect(installed.installed["Res/Script/Item.res"]).toBeTruthy();
-    expect(installed.installed["Res/Player/PlayerA/Item07.res"]).toBeTruthy();
+    for (const receipt of Object.values(installed.installed) as Array<{
+      sourceSha256: string;
+      installedSha256: string;
+      matches: boolean;
+    }>) {
+      expect(receipt.sourceSha256).toMatch(/^[a-f0-9]{64}$/);
+      expect(receipt.installedSha256).toBe(receipt.sourceSha256);
+      expect(receipt.matches).toBe(true);
+    }
   });
 
   test("map studio create emits greenfield S_Maps SQL", async () => {
