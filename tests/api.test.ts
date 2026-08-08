@@ -769,6 +769,20 @@ describe("content studio production API", () => {
       true,
     );
     expect(clientHyp.vas.readFloat4xn).toMatch(/^0x/i);
+    // Bulk cursor walk: sequential float3 clips + 129B motion name table
+    const walk = clientHyp.bulkWalk;
+    expect(walk).toBeDefined();
+    expect(walk.ok).toBe(true);
+    expect(walk.sequentialFloat3Clips).toBeGreaterThanOrEqual(16);
+    expect(walk.motionNameCount).toBe(40);
+    expect(walk.nameRecordBytes).toBe(129);
+    expect(walk.motionNames[0].name).toMatch(/\.ani$/i);
+    expect(walk.confidentExtract).toBe(false);
+    expect(typeof walk.denseFloat4Scan.bestUnitRatio).toBe("number");
+    expect(walk.denseFloat4Scan.bestUnitRatio).toBeLessThan(0.9);
+    // Motion names surface on multi-clip / probe
+    expect(Array.isArray(probe.motionNames)).toBe(true);
+    expect(probe.motionNames.length).toBe(40);
   }, 60000);
 
   test("ANI channel=C decodes secondary float3 multi-clip stack", async () => {

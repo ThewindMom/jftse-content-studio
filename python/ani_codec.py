@@ -555,32 +555,39 @@ def parse_ani_bytes(
     # Experimental quat attach: only when extract yields unit ratio ≥ 0.9
     rot_tracks: list[list[list[float]]] | None = None
     rot_meta: dict[str, Any] | None = None
+    from ani_client_re import try_extract_from_client_walk
     from ani_rotation_probe import try_extract_confident_quats
 
-    b_probe = (probe.get("sectionBHypothesis") or {}).get("encodingProbe")
-    # Skip expensive extract when probe already says no candidate
-    hyp = probe.get("rotationHypothesis") or {}
-    t_probe = (probe.get("tailHypothesis") or {}).get("encodingProbe")
-    if hyp.get("candidateConfident") or (
-        b_probe and b_probe.get("viableRotationEncoding")
-    ) or (t_probe and t_probe.get("viableRotationEncoding")):
-        rot_tracks, rot_meta = try_extract_confident_quats(
-            data,
-            track_count=header.trackCount,
-            frame_count=header.frameCount,
-            section_a=header.sectionA,
-            section_b=header.sectionB,
-            section_c=header.sectionC,
-            b_probe=b_probe,
-        )
-    else:
-        rot_meta = {
-            "selectedOffset": None,
-            "selectedUnitRatio": None,
-            "confident": False,
-            "skipped": True,
-            "note": "extract skipped: no rotation candidate from B/C/tail probe",
-        }
+    # Prefer client bulk-walk extract (dense float4 scan of main region)
+    rot_tracks, rot_meta = try_extract_from_client_walk(
+        data,
+        track_count=header.trackCount,
+        frame_count=header.frameCount,
+    )
+    if not (rot_meta or {}).get("confident"):
+        b_probe = (probe.get("sectionBHypothesis") or {}).get("encodingProbe")
+        hyp = probe.get("rotationHypothesis") or {}
+        t_probe = (probe.get("tailHypothesis") or {}).get("encodingProbe")
+        if hyp.get("candidateConfident") or (
+            b_probe and b_probe.get("viableRotationEncoding")
+        ) or (t_probe and t_probe.get("viableRotationEncoding")):
+            rot_tracks, rot_meta = try_extract_confident_quats(
+                data,
+                track_count=header.trackCount,
+                frame_count=header.frameCount,
+                section_a=header.sectionA,
+                section_b=header.sectionB,
+                section_c=header.sectionC,
+                b_probe=b_probe,
+            )
+        elif rot_meta is None:
+            rot_meta = {
+                "selectedOffset": None,
+                "selectedUnitRatio": None,
+                "confident": False,
+                "skipped": True,
+                "note": "extract skipped: no rotation candidate from walk/B/C/tail",
+            }
 
     if rot_tracks is not None and rot_meta.get("confident"):
         order = rot_meta.get("order") or "track-major"
@@ -619,6 +626,31 @@ def parse_ani_bytes(
                 rotations=rots,
             )
         )
+    # Attach motion names from client name table onto multi-clip entries
+    client_hyp = probe.get("clientDecoderHypothesis") or {}
+    bulk_walk = client_hyp.get("bulkWalk") or {}
+    motion_names = list(bulk_walk.get("motionNames") or [])
+    if motion_names and clips:
+        named_clips: list[dict[str, Any]] = []
+        for c in clips:
+            idx = int(c.get("index") or 0)
+            entry = dict(c)
+            if idx < len(motion_names):
+                entry["motionName"] = motion_names[idx].get("name")
+            named_clips.append(entry)
+        clips = named_clips
+        multi_key = "multiClipC" if channel_u == "C" else "multiClip"
+        if multi_key in probe and isinstance(probe[multi_key], dict):
+            probe = {
+                **probe,
+                multi_key: {**probe[multi_key], "clips": clips[:32]},
+            }
+        if selected_clip is not None:
+            sc = dict(selected_clip)
+            si = int(sc.get("index") or clip_index)
+            if si < len(motion_names):
+                sc["motionName"] = motion_names[si].get("name")
+            selected_clip = sc
     # Annotate selected clip on probe for API consumers
     probe = {
         **probe,
@@ -626,6 +658,7 @@ def parse_ani_bytes(
         "clipIndex": clip_index,
         "clipCount": len(clips),
         "channel": channel_u,
+        "motionNames": motion_names,
     }
     return ParsedAni(
         name=name,

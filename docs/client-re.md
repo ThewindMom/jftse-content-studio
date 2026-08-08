@@ -248,9 +248,16 @@ Read-only disassembly of PE32 `FantaTennis.exe` (image base `0x400000`). **Stock
 | `0x5E08D0` | Dense per-track load: f3+**f4 rotation**+f7+f1+f2 × `frameCount` |
 | `0x5DD8E0` | Serialize bone track (name[0x80] + sparse keyframe channels) |
 
-**Stream header (size-verified on NikiAniA):** first three LE u32 are **dword counts** `n0,n1,n2` with `n0×4+12 == file size`. Bulk mini-header at +12: `trackCount`, `duration` f32, `frameCount`, `frameCount2`. Historic **A−B = 1290** is **`n0−n1`**. Studio still also reports the legacy 28 B field view for multi-clip float3 tooling.
+**Stream header (size-verified on NikiAniA):** first three LE u32 are **dword counts** `n0,n1,n2` with `n0×4+12 == file size`. Bulk mini-header at +12: `trackCount`, `duration` f32, `frameCount`, `frameCount2`. Historic **A−B = 1290** is **`n0−n1`** (name-table span in dwords).
 
-**Runtime rotation channel:** float4 (`0x5DD640`). **On-disk → unit-quat extract** still not ≥0.9 confidence → `driveMode=hierarchical-fk`. API: `sectionProbe.clientDecoderHypothesis`.
+**Bulk cursor walk (NikiAniA):**
+| Region | Layout |
+|--------|--------|
+| `[28 : 12+n1×4)` | **Sequential track-major float3 clips** (`tracks×frames×12` each) — **67** slots on NikiAniA filling the main region |
+| `[12+n1×4 : EOF)` | **Motion name table** — **40 × 129 B** records (`Rootidle.ani`, `RunForward.ani`, …) |
+| Dense float4 scan | Best unit ratio **≈0.62** ≪ 0.9 — **no confident quat extract** |
+
+**Runtime rotation channel:** float4 (`0x5DD640`). On-disk main payload is position multi-clips + labels; **`driveMode=hierarchical-fk`** until extract ≥0.9. API: `sectionProbe.clientDecoderHypothesis.bulkWalk` + `motionNames`.
 
 Header (28 B LE view + stream 12 B dword counts), verified NikiAniA/B:
 
