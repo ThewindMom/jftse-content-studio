@@ -241,12 +241,22 @@ Header (28 B LE), verified NikiAniA/B:
 | trackCount | 40 | 40 |
 | duration | 1.4667 (=44/30) | 0.800 (=24/30) |
 | frameCount | 44 | 24 |
+| sectionA/B/C | 356699 / 355409 / 355409 | 404635 / 403345 / 403345 |
+| file size | 1 426 808 | 1 618 552 |
+| A+B+C+28 | 1 067 545 (tail ~359 KB) | 1 211 353 (tail ~407 KB) |
 
-Dense float3 tracks after header; layout scored as frame-major or track-major. Bone
-names optional from body skeleton order. Not a full quat/skinning graph yet — positions
-+ timing are recovered.
+**Section probe (2026-08 session):**
+- **A** starts with plausible **float3 positions** (sample y≈6.37); track-major float3 is smooth.
+- Bytes/track-frame ≈ **202** if treated as uniform packing — far larger than pos(12)+quat(16).
+- **B** does not look like unit quats or clean float3 (near-zero unit ratio; garbage float sample).
+- **C** has **~58–60%** unit-length float4 samples in bulk scans — **not** ≥90%, so not attached as confident quat tracks yet.
+- Residual after one float3 block in A is still ~335 KB → more channels/clips remain undecoded.
+- Studio exposes `sectionProbe` on `/api/ani/parse` and only attaches `rotations` when unit ratio ≥0.9.
 
-API: `GET /api/ani/parse?archive=Res/Player/PlayerA/AniA.res&member=NikiAniA.ani`  
+Dense float3 tracks recovered by scoring frame-major vs track-major. Bone names optional
+from body skeleton order. **Not** a full quat/skinning graph yet.
+
+API: `GET /api/ani/parse?archive=…&member=…&maxFrames=0`  
 Module: `python/ani_codec.py`
 
 ### Bone attach (DX9 Equipment socket)
@@ -254,7 +264,9 @@ Module: `python/ani_codec.py`
 Body mesh DAT embeds bind 4×4 matrices next to bone names. `Bone_Racket` on Niki:
 
 - position ≈ `(5.86, 7.87, 4.16)`
-- full `matrix4` row-major for Three.js `applyMatrix4`
+- full `matrix4` is **D3D/Three column-major** (translation @ indices 12–14 matches
+  position with distance 0). Pass directly to Three.js `Matrix4.fromArray` —
+  **do not transpose**. Earlier “row-major” wording was incorrect.
 
 Runtime script proof (`Rtm00.set`): `AttachBone=Bone_Racket`, `AttachPath=…/Niki_prop02.dat`.
 
@@ -266,9 +278,10 @@ Module: `python/bone_attach.py`
 
 - Not a full Ghidra/DX9 renderer; topology still best-effort index recovery
 - Submesh **index ranges** per material not fully table-parsed (names + counts known)
-- Racket/equip preview is mesh decode, not live bone-attached Equipment matrix
-- Animation (`.ani`) and FTM scene binary layouts not fully decoded
-- Multi-draw court composition uses stage scene graph + multi-material names; studio UI still draws single primary mesh + one albedo by default
+- Equipment preview: bind-matrix attach + optional ANI **float3 delta** scrub on the racket (not full body skinning)
+- `.ani` files are much larger than float3 tracks alone (`NikiAniA.ani` ~1.4 MB vs ~21 KB float3) — remaining payload (likely rot/scale or extra clips) not fully decoded; no quat skinning graph yet
+- FTM binary **read** is complete (FT-ResTool schema); studio ships a 2D inspect desk, not binary rewrite
+- Stage multi-draw compositor loads World + Object DATs with visibility toggles (draw cap); sky/collision optional; `.eft` effects not meshed
 
 ## Evidence paths (session)
 

@@ -1,17 +1,19 @@
 # DESIGN.md — JFTSE Content Studio
 
 ## 0. Research Log
-- Audience: internal Fanta Tennis designers/modders who already understand rackets and stages.
-- Job: author custom items/effects/map metadata and export client-safe archives without hand-editing ZIPs.
-- Friction today: raw SET/ZIP surgery, electrical/cloud atlas mistakes, no guided preview.
-- References: Linear/Supabase internal-tool calm density; game cyan accent from Fanta Tennis UI; lessons from `docs/custom-content-loading.md`.
-- Constraint: fixed-size native archives; never mutate shared `Racket_001/002`; maps V3 is metadata + stock stage bind only.
+- Audience: Fantasy Tennis / JFTSE **modders and designers** who already know rackets, stages, `Res/` paths, and playtest loops.
+- Job: author custom items/effects/map metadata, inspect recovered client formats, and export client-safe archives without hand-editing ZIPs.
+- Friction today: siloed single-mesh stage view; FTM/ANI APIs with no desk; Equipment bind-pose only; RE power buried behind JSON.
+- External references: FT-ResTool `FTMEditor` (2D pan/zoom tile canvas + layer tree + placements — not a 3D DCC); Linear/Supabase operational density; Fanta Tennis cyan accent.
+- Constraint: fixed-size native archives; never mutate shared `Racket_001/002`; stock client writes refused; browser is approximate — game remains authority.
+- Out of product scope (honest): Blender-parity topology authoring; full DX9 FVF skinning parity; pixel-true Equipment silhouette.
 
 ## 1. Product principles
 1. **Safety before spectacle** — banned atlases and shared scripts fail closed.
-2. **Export is the product** — every edit ends in a verifiable archive/pack artifact.
-3. **Honest preview** — browser particle canvas is approximate; game remains authority.
-4. **One job per pane** — Items / Effects / Maps are separate modes, not one overloaded form.
+2. **Export is the product** — every edit ends in a verifiable archive/pack artifact when writing.
+3. **Honest preview** — label recovery confidence; game remains authority.
+4. **One job per pane** — Items / Maps / Meshes modes stay separate; deepen desks inside modes, do not explode top-level tabs.
+5. **Progressive RE power** — default path is the day-1 job; advanced layers (FTM, ANI scrub, multi-draw objects) are opt-in panels with clear labels.
 
 ## 2. Visual language
 - Background: deep ink `#0B1020`
@@ -26,28 +28,47 @@
 - Density: comfortable operational (not marketing hero)
 
 ## 3. Information architecture
-- Top nav: Studio title + mode tabs (Items, Effects, Maps) + Export status chip
-- Left: library / selectors
-- Center: editor
-- Right: preview + validation
-- Bottom bar: Build pack / Install to disposable out dir
+- Top nav: Studio title + mode tabs (**Items**, **Maps**, **Meshes**) + bridge/export chip
+- **Items**: library → effect editor → export/install → Equipment preview (mesh + Bone_Racket + optional ANI scrub)
+- **Maps**: catalog → stage design desk (validate/SQL) → **Stage compositor** (World + Object layers) → **FTM overworld desk** (2D placements)
+- **Meshes**: catalog → single DAT recovery/transform/export (material name list when present)
+- Bottom bar: mode-specific next action copy
+
+### Map Studio sub-desks (same workspace, progressive)
+1. **Metadata** — name, stage script bind, SQL pack (primary job)
+2. **Stage scene** — multi-draw World + Object layers with visibility toggles (after validate)
+3. **FTM overworld** — parse FTM/PRJ, 2D grid + placement table (inspect/select; write binary later)
+
+### Equipment desk (Items right rail)
+1. Resolve shop mesh → DAT + texture
+2. Place at Bone_Racket bind matrix (pink socket marker)
+3. Optional: load character ANI → scrub/play → drive socket sample live
 
 ## 4. Components
 - ModeTab, FieldGrid, AtlasCard, EmitterSlider, PreviewCanvas, ValidationList, PackList
+- **StageSceneCompositor** — layer checklist + multi-mesh Three.js viewport
+- **FtmDesk** — archive/member fields, 2D canvas, placement table, structured errors
+- **AniScrubber** — play/pause, range input, time readout, track pick
 - Buttons: primary cyan, secondary ghost, danger outline
 - Focus rings: 2px cyan offset
+- Badges: `bind pose` / `live scrub` / `recovery` for honesty
 
 ## 5. Motion
 - Tab switch 160ms ease
 - Preview particles continuous but paused under `prefers-reduced-motion`
+- ANI play uses rAF; respect reduced-motion → scrub only
 - No page-load confetti
 
 ## 6. Accessibility
 - Keyboard tabs and form controls
-- Color never sole status signal (icons + text)
+- Color never sole status signal (icons + text + PASS/MISS labels)
 - Contrast AA on body text
+- Viewport regions have `aria-label`
+- Layer toggles are real checkboxes with names
 
 ## 7. Accepted debt
-- No full 3D racket attachment preview in V1–V2
-- No stage mesh authoring in V3
+- Submesh index ranges per material not fully table-parsed (names + single albedo draw common)
+- ANI is float3 track recovery, not full quat skinning graph
+- Live attach samples ANI positions onto bind matrix — not full skeletal hierarchy retarget
+- FTM desk is inspect/select first; binary rewrite of placements not shipped
 - Install-to-permanent-client is opt-in path config only; tests use disposable dirs

@@ -6,7 +6,15 @@ from __future__ import annotations
 import argparse
 from pathlib import Path as _BridgePath
 import sys as _sys
-_sys.path.insert(0, str(_BridgePath(__file__).resolve().parent))
+
+# Support package imports (`python.bone_attach`) and flat sibling imports.
+_PKG_DIR = _BridgePath(__file__).resolve().parent
+_STUDIO_ROOT = _PKG_DIR.parent
+if str(_STUDIO_ROOT) not in _sys.path:
+    _sys.path.insert(0, str(_STUDIO_ROOT))
+if str(_PKG_DIR) not in _sys.path:
+    _sys.path.insert(0, str(_PKG_DIR))
+
 import json
 import os
 import re
@@ -806,7 +814,7 @@ def cmd_mesh_list(_: argparse.Namespace) -> dict[str, Any]:
 
 def cmd_item_mesh_resolve(args: argparse.Namespace) -> dict[str, Any]:
     """Resolve shop mesh index → Player Item*.res DAT via AES-decrypted Info_Item_Mesh."""
-    from item_mesh import resolve_item_mesh_path
+    from python.item_mesh import resolve_item_mesh_path
     from mesh_codec import decode_member, decoded_to_dict
 
     client = _client_root(_jftse_root())
@@ -902,17 +910,106 @@ def cmd_ftm_parse(args: argparse.Namespace) -> dict[str, Any]:
         return {"ok": False, "error": "FTM_PARSE_FAILED", "detail": str(exc)}
 
 
+def cmd_ftm_export(args: argparse.Namespace) -> dict[str, Any]:
+    """Patch scene placements and write a new .ftm under out-dir (never stock client)."""
+    import json
+    from pathlib import Path
+
+    from ftm_codec import (
+        FtmParseError,
+        load_ftm_from_res,
+        patch_scene_objects,
+        serialize_ftm,
+    )
+
+    client = _client_root(_jftse_root())
+    archive = str(getattr(args, "archive", "") or "")
+    member = str(getattr(args, "member", "") or "")
+    out_dir = Path(str(getattr(args, "out_dir", "") or ""))
+    patches_raw = str(getattr(args, "patches", "") or "[]")
+    if not archive or not member:
+        return {"ok": False, "error": "ARCHIVE_AND_MEMBER_REQUIRED"}
+    if not out_dir:
+        return {"ok": False, "error": "OUT_DIR_REQUIRED"}
+    try:
+        patches = json.loads(patches_raw) if patches_raw else []
+        if not isinstance(patches, list):
+            return {"ok": False, "error": "PATCHES_MUST_BE_ARRAY"}
+        ftm = load_ftm_from_res(client, archive, member)
+        patched = patch_scene_objects(ftm, patches) if patches else ftm
+        blob = serialize_ftm(patched)
+        # Round-trip verify before write
+        from ftm_codec import parse_ftm_bytes
+
+        verify = parse_ftm_bytes(blob)
+        if len(verify.sceneObjects) != len(patched.sceneObjects):
+            return {
+                "ok": False,
+                "error": "FTM_ROUNDTRIP_MISMATCH",
+                "detail": "sceneObjectCount changed after serialize",
+            }
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_name = Path(member).name
+        if not out_name.lower().endswith(".ftm"):
+            out_name = f"{out_name}.ftm"
+        out_path = out_dir / out_name
+        out_path.write_bytes(blob)
+        return {
+            "ok": True,
+            "path": str(out_path),
+            "byteLength": len(blob),
+            "sourceByteLength": ftm.byteLength,
+            "sceneObjectCount": len(verify.sceneObjects),
+            "patchesApplied": len(patches),
+            "sceneObjects": [
+                {
+                    "index": i,
+                    "prefabIndex": o.prefabIndex,
+                    "x": o.x,
+                    "y": o.y,
+                    "scaleHeight": o.scaleHeight,
+                    "scaleWidth": o.scaleWidth,
+                    "rotationY": o.rotationY,
+                    "rotationX": o.rotationX,
+                    "prefabName": o.prefabName,
+                }
+                for i, o in enumerate(verify.sceneObjects)
+            ],
+        }
+    except FtmParseError as exc:
+        return {"ok": False, "error": "FTM_EXPORT_FAILED", "detail": str(exc)}
+    except FileNotFoundError as exc:
+        return {"ok": False, "error": "FTM_ARCHIVE_NOT_FOUND", "detail": str(exc)}
+    except KeyError as exc:
+        return {"ok": False, "error": "FTM_MEMBER_NOT_FOUND", "detail": str(exc)}
+    except json.JSONDecodeError as exc:
+        return {"ok": False, "error": "PATCHES_JSON_INVALID", "detail": str(exc)}
+
+
 def cmd_ani_parse(args: argparse.Namespace) -> dict[str, Any]:
-    """Parse character .ani animation header + position tracks."""
+    """Parse character .ani animation header + position tracks.
+
+    ``--max-frames``: positive = compact sample; ``0`` or negative = all frames
+    (for ANI scrubbers / live attach). Default remains 8 for light API clients.
+    """
     from ani_codec import AniParseError, load_ani_member
 
     client = _client_root(_jftse_root())
     archive = str(getattr(args, "archive", "") or "")
     member = str(getattr(args, "member", "") or "")
-    max_frames = int(getattr(args, "max_frames", 8) or 8)
+    raw_max = getattr(args, "max_frames", 8)
+    try:
+        max_frames_int = int(raw_max)
+    except (TypeError, ValueError):
+        max_frames_int = 8
+    # 0 / negative → full tracks (None in to_dict)
+    max_frames: int | None = None if max_frames_int <= 0 else max_frames_int
     try:
         ani = load_ani_member(client, archive, member)
-        return {"ok": True, "ani": ani.to_dict(max_frames=max_frames)}
+        payload = ani.to_dict(max_frames=max_frames)
+        payload["sampled"] = max_frames is not None
+        payload["sampleMaxFrames"] = max_frames
+        return {"ok": True, "ani": payload}
     except AniParseError as exc:
         return {"ok": False, "error": "ANI_PARSE_FAILED", "detail": str(exc)}
     except KeyError as exc:
@@ -1214,6 +1311,12 @@ def main() -> None:
     p_ftm.add_argument("--archive", default="")
     p_ftm.add_argument("--member", required=True)
 
+    p_ftm_export = sub.add_parser("ftm-export")
+    p_ftm_export.add_argument("--archive", required=True)
+    p_ftm_export.add_argument("--member", required=True)
+    p_ftm_export.add_argument("--out-dir", required=True)
+    p_ftm_export.add_argument("--patches", default="[]")
+
     p_ani = sub.add_parser("ani-parse")
     p_ani.add_argument("--archive", required=True)
     p_ani.add_argument("--member", required=True)
@@ -1272,6 +1375,7 @@ def main() -> None:
         "stage-scene": cmd_stage_scene,
         "map-catalog": cmd_map_catalog,
         "ftm-parse": cmd_ftm_parse,
+        "ftm-export": cmd_ftm_export,
         "ani-parse": cmd_ani_parse,
         "bone-attach": cmd_bone_attach,
         "mesh-meta": cmd_mesh_meta,

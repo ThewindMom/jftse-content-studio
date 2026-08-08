@@ -11,10 +11,10 @@ import re
 import zipfile
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
 
-from client_crypto import decrypt_set_file
+from .client_crypto import decrypt_set_file
 
+# Keep in sync with char_player.py / bone_attach._CHAR_TO_PLAYER
 _CHAR_TO_PLAYER = {
     "NIKI": "PlayerA",
     "LUN": "PlayerB",

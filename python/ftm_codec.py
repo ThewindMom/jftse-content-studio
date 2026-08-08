@@ -351,3 +351,180 @@ def load_prj_from_res(
 ) -> dict[str, Any]:
     with zipfile.ZipFile(client_root / archive_rel) as zf:
         return parse_prj_bytes(zf.read(member))
+
+
+class _Writer:
+    def __init__(self) -> None:
+        self.buf = bytearray()
+
+    def u8(self, v: int) -> None:
+        self.buf.append(v & 0xFF)
+
+    def i32(self, v: int) -> None:
+        self.buf.extend(struct.pack("<i", int(v)))
+
+    def f32(self, v: float) -> None:
+        self.buf.extend(struct.pack("<f", float(v)))
+
+    def string(self, s: str) -> None:
+        raw = (s or "").encode("ascii", errors="replace")
+        if len(raw) > 255:
+            raise FtmParseError(f"string too long for pascal u8 ({len(raw)})")
+        self.u8(len(raw))
+        self.buf.extend(raw)
+
+    def raw(self, data: bytes) -> None:
+        self.buf.extend(data)
+
+
+def serialize_ftm(ftm: ParsedFtm) -> bytes:
+    """Serialize ParsedFtm to FT-ResTool-compatible .ftm bytes (full rewrite)."""
+    w = _Writer()
+    w.string(ftm.mapPath)
+    w.i32(ftm.tileCountX)
+    w.i32(ftm.tileCountY)
+    w.i32(ftm.unkI2)
+    w.u8(ftm.indoorMode)
+    w.i32(ftm.unkI3)
+    w.i32(ftm.unkI4)
+
+    w.i32(len(ftm.tileLayerDefinitions))
+    for layer_def in ftm.tileLayerDefinitions:
+        w.string(layer_def.name)
+        w.u8(layer_def.tileLayerIndex)
+        w.u8(layer_def.usesWater)
+        w.i32(layer_def.tileLayerZIndex)
+        w.f32(layer_def.tileLayerHeight)
+        w.u8(layer_def.visible)
+        w.i32(len(layer_def.tileResourcePaths))
+        for path in layer_def.tileResourcePaths:
+            w.string(path)
+
+    if len(ftm.tileLayers) != len(ftm.tileLayerDefinitions):
+        raise FtmParseError(
+            f"tileLayers count {len(ftm.tileLayers)} != defs {len(ftm.tileLayerDefinitions)}"
+        )
+    for layer in ftm.tileLayers:
+        w.i32(layer.tileCountX)
+        w.i32(layer.tileCountY)
+        need = layer.tileCountX * layer.tileCountY
+        if len(layer.indices) != need:
+            raise FtmParseError(
+                f"layer {layer.layerName} indices {len(layer.indices)} != {need}"
+            )
+        for idx in layer.indices:
+            w.i32(idx)
+
+    w.i32(len(ftm.prefabs))
+    for prefab in ftm.prefabs:
+        w.string(prefab.name)
+        w.string(prefab.objId)
+        w.buf.extend(b"\x00\x00")  # 2 pad bytes
+
+    w.i32(len(ftm.sceneObjects))
+    for obj in ftm.sceneObjects:
+        w.i32(obj.prefabIndex)
+        w.i32(obj.x)
+        w.i32(obj.y)
+        w.f32(obj.scaleHeight)
+        w.f32(obj.scaleWidth)
+        w.f32(obj.rotationY)
+        w.f32(obj.rotationX)
+
+    w.i32(len(ftm.interactableTiles))
+    for tile in ftm.interactableTiles:
+        w.u8(tile.unkB0)
+        w.i32(tile.x)
+        w.i32(tile.y)
+        w.i32(len(tile.triggers))
+        for tr in tile.triggers:
+            w.u8(tr.unkB1)
+            w.u8(tr.unkB2)
+            w.u8(tr.unkB3)
+            w.u8(tr.unkB4)
+            w.u8(tr.unkB5)
+            w.u8(tr.unkB6)
+            w.i32(tr.unkI0)
+            w.i32(tr.unkI1)
+            w.i32(tr.unkI2)
+            w.i32(tr.unkI3)
+            w.i32(tr.objNumber)
+            w.f32(tr.scale)
+            w.i32(tr.unkI4)
+            w.f32(tr.heightOffset)
+            w.f32(tr.rotation)
+            w.i32(len(tr.params))
+            for p in tr.params:
+                w.string(p)
+            w.u8(tr.unkB7)
+            w.i32(tr.unkI6)
+            w.i32(len(tr.commands))
+            for cmd in tr.commands:
+                w.string(cmd)
+
+    w.i32(len(ftm.blockedTiles))
+    for tile in ftm.blockedTiles:
+        w.i32(tile.x)
+        w.i32(tile.y)
+
+    w.raw(ftm.unknownBytes or b"")
+    return bytes(w.buf)
+
+
+def patch_scene_objects(
+    ftm: ParsedFtm,
+    patches: list[dict[str, Any]],
+) -> ParsedFtm:
+    """Return a copy of ftm with sceneObjects updated by index.
+
+    Each patch: {index, prefabIndex?, x?, y?, scaleHeight?, scaleWidth?,
+    rotationY?, rotationX?}
+    """
+    objects = list(ftm.sceneObjects)
+    for patch in patches:
+        try:
+            idx = int(patch["index"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise FtmParseError(f"patch missing integer index: {patch!r}") from exc
+        if idx < 0 or idx >= len(objects):
+            raise FtmParseError(
+                f"scene object index {idx} out of range (0..{len(objects) - 1})"
+            )
+        cur = objects[idx]
+        objects[idx] = SceneObject(
+            prefabIndex=int(patch.get("prefabIndex", cur.prefabIndex)),
+            x=int(patch.get("x", cur.x)),
+            y=int(patch.get("y", cur.y)),
+            scaleHeight=float(patch.get("scaleHeight", cur.scaleHeight)),
+            scaleWidth=float(patch.get("scaleWidth", cur.scaleWidth)),
+            rotationY=float(patch.get("rotationY", cur.rotationY)),
+            rotationX=float(patch.get("rotationX", cur.rotationX)),
+            prefabName=cur.prefabName,
+            prefabObjId=cur.prefabObjId,
+        )
+        # refresh prefab names if index changed
+        pi = objects[idx].prefabIndex
+        if 0 <= pi < len(ftm.prefabs):
+            objects[idx].prefabName = ftm.prefabs[pi].name
+            objects[idx].prefabObjId = ftm.prefabs[pi].objId
+        else:
+            objects[idx].prefabName = None
+            objects[idx].prefabObjId = None
+
+    return ParsedFtm(
+        mapPath=ftm.mapPath,
+        tileCountX=ftm.tileCountX,
+        tileCountY=ftm.tileCountY,
+        unkI2=ftm.unkI2,
+        indoorMode=ftm.indoorMode,
+        unkI3=ftm.unkI3,
+        unkI4=ftm.unkI4,
+        tileLayerDefinitions=list(ftm.tileLayerDefinitions),
+        tileLayers=list(ftm.tileLayers),
+        prefabs=list(ftm.prefabs),
+        sceneObjects=objects,
+        interactableTiles=list(ftm.interactableTiles),
+        blockedTiles=list(ftm.blockedTiles),
+        unknownBytes=ftm.unknownBytes,
+        byteLength=ftm.byteLength,
+    )

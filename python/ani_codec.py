@@ -43,6 +43,7 @@ class AniTrack:
     name: str | None
     positions: list[list[float]]  # frame-major [x,y,z]
     times: list[float]
+    rotations: list[list[float]] | None = None  # optional [x,y,z,w] if recovered
 
 
 @dataclass
@@ -52,29 +53,37 @@ class ParsedAni:
     tracks: list[AniTrack]
     layout: str
     byteLength: int
+    sectionProbe: dict[str, Any] | None = None
 
     def to_dict(self, *, max_frames: int | None = 8) -> dict[str, Any]:
         tracks_out = []
         for t in self.tracks:
             positions = t.positions
             times = t.times
+            rotations = t.rotations
             if max_frames is not None and len(positions) > max_frames:
                 # keep head+tail samples for compact API
                 head = max_frames // 2
                 tail = max_frames - head
                 positions = positions[:head] + positions[-tail:]
                 times = times[:head] + times[-tail:]
-            tracks_out.append(
-                {
-                    "index": t.index,
-                    "name": t.name,
-                    "frameCount": len(t.positions),
-                    "times": times,
-                    "positions": positions,
-                    "start": t.positions[0] if t.positions else None,
-                    "end": t.positions[-1] if t.positions else None,
-                }
-            )
+                if rotations is not None:
+                    rotations = rotations[:head] + rotations[-tail:]
+            entry: dict[str, Any] = {
+                "index": t.index,
+                "name": t.name,
+                "frameCount": len(t.positions),
+                "times": times,
+                "positions": positions,
+                "start": t.positions[0] if t.positions else None,
+                "end": t.positions[-1] if t.positions else None,
+            }
+            if rotations is not None:
+                entry["rotations"] = rotations
+                entry["hasRotations"] = True
+            else:
+                entry["hasRotations"] = False
+            tracks_out.append(entry)
         return {
             "name": self.name,
             "header": asdict(self.header),
@@ -84,6 +93,8 @@ class ParsedAni:
             "duration": self.header.duration,
             "frameCount": self.header.frameCount,
             "tracks": tracks_out,
+            "sectionProbe": self.sectionProbe,
+            "hasRotations": any(t.rotations for t in self.tracks),
         }
 
 
@@ -162,6 +173,104 @@ def _extract_tracks(
     return tracks
 
 
+def _probe_sections(data: bytes, header: AniHeader) -> dict[str, Any]:
+    """Describe section A/B/C packing (evidence for quat/skinning RE)."""
+    off = 28
+    sections: dict[str, Any] = {}
+    for label, size in (
+        ("A", header.sectionA),
+        ("B", header.sectionB),
+        ("C", header.sectionC),
+    ):
+        chunk = data[off : off + size] if off + size <= len(data) else b""
+        n_tf = max(header.trackCount * header.frameCount, 1)
+        unit = 0
+        total = 0
+        # sample up to 2000 float4 groups as quat unit-length candidates
+        for i in range(0, min(len(chunk) - 16, 2000 * 16), 16):
+            q = struct.unpack_from("<4f", chunk, i)
+            if not all(math.isfinite(v) for v in q):
+                continue
+            length = math.sqrt(sum(v * v for v in q))
+            total += 1
+            if 0.95 <= length <= 1.05:
+                unit += 1
+        sections[label] = {
+            "offset": off,
+            "size": size,
+            "bytesPerTrackFrame": size / n_tf,
+            "float3Capacity": size // 12,
+            "float4Capacity": size // 16,
+            "quatUnitSampleRatio": (unit / total) if total else None,
+            "quatUnitSamples": unit,
+            "quatSamples": total,
+        }
+        off += size
+    sections["tail"] = {
+        "offset": off,
+        "size": max(len(data) - off, 0),
+    }
+    # Prefer section C as rotation candidate when unit ratio is high
+    c_ratio = sections.get("C", {}).get("quatUnitSampleRatio") or 0.0
+    sections["rotationHypothesis"] = {
+        "preferredSection": "C" if c_ratio >= 0.9 else None,
+        "confident": bool(c_ratio >= 0.9),
+        "note": (
+            "Section C looks like unit quaternions"
+            if c_ratio >= 0.9
+            else "No section has ≥90% unit-length float4 samples; quats not attached to tracks"
+        ),
+    }
+    return sections
+
+
+def _extract_quats(
+    data: bytes,
+    *,
+    header: AniHeader,
+    data_off: int,
+    order: str,
+) -> list[list[list[float]]] | None:
+    """Return tracks[track][frame] = [x,y,z,w] or None if not unit-ish."""
+    n_f = header.frameCount
+    n_t = header.trackCount
+    need = n_f * n_t * 16
+    if data_off + need > len(data):
+        return None
+    tracks: list[list[list[float]]] = [[] for _ in range(n_t)]
+    unit = 0
+    total = 0
+    if order == "frame-major":
+        for fi in range(n_f):
+            base = data_off + fi * n_t * 16
+            for ti in range(n_t):
+                q = list(struct.unpack_from("<4f", data, base + ti * 16))
+                if not all(math.isfinite(v) for v in q):
+                    return None
+                length = math.sqrt(sum(v * v for v in q))
+                total += 1
+                if 0.95 <= length <= 1.05:
+                    unit += 1
+                tracks[ti].append(q)
+    elif order == "track-major":
+        for ti in range(n_t):
+            base = data_off + ti * n_f * 16
+            for fi in range(n_f):
+                q = list(struct.unpack_from("<4f", data, base + fi * 16))
+                if not all(math.isfinite(v) for v in q):
+                    return None
+                length = math.sqrt(sum(v * v for v in q))
+                total += 1
+                if 0.95 <= length <= 1.05:
+                    unit += 1
+                tracks[ti].append(q)
+    else:
+        return None
+    if total == 0 or unit / total < 0.9:
+        return None
+    return tracks
+
+
 def parse_ani_bytes(
     data: bytes,
     *,
@@ -169,8 +278,10 @@ def parse_ani_bytes(
     bone_names: list[str] | None = None,
 ) -> ParsedAni:
     header = parse_ani_header(data)
+    probe = _probe_sections(data, header)
     best: tuple[float, str, int, list[list[list[float]]]] | None = None
-    for data_off in (28, 32, 24, 36, 48):
+    # Prefer starts of section A (28) and a few nearby offsets used by older heuristics
+    for data_off in (28, 32, 24, 36, 48, 28 + header.sectionA):
         for order in ("frame-major", "track-major"):
             tracks = _extract_tracks(data, header=header, data_off=data_off, order=order)
             if tracks is None:
@@ -183,12 +294,28 @@ def parse_ani_bytes(
                 zs = [p[2] for p in tracks[0]]
                 extent = (max(xs) - min(xs)) + (max(ys) - min(ys)) + (max(zs) - min(zs))
                 score += min(extent, 50.0)
+            # Prefer section-A aligned decode
+            if data_off == 28:
+                score += 5.0
             label = f"{order}@+{data_off}"
             if best is None or score > best[0]:
                 best = (score, label, data_off, tracks)
     if best is None:
         raise AniParseError("no valid float3 track layout found")
-    _score, layout, _off, raw_tracks = best
+    _score, layout, pos_off, raw_tracks = best
+
+    # Experimental quat attach: only when section probe is confident
+    rot_tracks: list[list[list[float]]] | None = None
+    if probe.get("rotationHypothesis", {}).get("confident"):
+        c_off = 28 + header.sectionA + header.sectionB
+        for order in ("track-major", "frame-major"):
+            rot_tracks = _extract_quats(
+                data, header=header, data_off=c_off, order=order
+            )
+            if rot_tracks is not None:
+                layout = f"{layout}+quat-{order}@C"
+                break
+
     times = [
         header.duration * (i / max(header.frameCount - 1, 1))
         for i in range(header.frameCount)
@@ -196,13 +323,23 @@ def parse_ani_bytes(
     tracks: list[AniTrack] = []
     for i, positions in enumerate(raw_tracks):
         bname = bone_names[i] if bone_names and i < len(bone_names) else None
-        tracks.append(AniTrack(index=i, name=bname, positions=positions, times=list(times)))
+        rots = rot_tracks[i] if rot_tracks is not None else None
+        tracks.append(
+            AniTrack(
+                index=i,
+                name=bname,
+                positions=positions,
+                times=list(times),
+                rotations=rots,
+            )
+        )
     return ParsedAni(
         name=name,
         header=header,
         tracks=tracks,
         layout=layout,
         byteLength=len(data),
+        sectionProbe=probe,
     )
 
 

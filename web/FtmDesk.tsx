@@ -1,0 +1,399 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+type SceneObject = {
+  readonly prefabIndex: number;
+  readonly x: number;
+  readonly y: number;
+  readonly scaleHeight: number;
+  readonly scaleWidth: number;
+  readonly rotationY: number;
+  readonly rotationX: number;
+  readonly prefabName?: string | null;
+  readonly prefabObjId?: string | null;
+};
+
+type FtmPayload = {
+  readonly mapPath?: string;
+  readonly tileCountX: number;
+  readonly tileCountY: number;
+  readonly indoorMode?: number;
+  readonly prefabs?: Array<{ name: string; objId: string }>;
+  readonly sceneObjects?: SceneObject[];
+  readonly sceneObjectCount?: number;
+  readonly prefabCount?: number;
+  readonly interactableTileCount?: number;
+  readonly blockedTileCount?: number;
+  readonly tileLayerDefinitions?: Array<{ name: string; visible?: number }>;
+  readonly blockedTiles?: Array<{ x: number; y: number }>;
+};
+
+async function apiJson<T>(path: string): Promise<{ status: number; body: T }> {
+  const response = await fetch(path);
+  const body = (await response.json()) as T;
+  return { status: response.status, body };
+}
+
+/**
+ * Interactive FTM overworld desk (FT-ResTool FTMEditor-inspired, read-first).
+ * 2D tile grid + placement markers; select rows to inspect transforms.
+ */
+export function FtmDesk() {
+  const [archive, setArchive] = useState("Res/MapSet/FantaCastle.res");
+  const [member, setMember] = useState("FantaCastleOutSide.ftm");
+  const [status, setStatus] = useState("Load an FTM/PRJ member to inspect placements");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [ftm, setFtm] = useState<FtmPayload | null>(null);
+  const [kind, setKind] = useState<string>("");
+  const [selected, setSelected] = useState<number | null>(null);
+  const [draftX, setDraftX] = useState("");
+  const [draftY, setDraftY] = useState("");
+  const [exportPath, setExportPath] = useState("");
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  const objects = ftm?.sceneObjects ?? [];
+  const selectedObj = selected != null ? objects[selected] ?? null : null;
+
+  useEffect(() => {
+    if (!selectedObj) {
+      setDraftX("");
+      setDraftY("");
+      return;
+    }
+    setDraftX(String(selectedObj.x));
+    setDraftY(String(selectedObj.y));
+  }, [selectedObj]);
+
+  const load = useCallback(async () => {
+    setBusy(true);
+    setError("");
+    setSelected(null);
+    setStatus("Parsing FTM…");
+    try {
+      const qs = new URLSearchParams();
+      if (archive.trim()) qs.set("archive", archive.trim());
+      qs.set("member", member.trim());
+      const { status: http, body } = await apiJson<{
+        ok?: boolean;
+        kind?: string;
+        ftm?: FtmPayload;
+        prj?: { ftmCount: number; ftmPaths: string[] };
+        error?: string;
+        detail?: string;
+      }>(`/api/ftm/parse?${qs.toString()}`);
+
+      if (!body.ok) {
+        const msg = body.detail ?? body.error ?? `HTTP ${http}`;
+        setFtm(null);
+        setKind("");
+        setError(msg);
+        setStatus("FTM parse failed");
+        return;
+      }
+      if (body.kind === "prj" && body.prj) {
+        setFtm(null);
+        setKind("prj");
+        setStatus(
+          `PRJ · ${body.prj.ftmCount} FTM paths — pick a .ftm member to open the placement desk`,
+        );
+        setError("");
+        if (body.prj.ftmPaths[0]) {
+          const path = body.prj.ftmPaths[0].replace(/\\/g, "/");
+          const base = path.split("/").pop() ?? path;
+          setMember(base.endsWith(".ftm") ? base : `${base}.ftm`);
+        }
+        return;
+      }
+      if (!body.ftm) {
+        setError("Unexpected FTM payload");
+        setFtm(null);
+        return;
+      }
+      setKind("ftm");
+      setFtm(body.ftm);
+      setStatus(
+        `${member} · ${body.ftm.tileCountX}×${body.ftm.tileCountY} · ${body.ftm.sceneObjectCount ?? objects.length} placements · ${body.ftm.blockedTileCount ?? 0} blocked · ${body.ftm.interactableTileCount ?? 0} interactables`,
+      );
+    } catch (err) {
+      setFtm(null);
+      setError(err instanceof Error ? err.message : String(err));
+      setStatus("FTM request failed");
+    } finally {
+      setBusy(false);
+    }
+  }, [archive, member, objects.length]);
+
+  // 2D canvas: grid + blocked sample + placements
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !ftm) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.fillStyle = "#0d1426";
+    ctx.fillRect(0, 0, w, h);
+
+    const cols = Math.max(ftm.tileCountX, 1);
+    const rows = Math.max(ftm.tileCountY, 1);
+    const pad = 12;
+    const cell = Math.min((w - pad * 2) / cols, (h - pad * 2) / rows);
+    const ox = pad + (w - pad * 2 - cell * cols) / 2;
+    const oy = pad + (h - pad * 2 - cell * rows) / 2;
+
+    // grid
+    ctx.strokeStyle = "rgba(42, 54, 84, 0.9)";
+    ctx.lineWidth = 1;
+    for (let x = 0; x <= cols; x++) {
+      const px = ox + x * cell;
+      ctx.beginPath();
+      ctx.moveTo(px, oy);
+      ctx.lineTo(px, oy + rows * cell);
+      ctx.stroke();
+    }
+    for (let y = 0; y <= rows; y++) {
+      const py = oy + y * cell;
+      ctx.beginPath();
+      ctx.moveTo(ox, py);
+      ctx.lineTo(ox + cols * cell, py);
+      ctx.stroke();
+    }
+
+    // blocked tiles (sample first 800 for paint cost)
+    const blocked = ftm.blockedTiles ?? [];
+    ctx.fillStyle = "rgba(255, 107, 122, 0.22)";
+    for (const tile of blocked.slice(0, 800)) {
+      ctx.fillRect(ox + tile.x * cell, oy + tile.y * cell, cell, cell);
+    }
+
+    // placements
+    objects.forEach((obj, i) => {
+      const cx = ox + (obj.x + 0.5) * cell;
+      const cy = oy + (obj.y + 0.5) * cell;
+      const active = i === selected;
+      ctx.fillStyle = active ? "#5fd0ff" : "#3ddc97";
+      ctx.strokeStyle = active ? "#e8eef9" : "rgba(232, 238, 249, 0.4)";
+      ctx.lineWidth = active ? 2 : 1;
+      const r = Math.max(cell * 0.35, 3);
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      if (active || objects.length < 24) {
+        ctx.fillStyle = "#e8eef9";
+        ctx.font = "10px ui-sans-serif, system-ui";
+        ctx.fillText(obj.prefabName ?? `#${obj.prefabIndex}`, cx + r + 2, cy + 3);
+      }
+    });
+
+    ctx.fillStyle = "#93a0bf";
+    ctx.font = "11px ui-sans-serif, system-ui";
+    ctx.fillText(
+      `${cols}×${rows} tiles · green = placement · red tint = blocked (sample)`,
+      pad,
+      h - 6,
+    );
+  }, [ftm, objects, selected]);
+
+  const onCanvasClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!ftm || !canvasRef.current) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const scaleX = canvasRef.current.width / rect.width;
+    const scaleY = canvasRef.current.height / rect.height;
+    const mx = (event.clientX - rect.left) * scaleX;
+    const my = (event.clientY - rect.top) * scaleY;
+    const cols = Math.max(ftm.tileCountX, 1);
+    const rows = Math.max(ftm.tileCountY, 1);
+    const pad = 12;
+    const w = canvasRef.current.width;
+    const h = canvasRef.current.height;
+    const cell = Math.min((w - pad * 2) / cols, (h - pad * 2) / rows);
+    const ox = pad + (w - pad * 2 - cell * cols) / 2;
+    const oy = pad + (h - pad * 2 - cell * rows) / 2;
+    let best = -1;
+    let bestDist = Infinity;
+    objects.forEach((obj, i) => {
+      const cx = ox + (obj.x + 0.5) * cell;
+      const cy = oy + (obj.y + 0.5) * cell;
+      const d = (cx - mx) ** 2 + (cy - my) ** 2;
+      if (d < bestDist) {
+        bestDist = d;
+        best = i;
+      }
+    });
+    if (best >= 0 && bestDist < (Math.max(cell, 8) * 2) ** 2) {
+      setSelected(best);
+    }
+  };
+
+  const layers = useMemo(
+    () => ftm?.tileLayerDefinitions?.map((l) => l.name).join(", ") ?? "—",
+    [ftm],
+  );
+
+  const exportPatched = async () => {
+    if (!ftm || selected == null || !selectedObj) {
+      setError("Select a placement to export a patch");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setExportPath("");
+    try {
+      const x = Number(draftX);
+      const y = Number(draftY);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        throw new Error("x/y must be numbers");
+      }
+      const response = await fetch("/api/ftm/export", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          archive: archive.trim(),
+          member: member.trim(),
+          patches: [{ index: selected, x: Math.trunc(x), y: Math.trunc(y) }],
+        }),
+      });
+      const body = (await response.json()) as {
+        ok?: boolean;
+        path?: string;
+        error?: string;
+        detail?: string;
+        sceneObjectCount?: number;
+      };
+      if (!response.ok || !body.ok) {
+        throw new Error(body.detail ?? body.error ?? `HTTP ${response.status}`);
+      }
+      setExportPath(body.path ?? "");
+      setStatus(
+        `Exported patched FTM · ${body.sceneObjectCount ?? "?"} placements → ${body.path}`,
+      );
+      // refresh local selection coords for honesty
+      setFtm({
+        ...ftm,
+        sceneObjects: objects.map((obj, i) =>
+          i === selected ? { ...obj, x: Math.trunc(x), y: Math.trunc(y) } : obj,
+        ),
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setStatus("FTM export failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="ftm-desk">
+      <div className="field-grid">
+        <label>
+          Archive
+          <input
+            value={archive}
+            onChange={(e) => setArchive(e.target.value)}
+            spellCheck={false}
+            aria-label="FTM archive path"
+          />
+        </label>
+        <label>
+          Member (.ftm / .prj)
+          <input
+            value={member}
+            onChange={(e) => setMember(e.target.value)}
+            spellCheck={false}
+            aria-label="FTM member name"
+          />
+        </label>
+      </div>
+      <div className="actions">
+        <button className="btn primary" type="button" disabled={busy} onClick={() => void load()}>
+          {busy ? "Parsing…" : "Parse FTM"}
+        </button>
+      </div>
+      <div className="empty">{status}</div>
+      {error && (
+        <div className="mono" style={{ color: "var(--danger)" }} role="alert">
+          {error}
+        </div>
+      )}
+      {kind === "ftm" && ftm && (
+        <>
+          <div className="mono empty">
+            mapPath={ftm.mapPath ?? "—"} · layers={layers} · indoor=
+            {ftm.indoorMode ?? 0}
+          </div>
+          <canvas
+            ref={canvasRef}
+            className="ftm-canvas"
+            width={640}
+            height={360}
+            aria-label="FTM placement map"
+            onClick={onCanvasClick}
+          />
+          <div className="list ftm-object-list" role="listbox" aria-label="Scene placements">
+            {objects.length === 0 && <p className="empty">No scene objects in this FTM.</p>}
+            {objects.map((obj, i) => (
+              <button
+                key={`${obj.prefabIndex}-${obj.x}-${obj.y}-${i}`}
+                type="button"
+                data-active={selected === i}
+                onClick={() => setSelected(i)}
+              >
+                {obj.prefabName ?? `prefab#${obj.prefabIndex}`} @ ({obj.x}, {obj.y})
+                <small>
+                  scale H{obj.scaleHeight.toFixed(2)} W{obj.scaleWidth.toFixed(2)} · rot Y
+                  {obj.rotationY.toFixed(2)} X{obj.rotationX.toFixed(2)}
+                </small>
+              </button>
+            ))}
+          </div>
+          {selectedObj && (
+            <>
+              <div className="mono">
+                selected: prefabIndex={selectedObj.prefabIndex} x={selectedObj.x} y={selectedObj.y}{" "}
+                scaleHeight={selectedObj.scaleHeight} scaleWidth={selectedObj.scaleWidth} rotationY=
+                {selectedObj.rotationY} rotationX={selectedObj.rotationX}
+                {selectedObj.prefabObjId ? ` objId=${selectedObj.prefabObjId}` : ""}
+              </div>
+              <div className="field-grid">
+                <label>
+                  Patch x (tile)
+                  <input
+                    value={draftX}
+                    onChange={(e) => setDraftX(e.target.value)}
+                    inputMode="numeric"
+                    aria-label="Placement tile X"
+                  />
+                </label>
+                <label>
+                  Patch y (tile)
+                  <input
+                    value={draftY}
+                    onChange={(e) => setDraftY(e.target.value)}
+                    inputMode="numeric"
+                    aria-label="Placement tile Y"
+                  />
+                </label>
+              </div>
+              <div className="actions">
+                <button
+                  className="btn primary"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void exportPatched()}
+                >
+                  {busy ? "Exporting…" : "Export patched FTM"}
+                </button>
+              </div>
+              {exportPath && <div className="mono empty">Wrote {exportPath}</div>}
+            </>
+          )}
+          <p className="empty">
+            Placement inspect + patch export (FT-ResTool schema). Writes only under studio{" "}
+            <code>exports/</code> — never the stock client. Full tile paint GUI still out of scope.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}

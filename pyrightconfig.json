@@ -1,0 +1,12 @@
+{
+  "include": ["python"],
+  "exclude": ["**/__pycache__", "node_modules", "exports", ".tmp", ".lazygrok"],
+  "pythonVersion": "3.12",
+  "executionEnvironments": [
+    {
+      "root": "python",
+      "pythonVersion": "3.12"
+    }
+  ],
+  "reportImplicitRelativeImport": "error"
+}

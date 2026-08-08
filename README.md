@@ -132,7 +132,7 @@ Recovery-grade mesh modeler for proprietary `.dat` members:
 | Equipment materials | 64 B records, count @ `0x64` | `mesh_meta` |
 | Item mesh catalog | AES XML Index → Path | `item_mesh`, `/api/item-mesh/resolve` |
 | Map catalogs | MapObj / Tile / House | `map_catalog`, `/api/map-catalog` |
-| **FTM / PRJ** | Full FT-ResTool schema (tiles, prefabs, **xyz/rot placements**) | `ftm_codec`, `/api/ftm/parse` |
+| **FTM / PRJ** | Full FT-ResTool schema + **serialize/export** of placement patches | `ftm_codec`, `/api/ftm/parse`, `POST /api/ftm/export` |
 | **ANI** | Header + float3 tracks (e.g. 40×44 @ 30 fps) | `ani_codec`, `/api/ani/parse` |
 | **Bone attach** | Bind matrix at `Bone_Racket` | `bone_attach`, `/api/bone-attach` |
 
@@ -152,7 +152,7 @@ See [`docs/client-re.md`](docs/client-re.md) for field-level detail and remainin
 | Playtest | `GET /api/playtest/status` |
 | Maps | `/api/maps`, `/api/maps/export-sql`, `/api/map-studio/catalog`, `/api/map-studio/validate`, `/api/map-studio/export-pack` |
 | Stage RE | `/api/stage-set/decrypt`, `/api/stage-scene`, `/api/map-catalog` |
-| FTM / ANI / bones | `/api/ftm/parse`, `/api/ani/parse`, `/api/bone-attach` |
+| FTM / ANI / bones | `/api/ftm/parse`, `POST /api/ftm/export`, `/api/ani/parse`, `/api/bone-attach` |
 | Meshes | `/api/mesh-studio/list`, `/parse`, `/meta`, `/texture`, `/export`, `/transform` |
 | Equipment | `/api/item-mesh/resolve` |
 | Packs | `GET/POST /api/packs`, `GET /api/packs/:name` |
@@ -192,10 +192,11 @@ Always use an **isolated local client** for installs.
 
 1. **Configure** env vars (above) → `bun run dev` → open `http://127.0.0.1:4310` → confirm Bridge online / setup checklist.
 2. **Items** → Dragon Slayer → Soft wind preset → Build & verify → Install to local → Copy launch command.
-3. **Map Studio** → Emerald Beach → Validate stage → Export SQL pack (optional Save pack).
-4. **Mesh Studio** → `BF_Court01.dat` → textured 3D view → Export OBJ/glTF.
-5. **Equipment** → mesh index `214` → racket at Bone_Racket.
-6. **Artifacts** → `exports/`, `content-packs/`, or `GET /api/exports`.
+3. **Map Studio** → Emerald Beach → Validate stage → multi-draw **Stage scene compositor** (World + Object layers) → Export SQL pack.
+4. **FTM desk** (Map Studio right panel) → Parse `FantaCastleOutSide.ftm` → select placement → optional **Export patched FTM** to `exports/`.
+5. **Mesh Studio** → `BF_Court01.dat` → textured 3D view → Export OBJ/glTF.
+6. **Equipment** → mesh index `214` → racket at Bone_Racket → **Load character ANI** → scrub/play live attach.
+7. **Artifacts** → `exports/`, `content-packs/`, or `GET /api/exports`.
 
 ---
 
@@ -212,7 +213,8 @@ python/
   client_crypto.py      AES .set / key material
   stage_scene.py        Stage Info.res scene graph
   map_catalog.py        MapObj / Tile / House catalogs
-  ftm_codec.py          FTM/PRJ (FT-ResTool-compatible)
+  ftm_codec.py          FTM/PRJ parse + serialize (FT-ResTool-compatible)
+  char_player.py        Canonical Char → Player* folder map
   ani_codec.py          Character .ani tracks
   item_mesh.py          Info_Item_Mesh resolve
   bone_attach.py        Bone_Racket bind pose
@@ -229,11 +231,11 @@ DESIGN.md               Product / visual language
 
 | In scope today | Still limited / out of scope |
 |----------------|------------------------------|
-| Soft particle export + local install | Pixel-true in-game Equipment silhouette |
-| Stage scene graph + multi-material names + textures | Full multi-draw stage compositor in UI |
-| FTM placements (prefab + x/y + scale + rot) | Interactive FTM map editor (FT-ResTool GUI) |
-| ANI header + float3 tracks | Full quat skinning / animation player |
-| Bone_Racket bind-matrix attach preview | Live DX9 skeleton update every frame |
+| Soft particle export + local install | Pixel-true DX9 Equipment silhouette |
+| Stage scene graph + **multi-draw World/Object compositor** (layer toggles, cap 6) | Full multi-material submesh ranges + VFX `.eft` meshing |
+| FTM placements + **2D desk** (select/focus) + **patched .ftm export** under `exports/` | Full FT-ResTool tile paint GUI / stock-client FTM install |
+| ANI float3 tracks + **scrub/play player** (`maxFrames=0` full samples) | Full quat skinning graph / skinned body mesh |
+| Bone_Racket bind matrix + **live ANI delta attach** | Live full hierarchical DX9 skeleton retarget |
 | Mesh recovery + stride-aware edit + export | Blender-parity topology authoring |
 
 ---

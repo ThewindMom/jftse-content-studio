@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { FtmDesk } from "./FtmDesk.tsx";
 import { StageMeshPreview } from "./StageMeshPreview.tsx";
 
 type Guardian = {
@@ -378,14 +379,18 @@ export function MapStudio({
               </div>
 
               <p className="empty">
-                Map Studio authors server metadata, validates stage asset graphs, and previews the
-                stock World mesh. Full terrain sculpting remains out of scope — open Mesh Studio for
-                DAT recovery/export of bound geometry.
+                Map Studio authors server metadata, validates stage asset graphs, multi-draws World +
+                Object layers, and inspects FTM placements. Full terrain sculpting remains out of
+                scope — open Mesh Studio for DAT recovery/export of bound geometry.
               </p>
-              {worldPath && (
+              {(stageScript || worldPath) && (
                 <>
-                  <strong>Stage geometry preview</strong>
-                  <StageMeshPreview worldPath={worldPath} onOpenMesh={onOpenMesh} />
+                  <strong>Stage scene compositor</strong>
+                  <StageMeshPreview
+                    stageScript={stageScript || undefined}
+                    worldPath={worldPath || undefined}
+                    onOpenMesh={onOpenMesh}
+                  />
                 </>
               )}
             </>
@@ -393,9 +398,9 @@ export function MapStudio({
         </div>
       </section>
 
-      <section className="panel" aria-label="Map validation">
+      <section className="panel" aria-label="Map validation and FTM">
         <header>
-          <h2>Stage & relations</h2>
+          <h2>Stage & FTM</h2>
         </header>
         <div className="body">
           <div>
@@ -455,6 +460,13 @@ export function MapStudio({
               </div>
             </div>
           )}
+          <hr className="soft-rule" />
+          <strong>FTM overworld desk</strong>
+          <p className="empty">
+            Inspect MapSet placements (FT-ResTool schema). Select markers to read prefab + transform
+            fields.
+          </p>
+          <FtmDesk />
         </div>
       </section>
     </main>

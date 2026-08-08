@@ -116,6 +116,73 @@ textarea {
   border-color: rgba(255, 107, 122, 0.4);
 }
 
+.layer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+  max-height: 160px;
+  overflow: auto;
+  padding: 0.4rem 0;
+}
+
+.layer-row {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+.layer-row small,
+.muted {
+  color: var(--muted);
+}
+
+.ftm-desk {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.ftm-canvas {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #0d1426;
+  cursor: crosshair;
+}
+
+.ftm-object-list {
+  max-height: 180px;
+  overflow: auto;
+}
+
+.soft-rule {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0.5rem 0;
+}
+
+.inline-label {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.inline-label select {
+  min-width: 6rem;
+}
+
+.equipment-preview .actions {
+  flex-wrap: wrap;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: 280px 1fr 320px;
@@ -496,8 +563,9 @@ button:disabled,
 
 .path-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
-  align-items: flex-start;
+  align-items: center;
 }
 
 .path-row .mono {

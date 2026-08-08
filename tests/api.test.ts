@@ -645,6 +645,38 @@ describe("content studio production API", () => {
     expect(body.ani.tracks[0].positions.length).toBeGreaterThan(0);
   }, 60000);
 
+  test("ANI maxFrames=0 returns full frame samples for scrubber", async () => {
+    const response = await fetch(
+      `${base}/api/ani/parse?archive=${encodeURIComponent("Res/Player/PlayerA/AniA.res")}&member=${encodeURIComponent("NikiAniA.ani")}&maxFrames=0`,
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.ani.frameCount).toBe(44);
+    expect(body.ani.sampled).toBe(false);
+    expect(body.ani.sampleMaxFrames).toBeNull();
+    expect(body.ani.tracks[0].positions.length).toBe(44);
+    expect(body.ani.tracks[0].times.length).toBe(44);
+    // Section probe for RE (A/B/C sizes + quat hypothesis)
+    expect(body.ani.sectionProbe).toBeDefined();
+    expect(body.ani.sectionProbe.A.size).toBeGreaterThan(1000);
+    expect(body.ani.sectionProbe.C.size).toBeGreaterThan(1000);
+    expect(body.ani.sectionProbe.rotationHypothesis).toBeDefined();
+    expect(typeof body.ani.sectionProbe.rotationHypothesis.confident).toBe("boolean");
+  }, 60000);
+
+  test("stage-scene lists World + Object layers for Emerald Beach compositor", async () => {
+    const response = await fetch(
+      `${base}/api/stage-scene?member=${encodeURIComponent("1_Emerald_Beach.set")}`,
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.scene.world.member).toMatch(/BF_Court01/i);
+    expect(body.scene.objectCount).toBeGreaterThanOrEqual(1);
+    expect(body.scene.objects[0].member || body.scene.objects[0].file).toBeTruthy();
+  }, 60000);
+
   test("ANI parse fails cleanly on missing member", async () => {
     const response = await fetch(
       `${base}/api/ani/parse?archive=${encodeURIComponent("Res/Player/PlayerA/AniA.res")}&member=${encodeURIComponent("NoSuch.ani")}`,
@@ -668,6 +700,62 @@ describe("content studio production API", () => {
     expect(body.attach.position.length).toBe(3);
     expect(body.attach.matrix4.length).toBe(16);
     expect(Math.abs(body.attach.position[0])).toBeGreaterThan(1);
+    // Three.js / D3D column-major: translation lives at 12–14
+    expect(body.matrixLayout).toBe("column-major");
+    expect(body.threeJsFromArray).toBe(true);
+    expect(body.attach.matrix4[12]).toBeCloseTo(body.attach.position[0], 5);
+    expect(body.attach.matrix4[13]).toBeCloseTo(body.attach.position[1], 5);
+    expect(body.attach.matrix4[14]).toBeCloseTo(body.attach.position[2], 5);
+  }, 60000);
+
+  test("bone-attach LUCY loads Lucy.dat under PlayerD (not Dhanpir)", async () => {
+    const response = await fetch(
+      `${base}/api/bone-attach?char=LUCY&attachBone=Bone_Racket`,
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.archive).toContain("PlayerD");
+    expect(String(body.member).toLowerCase()).toContain("lucy");
+  }, 60000);
+
+  test("FTM export patches placement and round-trips parse", async () => {
+    const response = await fetch(`${base}/api/ftm/export`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        archive: "Res/MapSet/FantaCastle.res",
+        member: "FantaCastleOutSide.ftm",
+        patches: [{ index: 0, x: 51, y: 13 }],
+      }),
+    });
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.path).toMatch(/FantaCastleOutSide\.ftm$/);
+    expect(body.sceneObjectCount).toBeGreaterThanOrEqual(1);
+    expect(body.sceneObjects[0].x).toBe(51);
+    expect(body.sceneObjects[0].y).toBe(13);
+    expect(body.patchesApplied).toBe(1);
+  }, 60000);
+
+  test("FTM export rejects out-of-range placement index", async () => {
+    const response = await fetch(`${base}/api/ftm/export`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        archive: "Res/MapSet/FantaCastle.res",
+        member: "FantaCastleOutSide.ftm",
+        patches: [{ index: 9999, x: 1, y: 1 }],
+      }),
+    });
+    const body = await response.json();
+    // structured failure, not crash
+    expect([200, 400, 500]).toContain(response.status);
+    if (response.status === 200) {
+      expect(body.ok).toBe(false);
+      expect(String(body.detail ?? body.error)).toMatch(/out of range|FTM/i);
+    }
   }, 60000);
 
   test("bone-attach missing socket falls back gracefully", async () => {

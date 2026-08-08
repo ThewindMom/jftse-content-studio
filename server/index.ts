@@ -399,6 +399,35 @@ const server = Bun.serve({
         return safeBridge(() => runBridge(args));
       },
     },
+    "/api/ftm/export": {
+      POST: async (req) => {
+        const body = (await req.json()) as {
+          archive?: string;
+          member?: string;
+          patches?: unknown[];
+        };
+        const archive = body.archive?.trim() ?? "";
+        const member = body.member?.trim() ?? "";
+        if (!archive || !member) {
+          return bad("ARCHIVE_AND_MEMBER_REQUIRED");
+        }
+        const outDir = join(config.exportsDir, `ftm-${Date.now()}`);
+        const patches = Array.isArray(body.patches) ? body.patches : [];
+        return safeBridge(() =>
+          runBridge([
+            "ftm-export",
+            "--archive",
+            archive,
+            "--member",
+            member,
+            "--out-dir",
+            outDir,
+            "--patches",
+            JSON.stringify(patches),
+          ]),
+        );
+      },
+    },
     "/api/ani/parse": {
       GET: async (req) => {
         const url = new URL(req.url);
