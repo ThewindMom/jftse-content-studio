@@ -637,6 +637,49 @@ button:disabled,
   height: 240px;
 }
 
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+  background: color-mix(in oklab, #020617 78%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.confirm-dialog {
+  width: min(480px, 100%);
+  display: grid;
+  gap: 1.25rem;
+  border: 1px solid color-mix(in oklab, var(--accent) 32%, var(--border));
+  border-radius: 18px;
+  padding: 1.35rem;
+  background: color-mix(in oklab, var(--surface) 94%, #020617);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 45%);
+}
+
+.confirm-dialog-copy {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.confirm-dialog-copy h2,
+.confirm-dialog-copy p {
+  margin: 0;
+}
+
+.confirm-dialog-copy p:last-child {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.65rem;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     scroll-behavior: auto !important;
