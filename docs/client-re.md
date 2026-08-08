@@ -200,12 +200,67 @@ D3D9 skinning note (EXE / FVF): fixed-function supports `XYZBn` + `LASTBETA_UBYT
 | `.dat` | Proprietary AduMesh binary (geometry + materials + optional bones) |
 | `.tex` | XOR→DDS textures |
 | `.set` | AES scripts/XML |
-| `.ani` | Character animation packs (`NikiAniA.ani`, …) |
-| `.Eft` | Effect definitions (strings + binary params) |
-| `.ftm` / `.prj` | Map/furniture scene sets (`MapSet/*.res`) — ft_restool has FTM parsers |
+| `.ani` | Character animation packs (`NikiAniA.ani`, …) — binary, 12×u32-style header (e.g. three section sizes then records); not fully decoded |
+| `.Eft` | Effect definitions — same family of 3× section-size u32 header + binary payload (~650 KB for Atlantis bubbles); particle paths not fully schema'd |
+| `.ftm` / `.prj` | Map/furniture scene sets (`MapSet/*.res`) |
 | `.rom` | Room templates for random maps |
 | `.ifl` | Animated texture frame lists (ocean swell, …) |
 | `.wav` / `.ogg` | Sound / BGM |
+
+### FTM / PRJ (overworld map chunks) — full schema (FT-ResTool)
+
+Ported from decompiled `com.ft.restool.parser.ftm.FTMParser` in `~/Downloads/ft_restool.jar`.
+
+**PRJ:** `u32 ftmCount` + pascal (u8 len + ASCII) FTM base paths.
+
+**FTM parse order (LE):**
+
+1. `mapPath` (pascal)
+2. `tileCountX`, `tileCountY`, `unkI2`, `indoorMode` (u8), `unkI3`, `unkI4`
+3. **Tile layers** — count, then each: name, layerIndex, usesWater, zIndex, height (f32), visible, resource path list
+4. **Layer grids** — for each layer: `X`, `Y`, then `X*Y` int tile indices
+5. **Prefabs** — count, then each: `name`, `objId`, + 2 pad bytes
+6. **Scene objects (placements)** — count, then each:
+   - `prefabIndex` (i32), `x`, `y` (i32 tile coords)
+   - `scaleHeight`, `scaleWidth`, `rotationY`, `rotationX` (f32)
+7. **Interactable tiles** — NPC event triggers + command strings
+8. **Blocked tiles** — (x, y) pairs
+9. Trailing unknown bytes
+
+Verified `FantaCastleOutSide.ftm`: grid 50×70, 1 prefab `CastleOutSide`, 1 scene object at (50,12), 207 interactables, 1866 blocked.
+
+API: `GET /api/ftm/parse?archive=Res/MapSet/FantaCastle.res&member=FantaCastleOutSide.ftm`  
+Module: `python/ftm_codec.py`
+
+### ANI character animation
+
+Header (28 B LE), verified NikiAniA/B:
+
+| Field | AniA | AniB |
+|-------|-----:|-----:|
+| trackCount | 40 | 40 |
+| duration | 1.4667 (=44/30) | 0.800 (=24/30) |
+| frameCount | 44 | 24 |
+
+Dense float3 tracks after header; layout scored as frame-major or track-major. Bone
+names optional from body skeleton order. Not a full quat/skinning graph yet — positions
++ timing are recovered.
+
+API: `GET /api/ani/parse?archive=Res/Player/PlayerA/AniA.res&member=NikiAniA.ani`  
+Module: `python/ani_codec.py`
+
+### Bone attach (DX9 Equipment socket)
+
+Body mesh DAT embeds bind 4×4 matrices next to bone names. `Bone_Racket` on Niki:
+
+- position ≈ `(5.86, 7.87, 4.16)`
+- full `matrix4` row-major for Three.js `applyMatrix4`
+
+Runtime script proof (`Rtm00.set`): `AttachBone=Bone_Racket`, `AttachPath=…/Niki_prop02.dat`.
+
+API: `GET /api/bone-attach?char=NIKI&attachBone=Bone_Racket`  
+UI: `EquipmentMeshPreview` places racket mesh via attach matrix (pink socket marker).  
+Module: `python/bone_attach.py`
 
 ## Honest remaining limits
 

@@ -872,6 +872,65 @@ def cmd_map_catalog(args: argparse.Namespace) -> dict[str, Any]:
     return {"ok": True, "catalog": catalog}
 
 
+def cmd_ftm_parse(args: argparse.Namespace) -> dict[str, Any]:
+    """Parse FTM/PRJ map placement files (FT-ResTool schema)."""
+    from ftm_codec import FtmParseError, load_ftm_from_res, load_prj_from_res, parse_ftm_bytes, parse_prj_bytes
+
+    client = _client_root(_jftse_root())
+    archive = str(getattr(args, "archive", "") or "")
+    member = str(getattr(args, "member", "") or "")
+    try:
+        if member.lower().endswith(".prj"):
+            if archive:
+                prj = load_prj_from_res(client, archive, member)
+            else:
+                prj = parse_prj_bytes(Path(member).read_bytes())
+            return {"ok": True, "kind": "prj", "prj": prj}
+        if archive:
+            ftm = load_ftm_from_res(client, archive, member)
+        else:
+            ftm = parse_ftm_bytes(Path(member).read_bytes())
+        # Compact tile indices in API (full grid can be huge)
+        payload = ftm.to_dict()
+        for layer in payload.get("tileLayers", []):
+            idxs = layer.get("indices") or []
+            layer["indexCount"] = len(idxs)
+            layer["indicesSample"] = idxs[:32]
+            del layer["indices"]
+        return {"ok": True, "kind": "ftm", "ftm": payload}
+    except FtmParseError as exc:
+        return {"ok": False, "error": "FTM_PARSE_FAILED", "detail": str(exc)}
+
+
+def cmd_ani_parse(args: argparse.Namespace) -> dict[str, Any]:
+    """Parse character .ani animation header + position tracks."""
+    from ani_codec import AniParseError, load_ani_member
+
+    client = _client_root(_jftse_root())
+    archive = str(getattr(args, "archive", "") or "")
+    member = str(getattr(args, "member", "") or "")
+    max_frames = int(getattr(args, "max_frames", 8) or 8)
+    try:
+        ani = load_ani_member(client, archive, member)
+        return {"ok": True, "ani": ani.to_dict(max_frames=max_frames)}
+    except AniParseError as exc:
+        return {"ok": False, "error": "ANI_PARSE_FAILED", "detail": str(exc)}
+    except KeyError as exc:
+        return {"ok": False, "error": "ANI_MEMBER_NOT_FOUND", "detail": str(exc)}
+    except FileNotFoundError as exc:
+        return {"ok": False, "error": "ANI_ARCHIVE_NOT_FOUND", "detail": str(exc)}
+
+
+def cmd_bone_attach(args: argparse.Namespace) -> dict[str, Any]:
+    """Resolve Bone_Racket (or other) socket transform from character body mesh."""
+    from bone_attach import load_body_attach
+
+    client = _client_root(_jftse_root())
+    char = str(getattr(args, "char", "") or "NIKI")
+    bone = str(getattr(args, "attach_bone", "") or "Bone_Racket")
+    return load_body_attach(client, char=char, attach_bone=bone)
+
+
 def cmd_mesh_meta(args: argparse.Namespace) -> dict[str, Any]:
     """Extract multi-material texture names + bone/socket table from a mesh DAT."""
     from mesh_meta import analyze_member
@@ -1151,6 +1210,19 @@ def main() -> None:
 
     sub.add_parser("map-catalog")
 
+    p_ftm = sub.add_parser("ftm-parse")
+    p_ftm.add_argument("--archive", default="")
+    p_ftm.add_argument("--member", required=True)
+
+    p_ani = sub.add_parser("ani-parse")
+    p_ani.add_argument("--archive", required=True)
+    p_ani.add_argument("--member", required=True)
+    p_ani.add_argument("--max-frames", type=int, default=8)
+
+    p_bone = sub.add_parser("bone-attach")
+    p_bone.add_argument("--char", default="NIKI")
+    p_bone.add_argument("--attach-bone", default="Bone_Racket")
+
     p_mesh_meta = sub.add_parser("mesh-meta")
     p_mesh_meta.add_argument("--archive", required=True)
     p_mesh_meta.add_argument("--member", required=True)
@@ -1199,6 +1271,9 @@ def main() -> None:
         "stage-set-decrypt": cmd_stage_set_decrypt,
         "stage-scene": cmd_stage_scene,
         "map-catalog": cmd_map_catalog,
+        "ftm-parse": cmd_ftm_parse,
+        "ani-parse": cmd_ani_parse,
+        "bone-attach": cmd_bone_attach,
         "mesh-meta": cmd_mesh_meta,
         "mesh-parse": cmd_mesh_parse,
         "mesh-export": cmd_mesh_export,

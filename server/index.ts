@@ -388,6 +388,54 @@ const server = Bun.serve({
     "/api/map-catalog": {
       GET: async () => safeBridge(() => runBridge(["map-catalog"])),
     },
+    "/api/ftm/parse": {
+      GET: async (req) => {
+        const url = new URL(req.url);
+        const archive = url.searchParams.get("archive") ?? "";
+        const member = url.searchParams.get("member");
+        if (!member) return bad("MEMBER_REQUIRED");
+        const args = ["ftm-parse", "--member", member];
+        if (archive) args.push("--archive", archive);
+        return safeBridge(() => runBridge(args));
+      },
+    },
+    "/api/ani/parse": {
+      GET: async (req) => {
+        const url = new URL(req.url);
+        const archive = url.searchParams.get("archive");
+        const member = url.searchParams.get("member");
+        if (!archive || !member) return bad("ARCHIVE_AND_MEMBER_REQUIRED");
+        const maxFrames = url.searchParams.get("maxFrames") ?? "8";
+        return safeBridge(() =>
+          runBridge([
+            "ani-parse",
+            "--archive",
+            archive,
+            "--member",
+            member,
+            "--max-frames",
+            maxFrames,
+          ]),
+        );
+      },
+    },
+    "/api/bone-attach": {
+      GET: async (req) => {
+        const url = new URL(req.url);
+        const char = url.searchParams.get("char") ?? "NIKI";
+        const attachBone =
+          url.searchParams.get("attachBone") ?? "Bone_Racket";
+        return safeBridge(() =>
+          runBridge([
+            "bone-attach",
+            "--char",
+            char,
+            "--attach-bone",
+            attachBone,
+          ]),
+        );
+      },
+    },
     "/api/mesh-studio/meta": {
       GET: async (req) => {
         const url = new URL(req.url);
