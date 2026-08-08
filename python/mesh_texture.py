@@ -87,10 +87,77 @@ def try_recover_interleaved_uvs(
     return best[2], f"interleaved-s{vertex_stride}-uv{best[1]}"
 
 
+def resolve_material_texture(
+    client_root: Path, material_name: str
+) -> dict[str, str] | None:
+    """Resolve a DAT-embedded material basename (e.g. BF_Lawn00_A) to a .tex member."""
+    candidates = [material_name]
+    if not material_name.lower().endswith(".tex"):
+        candidates.append(f"{material_name}.tex")
+    # Prefer non-SM/LM albedo when material list has shadowmap variants
+    base = material_name
+    for suffix in ("_SM", "_LM", "_MI"):
+        if base.endswith(suffix):
+            base = base[: -len(suffix)]
+            candidates.insert(0, f"{base}.tex")
+            candidates.insert(0, base)
+    stage = client_root / "Res" / "Stage"
+    if not stage.is_dir():
+        return None
+    for res_path in sorted(stage.glob("Tex*.res")):
+        try:
+            with zipfile.ZipFile(res_path) as zf:
+                names = set(zf.namelist())
+        except zipfile.BadZipFile:
+            continue
+        for cand in candidates:
+            tex = cand if cand.lower().endswith(".tex") else f"{cand}.tex"
+            if tex in names:
+                rel = str(res_path.relative_to(client_root)).replace("\\", "/")
+                return {"archive": rel, "member": tex, "material": material_name}
+    return None
+
+
 def resolve_stage_texture(
     client_root: Path, member: str
 ) -> dict[str, str] | None:
     """Pick a stock stage albedo tex for a mesh member name."""
+    # Prefer DAT-embedded multi-material names when the mesh is on disk.
+    try:
+        from mesh_meta import extract_material_names
+
+        # Caller may pass member only — try common Mesh*.res
+        stage = client_root / "Res" / "Stage"
+        if stage.is_dir() and member.lower().endswith(".dat"):
+            for res_path in sorted(stage.glob("Mesh*.res")):
+                try:
+                    with zipfile.ZipFile(res_path) as zf:
+                        if member not in zf.namelist():
+                            continue
+                        data = zf.read(member)
+                except zipfile.BadZipFile:
+                    continue
+                mats = extract_material_names(data)
+                # Prefer lawn/coat/ground albedo over net/SM
+                preferred = sorted(
+                    mats,
+                    key=lambda m: (
+                        0
+                        if any(k in m["name"] for k in ("Lawn", "Coat00", "Land", "Court", "Ground"))
+                        and not m["name"].endswith(("_SM", "_LM"))
+                        else 1
+                        if not m["name"].endswith(("_SM", "_LM"))
+                        else 2
+                    ),
+                )
+                for mat in preferred:
+                    hit = resolve_material_texture(client_root, mat["name"])
+                    if hit:
+                        hit["source"] = "dat-material"
+                        return hit
+    except Exception:
+        pass
+
     upper = member.upper()
     for prefix, archive, tex_member in _MEMBER_TEXTURE_HINTS:
         if not upper.startswith(prefix):

@@ -517,6 +517,57 @@ describe("content studio production API", () => {
     expect(String(body.fields.SkyFile)).toContain("BF_Sky");
   }, 60000);
 
+  test("stage scene graph parses WorldFile + Object + Effect layers", async () => {
+    const response = await fetch(
+      `${base}/api/stage-scene?member=${encodeURIComponent("1_Emerald_Beach.set")}`,
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.scene.worldFile).toContain("BF_Court01.dat");
+    expect(body.scene.world.member).toBe("BF_Court01.dat");
+    expect(body.scene.objectCount).toBeGreaterThanOrEqual(2);
+    expect(body.scene.objects.some((o: { file: string }) => /BF_All\.dat/i.test(o.file))).toBe(
+      true,
+    );
+    expect(body.scene.effectCount).toBeGreaterThanOrEqual(1);
+  }, 60000);
+
+  test("map catalog exposes MapObjRes / MapTileRes entries", async () => {
+    const response = await fetch(`${base}/api/map-catalog`);
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.catalog.objectCount).toBeGreaterThan(10);
+    expect(body.catalog.tileCount).toBeGreaterThanOrEqual(4);
+    expect(body.catalog.objects[0].path).toMatch(/\.dat$/i);
+  }, 60000);
+
+  test("mesh meta extracts multi-material texture names from BF_Court01", async () => {
+    const response = await fetch(
+      `${base}/api/mesh-studio/meta?archive=${encodeURIComponent("Res/Stage/Mesh01.res")}&member=${encodeURIComponent("BF_Court01.dat")}`,
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.meta.materialCount).toBeGreaterThanOrEqual(3);
+    const names = (body.meta.materials as { name: string }[]).map((m) => m.name);
+    expect(names.some((n) => /Coat/i.test(n))).toBe(true);
+  }, 60000);
+
+  test("mesh meta extracts Bone_Racket socket from Niki body mesh", async () => {
+    const response = await fetch(
+      `${base}/api/mesh-studio/meta?archive=${encodeURIComponent("Res/Player/PlayerA/Mesh.res")}&member=${encodeURIComponent("Niki.dat")}`,
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.meta.hasSkeleton).toBe(true);
+    expect(body.meta.boneCount).toBeGreaterThan(20);
+    const boneNames = (body.meta.bones as { name: string }[]).map((b) => b.name);
+    expect(boneNames.some((n) => /Racket/i.test(n))).toBe(true);
+  }, 120000);
+
   test("mesh parse exposes planar UVs and stage texture for BF_Court01", async () => {
     const response = await fetch(
       `${base}/api/mesh-studio/parse?archive=${encodeURIComponent("Res/Stage/Mesh01.res")}&member=${encodeURIComponent("BF_Court01.dat")}`,

@@ -37,13 +37,19 @@ def _jftse_root() -> Path:
 
 def _client_root(jftse: Path) -> Path:
     configured = os.environ.get("JFTSE_STOCK_CLIENT", "").strip()
+    candidates: list[Path] = []
     if configured:
-        path = Path(configured).expanduser()
-    else:
-        path = jftse / ".jftse-client-linux" / "client"
-    if not path.is_dir():
-        raise SystemExit(f"stock client not found: {path}")
-    return path
+        candidates.append(Path(configured).expanduser())
+    candidates.extend(
+        [
+            jftse / ".jftse-client-linux" / "client",
+            jftse / "FantaTennis-Local-Client" / "client",
+        ]
+    )
+    for path in candidates:
+        if path.is_dir():
+            return path
+    raise SystemExit(f"stock client not found; tried: {', '.join(str(p) for p in candidates)}")
 
 
 def _load_wind_assets():
@@ -836,11 +842,64 @@ def cmd_stage_set_decrypt(args: argparse.Namespace) -> dict[str, Any]:
     return {"ok": True, "member": member, "fields": fields, "text": plain[:4000]}
 
 
+def cmd_stage_scene(args: argparse.Namespace) -> dict[str, Any]:
+    """Parse AES stage .set into WorldFile + [Object]/[Effect] scene graph."""
+    from stage_scene import list_stage_sets, load_all_stage_scenes, load_stage_scene
+
+    client = _client_root(_jftse_root())
+    member = str(getattr(args, "member", "") or "")
+    list_all = bool(getattr(args, "list_all", False))
+    if list_all or member in ("*", "all"):
+        scenes = load_all_stage_scenes(client)
+        return {
+            "ok": True,
+            "count": len(scenes),
+            "sets": list_stage_sets(client),
+            "scenes": scenes,
+        }
+    if not member:
+        member = "1_Emerald_Beach.set"
+    scene = load_stage_scene(client, member)
+    return {"ok": True, "scene": scene}
+
+
+def cmd_map_catalog(args: argparse.Namespace) -> dict[str, Any]:
+    """Decrypt MapSet Script catalogs (objects / tiles / houses)."""
+    from map_catalog import load_map_catalogs
+
+    client = _client_root(_jftse_root())
+    catalog = load_map_catalogs(client)
+    return {"ok": True, "catalog": catalog}
+
+
+def cmd_mesh_meta(args: argparse.Namespace) -> dict[str, Any]:
+    """Extract multi-material texture names + bone/socket table from a mesh DAT."""
+    from mesh_meta import analyze_member
+
+    client = _client_root(_jftse_root())
+    meta = analyze_member(client, args.archive, args.member)
+    return {"ok": True, "meta": meta}
+
+
 def cmd_mesh_parse(args: argparse.Namespace) -> dict[str, Any]:
+    from mesh_meta import analyze_member
+
     client = _client_root(_jftse_root())
     mesh = decode_member(client, args.archive, args.member)
     include_geometry = not bool(args.meta_only)
     payload = decoded_to_dict(mesh, include_geometry=include_geometry)
+    try:
+        meta = analyze_member(client, args.archive, args.member)
+        payload["materials"] = meta["materials"]
+        payload["materialCount"] = meta["materialCount"]
+        payload["bones"] = meta["bones"]
+        payload["boneCount"] = meta["boneCount"]
+        payload["sockets"] = meta["sockets"]
+        payload["hasSkeleton"] = meta["hasSkeleton"]
+        payload["hasMultiMaterial"] = meta["hasMultiMaterial"]
+        payload["headerFields"] = meta["header"]
+    except Exception as exc:  # noqa: BLE001 — non-fatal RE enrichment
+        payload["metaError"] = str(exc)
     return {"ok": True, "mesh": payload}
 
 
@@ -1086,6 +1145,16 @@ def main() -> None:
     p_stage_set = sub.add_parser("stage-set-decrypt")
     p_stage_set.add_argument("--member", default="1_Emerald_Beach.set")
 
+    p_stage_scene = sub.add_parser("stage-scene")
+    p_stage_scene.add_argument("--member", default="1_Emerald_Beach.set")
+    p_stage_scene.add_argument("--list-all", action="store_true")
+
+    sub.add_parser("map-catalog")
+
+    p_mesh_meta = sub.add_parser("mesh-meta")
+    p_mesh_meta.add_argument("--archive", required=True)
+    p_mesh_meta.add_argument("--member", required=True)
+
     p_mesh_export = sub.add_parser("mesh-export")
     p_mesh_export.add_argument("--archive", required=True)
     p_mesh_export.add_argument("--member", required=True)
@@ -1128,6 +1197,9 @@ def main() -> None:
         "mesh-list": cmd_mesh_list,
         "item-mesh-resolve": cmd_item_mesh_resolve,
         "stage-set-decrypt": cmd_stage_set_decrypt,
+        "stage-scene": cmd_stage_scene,
+        "map-catalog": cmd_map_catalog,
+        "mesh-meta": cmd_mesh_meta,
         "mesh-parse": cmd_mesh_parse,
         "mesh-export": cmd_mesh_export,
         "mesh-transform": cmd_mesh_transform,

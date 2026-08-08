@@ -374,6 +374,31 @@ const server = Bun.serve({
         );
       },
     },
+    "/api/stage-scene": {
+      GET: async (req) => {
+        const url = new URL(req.url);
+        const member = url.searchParams.get("member") ?? "1_Emerald_Beach.set";
+        const listAll = url.searchParams.get("listAll") === "1";
+        const args = ["stage-scene"];
+        if (listAll) args.push("--list-all");
+        else args.push("--member", member);
+        return safeBridge(() => runBridge(args));
+      },
+    },
+    "/api/map-catalog": {
+      GET: async () => safeBridge(() => runBridge(["map-catalog"])),
+    },
+    "/api/mesh-studio/meta": {
+      GET: async (req) => {
+        const url = new URL(req.url);
+        const archive = url.searchParams.get("archive");
+        const member = url.searchParams.get("member");
+        if (!archive || !member) return bad("ARCHIVE_AND_MEMBER_REQUIRED");
+        return safeBridge(() =>
+          runBridge(["mesh-meta", "--archive", archive, "--member", member]),
+        );
+      },
+    },
     "/api/mesh-studio/parse": {
       GET: async (req) => {
         const url = new URL(req.url);

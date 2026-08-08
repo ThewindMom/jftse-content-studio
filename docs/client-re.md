@@ -1,14 +1,19 @@
 # Fantasy Tennis client reverse-engineering notes
 
-Captured 2026-08 during Content Studio work. Source of truth is the stock Linux client under `JFTSE/.jftse-client-linux/client`.
+Captured 2026-08 during Content Studio work. Source of truth is the stock Linux /
+local client under `JFTSE/FantaTennis-Local-Client/client` (or `.jftse-client-linux/client`).
 
 ## Binaries
 
 | File | Notes |
 |------|--------|
-| `FantaTennis.exe` | PE32 GUI, Direct3D9 fixed-function pipeline (D3DTSS_*, D3DFVF_* strings) |
+| `FantaTennis.exe` | PE32 GUI ~3.7 MB, Direct3D9 fixed-function + VS/PS 2.x; engine RTTI `AduMesh`, `AduObject`, `AduEngine`, … |
 | `jftse.dll` | PE32 DLL (emulator companion) |
 | `FT_Launcher.exe` | .NET launcher |
+
+DX9 / mesh-related strings in the EXE: `MeshMaterialList`, `nMaterials`, `MeshNormals`,
+`MeshTextureCoords`, `AttachBone`, `AttachPath`, `Bone_Racket`, `xof 0302bin 0064`
+(X-file token remnants — on-disk DATs are proprietary AduMesh, not raw `.x`).
 
 ## Crypto (ft_restool Crypter)
 
@@ -19,25 +24,118 @@ Captured 2026-08 during Content Studio work. Source of truth is the stock Linux 
 
 Implementation: `python/client_crypto.py`, `mesh_codec.decrypt_tex_to_dds`.
 
-## Stage scripts (`Res/Stage/Info.res`)
+## Stage scene graph (`Res/Stage/Info.res` → `*.set`)
 
-After AES decrypt, INI-like text, e.g. `1_Emerald_Beach.set`:
+After AES decrypt, INI-like text. Example `1_Emerald_Beach.set`:
 
-- `WorldFile` / `World_Chat` → stage court DAT path
-- `SkyFile`, `Collision`, `Coll_Chat`
-- `ShadowColor`, `SkyColor`, fog, camera names, end-present cams
+```ini
+[Default]
+WorldFile= "Res/Stage/Mesh01/BF_Court01.dat"
+World_Chat= "Res/Stage/Mesh01/BF_Court01.dat"
+Collision= "…"
+SkyFile= "…"
+FogNear= …
+Cam_Intro= "CAM_STAGE_…"
 
-API: `GET /api/stage-set/decrypt?member=1_Emerald_Beach.set`
+[Object]
+File= "Res/Stage/Mesh01/BF_All.dat"
+Level= 0
 
-## Mesh DAT (`Res/Stage/MeshNN.res` members)
+[Object]
+File= "Res/ad/BF_Advert.dat"
+Level= 0
 
-- Header: 12× uint32 LE
+[Effect]
+File= "Res/Effect/EftA/EF_Flower00.eft"
+Position= 0.0, 0.0, 0.0
+Head= 0.0, 0.0, 1.0
+Level= 1
+```
+
+- **WorldFile** = primary court mesh (what Mesh Studio first recovered).
+- **[Object]** layers = props / full stage shell / ads (e.g. `BF_All.dat`, `AT_Side.dat`).
+- **[Effect]** layers = particle/VFX paths with position + heading.
+- All 17 stage sets parse cleanly; object/effect counts vary (Atlantis: 4 objs + 3 efts).
+
+API: `GET /api/stage-scene?member=1_Emerald_Beach.set`  
+API: `GET /api/stage-set/decrypt?member=1_Emerald_Beach.set`  
+Bridge: `stage-scene`, `stage-set-decrypt`  
+Module: `python/stage_scene.py`
+
+## Mesh DAT (`Res/Stage/MeshNN.res`, StageObj, Deco, Player, …)
+
+### Header (12 × uint32 LE)
+
+Observed layout (heuristic names):
+
+| Index | Role |
+|-------|------|
+| 0–2 | Section byte sizes (often ~vertex/index/aux) |
+| 3 | Always `2` on sampled assets (version/flags) |
+| 4 / 6 | `count1` / `count2` — frequently equal → **submesh / material slot count** (BF_Court01=2, BF_All=74, Niki body count1=64 count2=7) |
+| 5,7 | zeros |
+| 8–11 | flags / extras |
+
+### Geometry recovery (best-effort)
+
 - Dense float3 runs (interleaved pos/normal/UV at stride 12–32)
 - Vertex recovery: multi-stride score (reject cube noise, unit normals, UV false runs)
-- Index recovery: **score u16 runs by solid triangle area × coverage** (not first long run)
+- Index recovery: **score u16 runs by solid triangle area × coverage**
   - BF_Court01: ~582 solid tris, ~39% vertex coverage (was ~322 / 15%)
 - UVs: interleaved when stride ≥20, else planar XZ projection
-- Materials: stock stage `.tex` via prefix (e.g. `BF_Lawn00_A.tex`)
+
+### Multi-material texture names (embedded ASCII)
+
+DATs store **albedo basenames** (no extension) used as material ids, often near the tail:
+
+- `BF_Court01.dat` → `BF_Coat00_B`, `BF_Net00_B`, `A_BF_CoatMark00_A`, `A_BF_CoatDirt01_B`, …
+- `BF_All.dat` → 100+ names (`BF_Lawn00_A`, trees, houses, sea, …)
+
+`_SM` / `_LM` suffixes = shadowmap / lightmap variants. Content Studio now:
+
+1. Extracts material list via `mesh_meta.extract_material_names`
+2. Resolves first preferred albedo to a real `Tex*.res` `.tex` member
+
+API: `GET /api/mesh-studio/meta?archive=Res/Stage/Mesh01.res&member=BF_Court01.dat`  
+Bridge: `mesh-meta` (also attached on `mesh-parse`)  
+Module: `python/mesh_meta.py`
+
+### Bones / equipment sockets
+
+Character body meshes (e.g. `Res/Player/PlayerA/Mesh.res` → `Niki.dat`, ~9.8 MB) embed a
+**Bip01 / Bone*** skeleton table, including equipment sockets:
+
+| Socket | Role |
+|--------|------|
+| `Bone_Racket` | Racket attach (confirmed @ ~offset 9021128 in Niki.dat) |
+| `Bone_ball` | Ball attach |
+| `Bone_bag` | Bag / accessory |
+
+Runtime scripts (`Res/Script/Rtmovie.res` Cam/RTM sets) use fields:
+
+- `AttachPath` — resource path for attached mesh
+- `AttachBone` — bone name on parent
+- `AttachTime` — attach timing
+- `ShadowBone` — shadow projection bone (often `Bip01`)
+
+Racket **preview** in studio is still mesh decode + optional co-located tex; full DX9
+bone-matrix skinning/attach is not simulated in Three.js.
+
+## Map world catalogs (`Res/MapSet/Script.res`)
+
+AES → INI/XML:
+
+| Member | Content |
+|--------|---------|
+| `MapObjRes.set` | Obj_Number / Obj_ID / Obj_Path → StageObj & Deco DATs (~66 objects) |
+| `MapTileRes.set` | Tile layers: Ground/Grass/Hill/Under/Water → `P0_L{n}` tiles |
+| `MapHouseRes.set` | House interiors / castle inside meshes |
+| `MapEnemyInfo.set` | XML enemy stats |
+| `NPC_List.set` | XML localized NPC names |
+| `RandMapInfo00.set` | Dungeon random-map layer paths + room `.rom` |
+
+API: `GET /api/map-catalog`  
+Module: `python/map_catalog.py`
 
 ## Equipment mesh catalog (`Res/Script/Item.res` → `Info_Item_Mesh.set`)
 
@@ -51,10 +149,32 @@ Shop item `mesh` field is this `Index`. 1921 entries across characters.
 
 API: `GET /api/item-mesh/resolve?meshIndex=214&char=NIKI`
 
-Player archives: `Res/Player/Player{A-G}/ItemNN.res` + `Mesh.res` body meshes.
+Player archives: `Res/Player/Player{A-G}/ItemNN.res` + `Mesh.res` body meshes + `Ani*.res` / `FtmAni*.res` animations.
 
-## Honest limits
+## Other formats (inventory)
+
+| Ext / path | Notes |
+|------------|--------|
+| `.res` | ZIP containers for almost all assets |
+| `.dat` | Proprietary AduMesh binary (geometry + materials + optional bones) |
+| `.tex` | XOR→DDS textures |
+| `.set` | AES scripts/XML |
+| `.ani` | Character animation packs (`NikiAniA.ani`, …) |
+| `.Eft` | Effect definitions (strings + binary params) |
+| `.ftm` / `.prj` | Map/furniture scene sets (`MapSet/*.res`) — ft_restool has FTM parsers |
+| `.rom` | Room templates for random maps |
+| `.ifl` | Animated texture frame lists (ocean swell, …) |
+| `.wav` / `.ogg` | Sound / BGM |
+
+## Honest remaining limits
 
 - Not a full Ghidra/DX9 renderer; topology still best-effort index recovery
-- Racket preview is mesh decode + optional co-located tex, not bone-attached Equipment
-- Multi-material stage layers (lawn+coat+mark+LM) not fully bound from DAT materials tables
+- Submesh **index ranges** per material not fully table-parsed (names + counts known)
+- Racket/equip preview is mesh decode, not live bone-attached Equipment matrix
+- Animation (`.ani`) and FTM scene binary layouts not fully decoded
+- Multi-draw court composition uses stage scene graph + multi-material names; studio UI still draws single primary mesh + one albedo by default
+
+## Evidence paths (session)
+
+- Stage graphs dump: `/tmp/ulw-client-re-stage-graphs.json`
+- Modules: `python/stage_scene.py`, `mesh_meta.py`, `map_catalog.py`
