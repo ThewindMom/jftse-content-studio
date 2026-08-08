@@ -133,7 +133,7 @@ Recovery-grade mesh modeler for proprietary `.dat` members:
 | Item mesh catalog | AES XML Index → Path | `item_mesh`, `/api/item-mesh/resolve` |
 | Map catalogs | MapObj / Tile / House | `map_catalog`, `/api/map-catalog` |
 | **FTM / PRJ** | Full FT-ResTool schema + **serialize/export** of placement patches | `ftm_codec`, `/api/ftm/parse`, `POST /api/ftm/export` |
-| **ANI** | Header + float3 tracks (e.g. 40×44 @ 30 fps) | `ani_codec`, `/api/ani/parse` |
+| **ANI** | Header + **multi-clip** float3 stacks in section A (`clipIndex`) + section probe | `ani_codec`, `/api/ani/parse?clipIndex=` |
 | **Bone attach** | Bind matrix at `Bone_Racket` | `bone_attach`, `/api/bone-attach` |
 
 FTM layout is a port of decompiled **FT-ResTool** (`FTMParser`): scene objects carry `prefabIndex`, `x`, `y`, `scaleHeight`, `scaleWidth`, `rotationY`, `rotationX`.
@@ -152,7 +152,7 @@ See [`docs/client-re.md`](docs/client-re.md) for field-level detail and remainin
 | Playtest | `GET /api/playtest/status` |
 | Maps | `/api/maps`, `/api/maps/export-sql`, `/api/map-studio/catalog`, `/api/map-studio/validate`, `/api/map-studio/export-pack` |
 | Stage RE | `/api/stage-set/decrypt`, `/api/stage-scene`, `/api/map-catalog` |
-| FTM / ANI / bones | `/api/ftm/parse`, `POST /api/ftm/export`, `/api/ani/parse`, `/api/bone-attach` |
+| FTM / ANI / bones | `/api/ftm/parse`, `POST /api/ftm/export`, `/api/ani/parse?clipIndex=`, `/api/bone-attach` |
 | Meshes | `/api/mesh-studio/list`, `/parse`, `/meta`, `/texture`, `/export`, `/transform` |
 | Equipment | `/api/item-mesh/resolve` |
 | Packs | `GET/POST /api/packs`, `GET /api/packs/:name` |
@@ -234,7 +234,7 @@ DESIGN.md               Product / visual language
 | Soft particle export + local install | Pixel-true DX9 Equipment silhouette |
 | Stage scene graph + **multi-draw World/Object compositor** (layer toggles, cap 6) | Full multi-material submesh ranges + VFX `.eft` meshing |
 | FTM placements + **2D desk** (select/focus) + **patched .ftm export** under `exports/` | Full FT-ResTool tile paint GUI / stock-client FTM install |
-| ANI float3 tracks + **scrub/play player** (`maxFrames=0` full samples) | Full quat skinning graph / skinned body mesh |
+| ANI float3 **multi-clip** stacks + scrub/play (`maxFrames=0`, `clipIndex`) | Full quat skinning graph / section-B decode / skinned body mesh |
 | Bone_Racket bind matrix + **live ANI delta attach** | Live full hierarchical DX9 skeleton retarget |
 | Mesh recovery + stride-aware edit + export | Blender-parity topology authoring |
 
