@@ -110,6 +110,11 @@ function snapshotOneShotArtifacts(): string[] {
     : [];
 }
 
+function snapshotExportEntries(): string[] {
+  const root = join(studioRoot, "exports");
+  return existsSync(root) ? readdirSync(root).sort() : [];
+}
+
 async function expectNoOneShotArtifacts<T>(work: () => Promise<T>): Promise<T> {
   const before = snapshotOneShotArtifacts();
   const result = await work();
@@ -1575,6 +1580,7 @@ describe("content studio production API", () => {
       body: JSON.stringify({
         maps: [{ map: 2, name: "Twinkle Town Draft" }],
         includeRelations: true,
+        stageByMap: { "2": "1_Emerald_Beach.set" },
       }),
     });
     const body = await response.json();
@@ -1589,6 +1595,63 @@ describe("content studio production API", () => {
     expect(sql).toContain("Guardian_2_Maps");
     expect(sql).toContain("M_Scenarios");
   });
+
+  for (const [label, endpoint, payload] of [
+    [
+      "bulk export",
+      "/api/maps/export-sql",
+      {
+        maps: [{ map: 0, name: "Invalid Stage Bulk" }],
+        stageByMap: { "0": "missing-stage.set" },
+      },
+    ],
+    [
+      "pack export",
+      "/api/map-studio/export-pack",
+      {
+        mapIds: [2],
+        stageByMapId: { "2": "missing-stage.set" },
+      },
+    ],
+    [
+      "greenfield create",
+      "/api/map-studio/create",
+      {
+        draft: { name: "Invalid Stage Create" },
+        scenarioIds: [1],
+        stageScript: "missing-stage.set",
+      },
+    ],
+  ] as const) {
+    test(`map writer validation blocks ${label} before output`, async () => {
+      const before = snapshotExportEntries();
+      const response = await fetch(`${base}${endpoint}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = (await response.json()) as {
+        ok: boolean;
+        error: string;
+        validation: {
+          valid: boolean;
+          stageScript: string;
+          error: string;
+          assetChecks: unknown[];
+        };
+      };
+      expect(response.status).toBe(400);
+      expect(body.ok).toBe(false);
+      expect(body.error).toBe("STAGE_VALIDATION_REQUIRED");
+      expect(body.validation).toEqual({
+        valid: false,
+        stageScript: "missing-stage.set",
+        error: "STAGE_SCRIPT_MISSING",
+        assetChecks: [],
+      });
+      expect(snapshotExportEntries()).toEqual(before);
+    });
+  }
 
   test("install containment accepts generated equipment with verified receipts", async () => {
     const packRes = await fetch(`${base}/api/equipment/pack`, {

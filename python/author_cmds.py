@@ -34,6 +34,7 @@ from eft_codec import load_eft_from_path
 from mesh_obj_import import import_obj_into_dat
 from mesh_topology import create_mesh_from_obj
 from stage_set_author import write_stage_set
+from stage_validation import validate_stage_script
 from tex_codec import dds_to_tex, tex_to_dds, write_tex_from_dds
 
 
@@ -146,10 +147,20 @@ def make_handlers(
         )
         existing = parse_s_maps(seed_text)
         draft = dict(payload.get("draft") or payload)
+        stage = payload.get("stageScript") or draft.get("stageScript")
+        validation = validate_stage_script(
+            client_fn(jftse),
+            str(stage or ""),
+        )
+        if not bool(validation["valid"]):
+            return {
+                "ok": False,
+                "error": "STAGE_VALIDATION_REQUIRED",
+                "validation": validation,
+            }
         row = create_map_row(existing, draft)
         scenario_ids = [int(x) for x in payload.get("scenarioIds", [])]
         guardians = list(payload.get("guardians") or [])
-        stage = payload.get("stageScript") or draft.get("stageScript")
         sql = build_create_map_sql(
             row,
             scenario_ids=scenario_ids,

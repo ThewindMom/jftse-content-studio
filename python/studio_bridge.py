@@ -33,6 +33,7 @@ from mesh_codec import (
     mesh_to_obj,
     write_positions_into_dat,
 )
+from stage_validation import validate_stage_script
 
 
 def _jftse_root() -> Path:
@@ -498,6 +499,18 @@ def cmd_export_map_sql(args: argparse.Namespace) -> dict[str, Any]:
         for row in selected
     }
     stage_by_map_id = {key: value for key, value in stage_by_map_id.items() if value}
+    client = _client_root(jftse)
+    for row in selected:
+        validation = validate_stage_script(
+            client,
+            stage_by_map_id.get(str(row.id), ""),
+        )
+        if not bool(validation["valid"]):
+            return {
+                "ok": False,
+                "error": "STAGE_VALIDATION_REQUIRED",
+                "validation": validation,
+            }
 
     sql = build_map_pack_sql(
         maps=selected,
@@ -620,46 +633,6 @@ def _infer_stage_candidates(map_byte: int, scripts: list[str]) -> list[str]:
     return [script for script in scripts if script.startswith(prefix)]
 
 
-def _decode_stage_script(client: Path, script: str) -> dict[str, str]:
-    wind_assets = _load_wind_assets()
-    stage_info = client / "Res" / "Stage" / "Info.res"
-    with zipfile.ZipFile(stage_info) as archive:
-        if script not in archive.namelist():
-            raise FileNotFoundError(script)
-        text = wind_assets.decrypt_set(archive.read(script)).decode("utf-8", errors="replace")
-    fields: dict[str, str] = {}
-    for line in text.splitlines():
-        if "=" not in line or line.strip().startswith(";") or line.strip().startswith("["):
-            continue
-        key, value = line.split("=", 1)
-        fields[key.strip()] = value.strip().strip('"')
-    return fields
-
-
-def _resolve_client_asset(client: Path, relative: str) -> dict[str, Any]:
-    """Resolve loose files or members inside sibling .res archives."""
-    normalized = relative.replace("\\", "/").lstrip("/")
-    if not normalized:
-        return {"exists": False, "resolved": "", "kind": "empty"}
-    direct = client / normalized
-    if direct.is_file():
-        return {"exists": True, "resolved": str(direct), "kind": "file"}
-    parts = Path(normalized).parts
-    if len(parts) >= 2:
-        member = parts[-1]
-        archive = client.joinpath(*parts[:-1]).with_suffix(".res")
-        if archive.is_file():
-            with zipfile.ZipFile(archive) as handle:
-                names = set(handle.namelist())
-                if member in names:
-                    return {
-                        "exists": True,
-                        "resolved": f"{archive}::{member}",
-                        "kind": "archive-member",
-                    }
-    return {"exists": False, "resolved": normalized, "kind": "missing"}
-
-
 def cmd_map_studio_catalog(_: argparse.Namespace) -> dict[str, Any]:
     jftse = _jftse_root()
     client = _client_root(jftse)
@@ -703,34 +676,8 @@ def cmd_map_studio_catalog(_: argparse.Namespace) -> dict[str, Any]:
 def cmd_map_studio_validate(args: argparse.Namespace) -> dict[str, Any]:
     client = _client_root(_jftse_root())
     script = str(args.stage_script)
-    scripts = _stage_scripts(client)
-    if script not in scripts:
-        return {"ok": False, "error": "STAGE_SCRIPT_MISSING", "stageScript": script}
-    fields = _decode_stage_script(client, script)
-    checks: list[dict[str, Any]] = []
-    for key in ("WorldFile", "SkyFile", "Collision", "Coll_Chat", "World_Chat"):
-        rel = fields.get(key, "")
-        if not rel:
-            continue
-        resolved = _resolve_client_asset(client, rel)
-        checks.append(
-            {
-                "field": key,
-                "path": rel,
-                "exists": bool(resolved["exists"]),
-                "resolved": resolved["resolved"],
-                "kind": resolved["kind"],
-            }
-        )
-    required = [check for check in checks if check["field"] in {"WorldFile", "SkyFile", "Collision"}]
-    valid = bool(required) and all(check["exists"] for check in required)
-    return {
-        "ok": True,
-        "valid": valid,
-        "stageScript": script,
-        "stage": fields,
-        "assetChecks": checks,
-    }
+    validation = validate_stage_script(client, script)
+    return {"ok": bool(validation["valid"]), **validation}
 
 
 def cmd_map_studio_export_pack(args: argparse.Namespace) -> dict[str, Any]:
@@ -791,6 +738,18 @@ def cmd_map_studio_export_pack(args: argparse.Namespace) -> dict[str, Any]:
         default = row.get("defaultStageScript")
         if default and int(row["id"]) in map_ids:
             stage_by_map_id[mid] = str(default)
+    client = _client_root(jftse)
+    for row in selected:
+        validation = validate_stage_script(
+            client,
+            stage_by_map_id.get(str(row.id), ""),
+        )
+        if not bool(validation["valid"]):
+            return {
+                "ok": False,
+                "error": "STAGE_VALIDATION_REQUIRED",
+                "validation": validation,
+            }
 
     map2 = [
         row
