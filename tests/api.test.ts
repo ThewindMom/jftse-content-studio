@@ -1,5 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { cpSync, existsSync, mkdtempSync, rmSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -9,9 +15,56 @@ const jftseRoot =
   process.env.JFTSE_ROOT ??
   "/home/thewind/Projects/00_Random_Coding/260705_fanta_tennis/JFTSE";
 const stockClient = join(jftseRoot, ".jftse-client-linux/client");
+const studioRoot = join(import.meta.dir, "..");
+const artifactRoots = ["exports", "content-packs", ".tmp"].map((name) =>
+  join(studioRoot, name),
+);
 
 let serverProc: ReturnType<typeof Bun.spawn> | null = null;
 let disposableClient = "";
+let initialArtifacts = new Map<string, Set<string>>();
+
+function snapshotArtifacts(): Map<string, Set<string>> {
+  return new Map(
+    artifactRoots.map((root) => [
+      root,
+      new Set(existsSync(root) ? readdirSync(root) : []),
+    ]),
+  );
+}
+
+async function waitForServerOutput(
+  stream: ReadableStream<Uint8Array>,
+  marker: string,
+  timeoutMs: number,
+): Promise<void> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let output = "";
+  let timeout: Timer | undefined;
+  try {
+    await Promise.race([
+      (async () => {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          output += decoder.decode(value, { stream: true });
+          if (output.includes(marker)) return;
+        }
+        throw new Error(`server exited before startup marker: ${output}`);
+      })(),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error(`server startup marker timed out: ${marker}`)),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+    reader.releaseLock();
+  }
+}
 
 const softPayload = {
   texturePath: "Res/Effect/EftB/A_feather",
@@ -31,6 +84,7 @@ const softPayload = {
 };
 
 beforeAll(async () => {
+  initialArtifacts = snapshotArtifacts();
   disposableClient = mkdtempSync(join(tmpdir(), "jftse-studio-client-"));
   await Bun.write(join(disposableClient, "Res/Effect/.keep"), "");
   cpSync(
@@ -39,7 +93,7 @@ beforeAll(async () => {
   );
 
   serverProc = Bun.spawn(["bun", "run", "server/index.ts"], {
-    cwd: join(import.meta.dir, ".."),
+    cwd: studioRoot,
     env: {
       ...process.env,
       PORT: String(port),
@@ -50,23 +104,36 @@ beforeAll(async () => {
     stdout: "pipe",
     stderr: "pipe",
   });
-  const deadline = Date.now() + 20000;
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(`${base}/api/health`);
-      if (response.ok || response.status >= 400) return;
-    } catch {
-      await Bun.sleep(100);
-    }
+  try {
+    await waitForServerOutput(
+      serverProc.stdout as ReadableStream<Uint8Array>,
+      `jftse-content-studio listening on http://127.0.0.1:${port}`,
+      20_000,
+    );
+  } catch (error) {
+    serverProc.kill();
+    await serverProc.exited;
+    serverProc = null;
+    throw error;
   }
-  throw new Error("server failed to start");
 });
 
-afterAll(() => {
-  serverProc?.kill();
+afterAll(async () => {
+  if (serverProc) {
+    serverProc.kill();
+    await serverProc.exited;
+  }
   serverProc = null;
   if (disposableClient && existsSync(disposableClient)) {
     rmSync(disposableClient, { recursive: true, force: true });
+  }
+  for (const [root, before] of initialArtifacts) {
+    if (!existsSync(root)) continue;
+    for (const entry of readdirSync(root)) {
+      if (!before.has(entry)) {
+        rmSync(join(root, entry), { recursive: true, force: true });
+      }
+    }
   }
 });
 
