@@ -471,6 +471,18 @@ const server = Bun.serve({
         );
       },
     },
+    "/api/skin/parse": {
+      GET: async (req) => {
+        const url = new URL(req.url);
+        const char = url.searchParams.get("char") ?? "NIKI";
+        const includeVertices =
+          url.searchParams.get("includeVertices") === "1";
+        const maxVertices = url.searchParams.get("maxVertices") ?? "2000";
+        const args = ["skin-parse", "--char", char, "--max-vertices", maxVertices];
+        if (includeVertices) args.push("--include-vertices");
+        return safeBridge(() => runBridge(args));
+      },
+    },
     "/api/mesh-studio/meta": {
       GET: async (req) => {
         const url = new URL(req.url);

@@ -1039,6 +1039,32 @@ def cmd_bone_attach(args: argparse.Namespace) -> dict[str, Any]:
     return load_body_attach(client, char=char, attach_bone=bone)
 
 
+def cmd_skin_parse(args: argparse.Namespace) -> dict[str, Any]:
+    """Extract 56-byte skinned vertices (weights/indices/pos/normal/uv) from body DAT."""
+    from skin_codec import load_body_skin
+
+    client = _client_root(_jftse_root())
+    char = str(getattr(args, "char", "") or "NIKI")
+    include = bool(getattr(args, "include_vertices", False))
+    try:
+        max_verts = int(getattr(args, "max_vertices", 2000) or 2000)
+    except (TypeError, ValueError):
+        max_verts = 2000
+    try:
+        return load_body_skin(
+            client,
+            char=char,
+            include_vertices=include,
+            max_vertices=max_verts,
+        )
+    except FileNotFoundError as exc:
+        return {"ok": False, "error": "SKIN_ARCHIVE_NOT_FOUND", "detail": str(exc)}
+    except KeyError as exc:
+        return {"ok": False, "error": "SKIN_MEMBER_NOT_FOUND", "detail": str(exc)}
+    except Exception as exc:  # noqa: BLE001 — bridge boundary
+        return {"ok": False, "error": "SKIN_PARSE_FAILED", "detail": str(exc)}
+
+
 def cmd_mesh_meta(args: argparse.Namespace) -> dict[str, Any]:
     """Extract multi-material texture names + bone/socket table from a mesh DAT."""
     from mesh_meta import analyze_member
@@ -1339,6 +1365,11 @@ def main() -> None:
     p_bone.add_argument("--char", default="NIKI")
     p_bone.add_argument("--attach-bone", default="Bone_Racket")
 
+    p_skin = sub.add_parser("skin-parse")
+    p_skin.add_argument("--char", default="NIKI")
+    p_skin.add_argument("--include-vertices", action="store_true")
+    p_skin.add_argument("--max-vertices", type=int, default=2000)
+
     p_mesh_meta = sub.add_parser("mesh-meta")
     p_mesh_meta.add_argument("--archive", required=True)
     p_mesh_meta.add_argument("--member", required=True)
@@ -1391,6 +1422,7 @@ def main() -> None:
         "ftm-export": cmd_ftm_export,
         "ani-parse": cmd_ani_parse,
         "bone-attach": cmd_bone_attach,
+        "skin-parse": cmd_skin_parse,
         "mesh-meta": cmd_mesh_meta,
         "mesh-parse": cmd_mesh_parse,
         "mesh-export": cmd_mesh_export,

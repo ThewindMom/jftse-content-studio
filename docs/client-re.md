@@ -259,10 +259,29 @@ Studio API:
 - `sectionProbe.sectionBHypothesis`, `tailHypothesis`, `rotationHypothesis`
 - `?clipIndex=N&channel=A|C` selects stack + clip
 
-**Still blocked for full skinning:** per-vertex blend weights/indices in body DAT; confident quat graph; section B bitstream.
+**Still blocked for full runtime parity:** confident quat graph in ANI; section B bitstream; exact submesh index buffers linking skin runs to material groups.
 
 API: `GET /api/ani/parse?archive=…&member=…&maxFrames=0&clipIndex=0&channel=A`  
 Module: `python/ani_codec.py`
+
+## Skinned body vertices (56 B records) — verified
+
+Body DATs (e.g. `Niki.dat`) embed DX9-style skinned vertices in **multiple contiguous runs**:
+
+| Offset | Type | Field |
+|-------:|------|--------|
+| 0 | float4 | blend weights (sum ≈ 1) |
+| 16 | uint16×4 | blend bone indices |
+| 24 | float3 | position |
+| 36 | float3 | normal (unit) |
+| 48 | float2 | UV |
+| **56** | | **record size** |
+
+Niki recovers **~20k+** skinned verts across many submesh runs; bone indices are small integers (≪ 128).
+
+API: `GET /api/skin/parse?char=NIKI` (+ `includeVertices=1&maxVertices=2000`)  
+Module: `python/skin_codec.py`  
+This unblocks Three.js `SkinnedMesh` experiments once bind-pose bones are ordered to match indices — full animated skinning still needs ANI quats (not yet confident).
 
 ### Bone attach (DX9 Equipment socket)
 

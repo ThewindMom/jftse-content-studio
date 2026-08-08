@@ -154,7 +154,7 @@ See [`docs/client-re.md`](docs/client-re.md) for field-level detail and remainin
 | Stage RE | `/api/stage-set/decrypt`, `/api/stage-scene`, `/api/map-catalog` |
 | FTM / ANI / bones | `/api/ftm/parse`, `POST /api/ftm/export`, `/api/ani/parse?clipIndex=`, `/api/bone-attach` |
 | Meshes | `/api/mesh-studio/list`, `/parse`, `/meta`, `/texture`, `/export`, `/transform` |
-| Equipment | `/api/item-mesh/resolve` |
+| Equipment / skin | `/api/item-mesh/resolve`, `/api/skin/parse?char=` |
 | Packs | `GET/POST /api/packs`, `GET /api/packs/:name` |
 
 ### Bridge CLI (Python)
@@ -218,6 +218,7 @@ python/
   ani_codec.py          Character .ani tracks
   item_mesh.py          Info_Item_Mesh resolve
   bone_attach.py        Bone_Racket bind pose
+  skin_codec.py         56 B skinned verts (weights/indices/pos/nrm/uv)
 docs/client-re.md       Format RE notes
 tests/api.test.ts       Integration suite
 exports/                Generated artifacts (local)

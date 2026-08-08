@@ -723,6 +723,31 @@ describe("content studio production API", () => {
     expect(body.ani.tracks[0].positions.length).toBeGreaterThan(0);
   }, 60000);
 
+  test("skin-parse recovers 56-byte skinned vertices from NIKI body", async () => {
+    const response = await fetch(`${base}/api/skin/parse?char=NIKI`);
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.member.toLowerCase()).toContain("niki");
+    expect(body.skin.recordSize).toBe(56);
+    expect(body.skin.vertexCount).toBeGreaterThan(100);
+    expect(body.skin.runCount).toBeGreaterThan(0);
+    expect(body.skin.layout.blendWeight.offset).toBe(0);
+    expect(body.skin.layout.blendIndex.offset).toBe(16);
+    expect(body.skin.boneIndexCount).toBeGreaterThan(5);
+    expect(body.skin.runs[0].sample[0].weights.length).toBe(4);
+    expect(body.skin.runs[0].sample[0].indices.length).toBe(4);
+  }, 120000);
+
+  test("skin-parse LUCY uses PlayerD body", async () => {
+    const response = await fetch(`${base}/api/skin/parse?char=LUCY`);
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.archive).toContain("PlayerD");
+    expect(body.skin.vertexCount).toBeGreaterThan(50);
+  }, 120000);
+
   test("stage-scene lists World + Object layers for Emerald Beach compositor", async () => {
     const response = await fetch(
       `${base}/api/stage-scene?member=${encodeURIComponent("1_Emerald_Beach.set")}`,

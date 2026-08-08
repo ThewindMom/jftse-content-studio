@@ -161,11 +161,28 @@ export function EquipmentMeshPreview({
         if (cancelled) return;
 
         const attach = attachBody.hasAttach ? attachBody.attach : null;
+        // Best-effort skin table stats for body (does not block mesh preview)
+        let skinNote = "";
+        try {
+          const skinRes = await fetch(
+            `/api/skin/parse?char=${encodeURIComponent(char)}`,
+          );
+          const skinBody = (await skinRes.json()) as {
+            ok?: boolean;
+            skin?: { vertexCount?: number; runCount?: number; boneIndexCount?: number };
+          };
+          if (skinRes.ok && skinBody.ok && skinBody.skin) {
+            skinNote = ` · skin ${skinBody.skin.vertexCount ?? "?"}v/${skinBody.skin.runCount ?? "?"} runs/${skinBody.skin.boneIndexCount ?? "?"} bones`;
+          }
+        } catch {
+          /* optional */
+        }
         setLabel(
           `${data.resolved.member} · mesh#${data.resolved.index} · ${data.mesh.vertexCount} verts` +
             (attach
               ? ` · socket ${attach.name} (${attach.position.map((v) => v.toFixed(2)).join(", ")})`
               : " · no Bone_Racket (origin fallback)") +
+            skinNote +
             (data.resolved.desc ? ` · ${data.resolved.desc}` : ""),
         );
         setModeBadge(attach ? "bind pose" : "origin fallback");
