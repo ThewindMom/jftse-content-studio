@@ -78,6 +78,7 @@ type AniPayload = {
     sampled?: boolean;
     hasRotations?: boolean;
     driveMode?: string;
+    rotationSource?: string;
     clipIndex?: number;
     motion?: string;
     motionCatalog?: MotionCatalogEntry[];
@@ -540,9 +541,12 @@ export function EquipmentMeshPreview({
             hierarchical: true,
           });
           setDriveMode(mode);
+          const rotSrc = body.ani.rotationSource;
           setModeBadge(
             mode === "quat"
-              ? "quat scrub"
+              ? rotSrc === "hierarchical-derived"
+                ? "derived-quat scrub"
+                : "quat scrub"
               : mode === "hierarchical-fk"
                 ? "hierarchical FK scrub"
                 : "pos-only FK scrub",
@@ -670,9 +674,9 @@ export function EquipmentMeshPreview({
       )}
       <div className="empty">
         Body: SkinnedMesh from /api/skin/parse + ordered 304-byte bone palette.
-        ANI drive: <code>quat</code> when rotations recover; else{" "}
-        <code>hierarchical-fk</code> (parent chain + multi-child look-at local rotations from named float3 multi-clips —
-        not full DX9 quat retarget). Racket uses Bone_Racket bind + float3 delta.
+        ANI drive: <code>quat</code> with <code>rotationSource=hierarchical-derived</code>{" "}
+        unit local rotations from named float3 multi-clips + skeleton (when char is set);
+        else runtime <code>hierarchical-fk</code>. Not on-disk DX9 float4. Racket: Bone_Racket + float3 delta.
       </div>
     </div>
   );

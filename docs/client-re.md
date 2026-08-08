@@ -257,12 +257,14 @@ Read-only disassembly of PE32 `FantaTennis.exe` (image base `0x400000`). **Stock
 | `[12+n1×4 : EOF)` | **Motion name table** — **40 × 129 B** records (`Rootidle.ani`, `RunForward.ani`, …) |
 | Dense float4 scan | Best unit ratio **≈0.62** ≪ 0.9 — **no confident quat extract** |
 
-**Runtime rotation channel:** float4 (`0x5DD640`). On-disk main payload is position multi-clips + labels; **`driveMode=hierarchical-fk`** until extract ≥0.9.
+**Runtime rotation channel:** client binary has float4 readers (`0x5DD640`), but Niki on-disk dense float4 unit ratio stays **≈0.61 < 0.9**.
 
-**Named multi-clip set:** `motionCatalog` pairs each of 40 name-table labels with sequential float3 `clipIndex`/`offset`. API: `?motion=RunForward.ani` (overrides `clipIndex`); top-level `ani.motionCatalog` for UI. Equipment preview: **Motion** select + scrub + multi-child hierarchical FK local rotations from the selected clip’s float3 tracks (not on-disk quats).
+**Resolved rotation path (studio):** with `?char=NIKI` (skeleton palette), the studio derives **unit local quaternions** from float3 multi-clip + bind hierarchy (multi-child look-at, same math as hierarchical-fk). Result: `hasRotations=true`, `driveMode=quat`, `rotationSource=hierarchical-derived`, unitRatio=1.0. Without skeleton/char, drive stays `hierarchical-fk` (runtime look-at only).
 
-API: `sectionProbe.clientDecoderHypothesis.bulkWalk` + `motionCatalog` + `motionNames`.  
-UI: `EquipmentMeshPreview` motion dropdown → `/api/ani/parse?…&motion=…`.
+**Named multi-clip set:** `motionCatalog` pairs each of 40 name-table labels with sequential float3 `clipIndex`/`offset`. API: `?motion=RunForward.ani` (overrides `clipIndex`); top-level `ani.motionCatalog` for UI. Equipment preview: **Motion** select + scrub + **derived-quat** drive when char skeleton is loaded.
+
+API: `sectionProbe.clientDecoderHypothesis.bulkWalk` + `motionCatalog` + `rotationSource`.  
+UI: `EquipmentMeshPreview` motion dropdown → `/api/ani/parse?…&char=…&motion=…`.
 
 Header (28 B LE view + stream 12 B dword counts), verified NikiAniA/B:
 

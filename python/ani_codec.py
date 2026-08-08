@@ -491,6 +491,7 @@ def parse_ani_bytes(
     bone_names: list[str] | None = None,
     clip_index: int = 0,
     channel: str = "A",
+    skeleton: list[Any] | None = None,
 ) -> ParsedAni:
     header = parse_ani_header(data)
     probe = _probe_sections(data, header)
@@ -584,13 +585,13 @@ def parse_ani_bytes(
             raise AniParseError("no valid float3 track layout found")
         _score, layout, _pos_off, raw_tracks = best
 
-    # Experimental quat attach: only when extract yields unit ratio ≥ 0.9
+    # Rotations: (1) dense file extract if conf≥0.9 (2) hierarchical-derived from
+    # float3 + skeleton bind (unit by construction) when skeleton provided.
     rot_tracks: list[list[list[float]]] | None = None
     rot_meta: dict[str, Any] | None = None
     from ani_client_re import try_extract_from_client_walk
     from ani_rotation_probe import try_extract_confident_quats
 
-    # Prefer client bulk-walk extract (dense float4 scan of main region)
     rot_tracks, rot_meta = try_extract_from_client_walk(
         data,
         track_count=header.trackCount,
@@ -612,34 +613,56 @@ def parse_ani_bytes(
                 section_c=header.sectionC,
                 b_probe=b_probe,
             )
-        elif rot_meta is None:
-            rot_meta = {
-                "selectedOffset": None,
-                "selectedUnitRatio": None,
-                "confident": False,
-                "skipped": True,
-                "note": "extract skipped: no rotation candidate from walk/B/C/tail",
-            }
+
+    if not (rot_meta or {}).get("confident") and skeleton and raw_tracks:
+        from ani_derive_rotations import derive_local_rotations, skeleton_bind_arrays
+
+        n_t = len(raw_tracks)
+        sk_slice = list(skeleton[:n_t])
+        if len(sk_slice) >= n_t:
+            parents, rest_p, rest_q = skeleton_bind_arrays(sk_slice)
+            derived, d_meta = derive_local_rotations(
+                raw_tracks,
+                parents=parents,
+                rest_local_pos=rest_p,
+                rest_local_quat=rest_q,
+            )
+            if d_meta.get("confident") and derived:
+                rot_tracks = derived
+                rot_meta = d_meta
+
+    if rot_meta is None:
+        rot_meta = {
+            "confident": False,
+            "skipped": True,
+            "note": "no file quat extract; pass skeleton/char for hierarchical-derived",
+        }
 
     if rot_tracks is not None and rot_meta.get("confident"):
-        order = rot_meta.get("order") or "track-major"
-        off = rot_meta.get("selectedOffset")
-        layout = f"{layout}+quat-{order}@+{off}"
+        source = str(rot_meta.get("source") or "file")
+        layout = f"{layout}+quat-{source}"
         probe = {
             **probe,
             "rotationHypothesis": {
                 **probe.get("rotationHypothesis", {}),
                 "confident": True,
                 "recommendedDriveMode": "quat",
-                "note": (
-                    f"Dense unit quaternions at +{off} ({order}, "
-                    f"ratio={rot_meta.get('decodeUnitRatio')})"
-                ),
+                "rotationSource": source,
+                "note": rot_meta.get("note")
+                or f"Unit quaternions via {source}",
             },
             "rotationExtract": rot_meta,
         }
     else:
-        probe = {**probe, "rotationExtract": rot_meta or {}}
+        probe = {
+            **probe,
+            "rotationExtract": rot_meta or {},
+            "rotationHypothesis": {
+                **(probe.get("rotationHypothesis") or {}),
+                "confident": False,
+                "recommendedDriveMode": "hierarchical-fk",
+            },
+        }
 
     times = [
         header.duration * (i / max(header.frameCount - 1, 1))
@@ -715,6 +738,7 @@ def load_ani_member(
     bone_names: list[str] | None = None,
     clip_index: int = 0,
     channel: str = "A",
+    skeleton: list[Any] | None = None,
 ) -> ParsedAni:
     with zipfile.ZipFile(client_root / archive_rel) as zf:
         data = zf.read(member)
@@ -724,4 +748,5 @@ def load_ani_member(
         bone_names=bone_names,
         clip_index=clip_index,
         channel=channel,
+        skeleton=skeleton,
     )

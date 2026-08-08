@@ -1056,14 +1056,17 @@ def cmd_ani_parse(args: argparse.Namespace) -> dict[str, Any]:
     # 0 / negative → full tracks (None in to_dict)
     max_frames: int | None = None if max_frames_int <= 0 else max_frames_int
     bone_names: list[str] | None = None
+    skeleton: list[Any] | None = None
     if char:
         try:
             mesh_rel = _mesh_archive_rel(char)
             with zipfile.ZipFile(client / mesh_rel) as zf:
                 body = _prefer_body_member(list(zf.namelist()), char)
-                bone_names = [b.name for b in extract_skeleton_palette(zf.read(body))]
+                skeleton = list(extract_skeleton_palette(zf.read(body)))
+                bone_names = [b.name for b in skeleton]
         except (OSError, KeyError, zipfile.BadZipFile):
             bone_names = None
+            skeleton = None
     try:
         # Resolve motion name → clipIndex from on-disk name table when provided
         resolved_motion: str | None = None
@@ -1086,6 +1089,7 @@ def cmd_ani_parse(args: argparse.Namespace) -> dict[str, Any]:
             bone_names=bone_names,
             clip_index=clip_index,
             channel=channel,
+            skeleton=skeleton,
         )
         payload = ani.to_dict(max_frames=max_frames)
         payload["sampled"] = max_frames is not None
@@ -1108,11 +1112,13 @@ def cmd_ani_parse(args: argparse.Namespace) -> dict[str, Any]:
                     if entry.get("clipIndex") == clip_index and entry.get("name"):
                         payload["motion"] = entry["name"]
                         break
-        # Prefer hierarchical-fk when dense quats not recovered (see rotationHypothesis).
+        # quat when file extract OR hierarchical-derived conf; else hierarchical-fk
+        hyp = (payload.get("sectionProbe") or {}).get("rotationHypothesis") or {}
         if payload.get("hasRotations"):
             payload["driveMode"] = "quat"
+            if hyp.get("rotationSource"):
+                payload["rotationSource"] = hyp["rotationSource"]
         else:
-            hyp = (payload.get("sectionProbe") or {}).get("rotationHypothesis") or {}
             payload["driveMode"] = str(
                 hyp.get("recommendedDriveMode") or "hierarchical-fk"
             )

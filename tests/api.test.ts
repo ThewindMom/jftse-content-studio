@@ -803,7 +803,7 @@ describe("content studio production API", () => {
     expect(body.ani.motion).toMatch(/RunForward/i);
     expect(body.ani.clipIndex).toBe(1);
     expect(body.ani.tracks[0].positions.length).toBeGreaterThan(0);
-    // hierarchical-fk still default (no confident on-disk quats)
+    // without char/skeleton: no derived quats
     expect(body.ani.driveMode).toBe("hierarchical-fk");
     // Top-level motionCatalog for equipment UI selectors
     expect(Array.isArray(body.ani.motionCatalog)).toBe(true);
@@ -811,6 +811,25 @@ describe("content studio production API", () => {
     expect(body.ani.motionCatalog[1].name).toMatch(/RunForward/i);
     expect(body.ani.motionCatalog[1].clipIndex).toBe(1);
   }, 60000);
+
+  test("ANI with char=NIKI derives unit quats → driveMode=quat", async () => {
+    const response = await fetch(
+      `${base}/api/ani/parse?archive=${encodeURIComponent("Res/Player/PlayerA/AniA.res")}&member=${encodeURIComponent("NikiAniA.ani")}&maxFrames=2&char=NIKI&motion=${encodeURIComponent("RunForward.ani")}`,
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.ani.hasRotations).toBe(true);
+    expect(body.ani.driveMode).toBe("quat");
+    expect(body.ani.rotationSource).toBe("hierarchical-derived");
+    expect(body.ani.sectionProbe.rotationHypothesis.confident).toBe(true);
+    expect(body.ani.tracks[0].hasRotations).toBe(true);
+    expect(body.ani.tracks[0].rotations?.length).toBeGreaterThan(0);
+    const q = body.ani.tracks[0].rotations[0];
+    const len = Math.sqrt(q[0] ** 2 + q[1] ** 2 + q[2] ** 2 + q[3] ** 2);
+    expect(len).toBeGreaterThan(0.95);
+    expect(len).toBeLessThan(1.05);
+  }, 90000);
 
   test("ANI motion unknown fails structured", async () => {
     const response = await fetch(
