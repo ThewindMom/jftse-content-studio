@@ -68,6 +68,10 @@ export function StageMeshPreview({
   const [visible, setVisible] = useState<Record<string, boolean>>({});
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [effects, setEffects] = useState<
+    Array<{ file: string; position?: number[]; head?: number[] }>
+  >([]);
+  const [eftNotes, setEftNotes] = useState("");
 
   // Resolve layer catalog from stage-scene or single world path
   useEffect(() => {
@@ -91,12 +95,45 @@ export function StageMeshPreview({
                 archive?: string;
                 member?: string;
               }>;
+              effects?: Array<{
+                file?: string;
+                position?: number[] | string;
+                head?: number[] | string;
+              }>;
               objectCount?: number;
               effectCount?: number;
             };
           }>(`/api/stage-scene?member=${encodeURIComponent(stageScript)}`);
           const scene = body.scene;
           if (!scene) throw new Error("Stage scene empty");
+          const effList = (scene.effects ?? []).map((e) => ({
+            file: e.file ?? "",
+            position: Array.isArray(e.position)
+              ? (e.position as number[])
+              : undefined,
+            head: Array.isArray(e.head) ? (e.head as number[]) : undefined,
+          }));
+          if (!cancelled) setEffects(effList);
+          // Probe first effect .eft for studio authoring surface
+          if (effList[0]?.file) {
+            try {
+              const eft = await api<{
+                ok?: boolean;
+                byteLength?: number;
+                emitterHint?: number;
+                note?: string;
+              }>(`/api/eft/parse?path=${encodeURIComponent(effList[0].file)}`);
+              if (!cancelled && eft.ok) {
+                setEftNotes(
+                  `${effList[0].file} · ${eft.byteLength ?? "?"}B · emitters~${eft.emitterHint ?? "?"} · ${eft.note ?? ""}`,
+                );
+              }
+            } catch {
+              if (!cancelled) setEftNotes(`${effList.length} stage effects (parse optional)`);
+            }
+          } else if (!cancelled) {
+            setEftNotes("");
+          }
           if (scene.world?.archive && scene.world.member) {
             next.push({
               id: "world",
@@ -348,6 +385,24 @@ export function StageMeshPreview({
           }
         }
 
+        // Stage .eft VFX markers (positions from scene graph; full emitter sim is client-side)
+        for (const [i, eft] of effects.entries()) {
+          const pos = eft.position;
+          if (!pos || pos.length < 3) continue;
+          const geo = new THREE.SphereGeometry(2.5, 12, 12);
+          const mat = new THREE.MeshStandardMaterial({
+            color: 0xffd45f,
+            emissive: 0x664400,
+            metalness: 0.1,
+            roughness: 0.4,
+          });
+          const marker = new THREE.Mesh(geo, mat);
+          marker.position.set(pos[0] ?? 0, pos[1] ?? 0, pos[2] ?? 0);
+          marker.name = `eft-${i}-${eft.file}`;
+          group.add(marker);
+          disposables.push(geo, mat);
+        }
+
         if (anyMesh && !unionBox.isEmpty()) {
           const center = new THREE.Vector3();
           const size = new THREE.Vector3();
@@ -408,7 +463,7 @@ export function StageMeshPreview({
       cancelled = true;
       disposeAll();
     };
-  }, [drawList]);
+  }, [drawList, effects]);
 
   const toggleLayer = (id: string) => {
     setVisible((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -425,6 +480,12 @@ export function StageMeshPreview({
         ref={mountRef}
         aria-label="Stage multi-draw geometry preview"
       />
+      {(effects.length > 0 || eftNotes) && (
+        <div className="empty mono" role="status">
+          Effects: {effects.length} markers
+          {eftNotes ? ` · ${eftNotes}` : ""}
+        </div>
+      )}
       {layers.length > 0 && (
         <div className="layer-list" role="group" aria-label="Stage draw layers">
           {layers.map((layer) => {

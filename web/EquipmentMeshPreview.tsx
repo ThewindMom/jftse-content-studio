@@ -784,8 +784,10 @@ export function EquipmentMeshPreview({
         Body: SkinnedMesh from /api/skin/parse + ordered 304-byte bone palette.
         ANI drive: <code>quat</code> with <code>rotationSource=hierarchical-derived</code>{" "}
         unit local rotations from named float3 multi-clips + skeleton (when char is set);
-        else runtime <code>hierarchical-fk</code>. Not on-disk DX9 float4. Racket: Bone_Racket + float3 delta.
-        Authoring: pack clones stock mesh + patches Info_Item_Mesh + item SQL; install local only.
+        else runtime <code>hierarchical-fk</code>. On-disk dense float4 / section-B still unrecovered
+        (see <code>/api/ani/section-b-status</code>). Racket: Bone_Racket + equipment material table
+        stems when present. Authoring: pack + catalog + SQL; local install only. Pixel-true multi-submesh
+        DX9 silhouette remains best-effort recovery, not a full FVF material graph.
       </div>
     </div>
   );

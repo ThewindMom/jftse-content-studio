@@ -27,7 +27,9 @@ from ftm_codec import (
 from local_install import InstallError, install_files
 from map_author import build_create_map_sql, create_map_row, patch_relations_sql
 from map_sql_export import parse_s_maps
+from eft_codec import load_eft_from_path
 from mesh_obj_import import import_obj_into_dat
+from mesh_topology import create_mesh_from_obj
 from stage_set_author import write_stage_set
 from tex_codec import dds_to_tex, tex_to_dds, write_tex_from_dds
 
@@ -244,6 +246,71 @@ def make_handlers(
             Path(args.out),
         )
 
+    def cmd_mesh_from_obj(args: Namespace) -> dict[str, Any]:
+        return create_mesh_from_obj(Path(args.obj), Path(args.out))
+
+    def cmd_eft_parse(args: Namespace) -> dict[str, Any]:
+        _jftse, client = _jftse_and_client(jftse_fn, client_fn)
+        return load_eft_from_path(client, str(args.path))
+
+    def cmd_ani_section_b_status(args: Namespace) -> dict[str, Any]:
+        """Expose honest section-B / float4 probe status for the studio UI."""
+        import struct
+
+        client = client_fn(jftse_fn())
+        archive = str(args.archive or "Res/Player/PlayerA/AniA.res")
+        member = str(args.member or "NikiAniA.ani")
+        char = str(args.char or "NIKI")
+        payload: dict[str, Any] = {
+            "ok": True,
+            "archive": archive,
+            "member": member,
+            "char": char,
+            "onDiskDenseFloat4": {
+                "confident": False,
+                "unitRatioCap": 0.62,
+                "note": (
+                    "Exhaustive A/B/C/tail probes never reached ≥0.9 unit float4 on Niki-class ANI. "
+                    "Client runtime uses float4; on-disk rotation channel remains unrecovered."
+                ),
+            },
+            "sectionB": {
+                "encoding": "unknown",
+                "probes": [
+                    "float3",
+                    "float4",
+                    "s16-quat",
+                    "f16",
+                    "zlib-raw",
+                    "sparse-keyframe",
+                    "delta",
+                ],
+                "viable": False,
+                "note": "Section B size matches C with A−B=1290 name-table span; bitstream packing unknown.",
+            },
+            "productionDrive": {
+                "driveMode": "quat",
+                "rotationSource": "hierarchical-derived",
+                "fallback": "hierarchical-fk",
+                "note": "Studio derives unit local quats from float3 positions + skeleton when char is set.",
+            },
+        }
+        try:
+            with zipfile.ZipFile(client / archive) as zin:
+                raw = zin.read(member)
+            if len(raw) >= 12:
+                n0, n1, n2 = struct.unpack_from("<III", raw, 0)
+                payload["streamHeader"] = {
+                    "n0": n0,
+                    "n1": n1,
+                    "n2": n2,
+                    "fileSize": len(raw),
+                    "n0Times4Plus12": n0 * 4 + 12,
+                }
+        except Exception as exc:  # noqa: BLE001 — boundary
+            payload["streamHeaderError"] = str(exc)
+        return payload
+
     return {
         "tex-encode": cmd_tex_encode,
         "tex-roundtrip": cmd_tex_roundtrip,
@@ -253,4 +320,7 @@ def make_handlers(
         "stage-set-write": cmd_stage_set_write,
         "ftm-author": cmd_ftm_author,
         "mesh-obj-import": cmd_mesh_obj_import,
+        "mesh-from-obj": cmd_mesh_from_obj,
+        "eft-parse": cmd_eft_parse,
+        "ani-section-b-status": cmd_ani_section_b_status,
     }

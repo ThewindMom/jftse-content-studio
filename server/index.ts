@@ -893,6 +893,53 @@ const server = Bun.serve({
         );
       },
     },
+    "/api/mesh-studio/from-obj": {
+      POST: async (req) => {
+        let body: Record<string, unknown>;
+        try {
+          body = (await req.json()) as Record<string, unknown>;
+        } catch {
+          return bad("INVALID_JSON");
+        }
+        const obj = String(body.obj ?? "");
+        if (!obj) return bad("OBJ_REQUIRED");
+        const out = String(
+          body.out ??
+            join(config.exportsDir, `mesh-new-${Date.now()}`, "authored.dat"),
+        );
+        return safeBridge(() =>
+          runBridge(["mesh-from-obj", "--obj", obj, "--out", out]),
+        );
+      },
+    },
+    "/api/eft/parse": {
+      GET: async (req) => {
+        const url = new URL(req.url);
+        const path = url.searchParams.get("path") ?? "";
+        if (!path) return bad("PATH_REQUIRED");
+        return safeBridge(() => runBridge(["eft-parse", "--path", path]));
+      },
+    },
+    "/api/ani/section-b-status": {
+      GET: async (req) => {
+        const url = new URL(req.url);
+        const archive =
+          url.searchParams.get("archive") ?? "Res/Player/PlayerA/AniA.res";
+        const member = url.searchParams.get("member") ?? "NikiAniA.ani";
+        const char = url.searchParams.get("char") ?? "NIKI";
+        return safeBridge(() =>
+          runBridge([
+            "ani-section-b-status",
+            "--archive",
+            archive,
+            "--member",
+            member,
+            "--char",
+            char,
+          ]),
+        );
+      },
+    },
     "/api/packs": {
       GET: async () => {
         const files = readdirSync(config.packsDir).filter((name) =>

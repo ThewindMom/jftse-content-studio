@@ -257,6 +257,7 @@ export function MeshStudio({
   const [rx, setRx] = useState(0);
   const [ry, setRy] = useState(0);
   const [rz, setRz] = useState(0);
+  const [objPath, setObjPath] = useState("");
 
   useEffect(() => {
     void api<{ meshes: MeshRow[]; count: number }>("/api/mesh-studio/list")
@@ -342,6 +343,40 @@ export function MeshStudio({
       setStatus("Exported OBJ + glTF + meta");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const createFromObj = async () => {
+    if (!objPath.trim()) {
+      setError("Set a filesystem path to an .obj first");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setStatus("Authoring new topology DAT from OBJ…");
+    try {
+      const result = await api<{
+        path: string;
+        obj?: string;
+        meta?: string;
+        vertexCount: number;
+        triangleCount: number;
+        note?: string;
+      }>("/api/mesh-studio/from-obj", {
+        method: "POST",
+        body: JSON.stringify({ obj: objPath.trim() }),
+      });
+      setExportInfo(
+        `${result.path}\n${result.obj ?? ""}\nverts=${result.vertexCount} tris=${result.triangleCount}`,
+      );
+      setStatus(
+        `Authored new mesh · ${result.vertexCount}v / ${result.triangleCount}t · ${result.note ?? ""}`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setStatus("OBJ topology author failed");
     } finally {
       setBusy(false);
     }
@@ -459,6 +494,25 @@ export function MeshStudio({
               Rotate Z°
               <input type="number" step="1" value={rz} onChange={(e) => setRz(Number(e.target.value))} />
             </label>
+            <label>
+              New topology OBJ path
+              <input
+                value={objPath}
+                onChange={(e) => setObjPath(e.target.value)}
+                placeholder="/path/to/model.obj"
+                spellCheck={false}
+              />
+            </label>
+          </div>
+          <div className="actions">
+            <button
+              className="btn primary"
+              type="button"
+              disabled={busy || !objPath.trim()}
+              onClick={() => void createFromObj()}
+            >
+              Author new DAT from OBJ
+            </button>
           </div>
           <label>
             <span>

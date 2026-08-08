@@ -232,16 +232,15 @@ DESIGN.md               Product / visual language
 
 ---
 
-## Honest limits
+## Honest limits (updated)
 
-| In scope today | Still limited / out of scope |
-|----------------|------------------------------|
-| Soft particle export + **equipment pack** + generalized **local install** | Pixel-true DX9 Equipment silhouette |
-| Stage scene graph + compositor + **`.set` write/encrypt** + greenfield **map SQL** | Full multi-material submesh ranges + VFX `.eft` meshing/authoring |
-| FTM **add/remove/patch** + MapSet RES export + **local install** | Full FT-ResTool tile paint GUI / blocked-tile paint canvas / stock client |
-| ANI multi-clip + hierarchical-derived unit quats when skeleton present | On-disk dense float4 / section-B bitstream / DX9 parity |
-| Ordered skeleton palette + SkinnedMesh + Bone_Racket attach | Gameplay-perfect skin weight authoring |
-| Mesh recovery + transform + **OBJ→DAT (same vert count)** + tex encode | Blender-parity new topology / freeform material table insert |
+| In scope today | Remaining RE ceiling |
+|----------------|----------------------|
+| Soft particle export + **equipment pack** + local install | Full stock DX9 FVF multi-submesh material graph (pixel-true silhouette) |
+| Stage scene graph + compositor + **`.set` write** + **`.eft` parse + markers** | Full particle emitter simulation / authoring of new `.eft` binaries |
+| FTM add/remove/patch + **blocked-tile paint** + MapSet install | Full FT-ResTool multi-layer tile index paint + prefab browser |
+| ANI multi-clip + hierarchical-derived unit quats; **`/api/ani/section-b-status`** | On-disk dense float4 / section-B bitstream (client runtime still float4) |
+| Mesh recovery + transform + same-count OBJ import + **new-topology OBJ→studio DAT** | Stock-client-perfect material/submesh ranges inside authored DATs |
 
 ---
 

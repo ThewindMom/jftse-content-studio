@@ -1307,6 +1307,67 @@ describe("content studio production API", () => {
     expect(existsSync(body.infoArchive)).toBe(true);
   });
 
+  test("mesh-from-obj authors new topology studio DAT", async () => {
+    const objPath = join(disposableClient, "tiny.obj");
+    await Bun.write(
+      objPath,
+      ["v 0 0 0", "v 2 0 0", "v 0 2 0", "v 0 0 2", "f 1 2 3", "f 1 3 4"].join("\n"),
+    );
+    const response = await fetch(`${base}/api/mesh-studio/from-obj`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ obj: objPath }),
+    });
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.vertexCount).toBe(4);
+    expect(body.triangleCount).toBe(2);
+    expect(existsSync(body.path)).toBe(true);
+  });
+
+  test("eft parse returns header for Atlantis bubble", async () => {
+    const response = await fetch(
+      `${base}/api/eft/parse?path=${encodeURIComponent("Res/Stage/Mesh11/EF_Atlantis_Bubble01.Eft")}`,
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.byteLength).toBeGreaterThan(1000);
+    expect(body.sectionA).toBeGreaterThan(0);
+  });
+
+  test("ani section-b status is honest about float4 non-viability", async () => {
+    const response = await fetch(`${base}/api/ani/section-b-status`);
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.onDiskDenseFloat4.confident).toBe(false);
+    expect(body.sectionB.viable).toBe(false);
+    expect(body.productionDrive.rotationSource).toBe("hierarchical-derived");
+    expect(body.streamHeader.fileSize).toBeGreaterThan(0);
+  });
+
+  test("ftm author blocked tile paint export", async () => {
+    const response = await fetch(`${base}/api/ftm/author`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        archive: "Res/MapSet/FantaCastle.res",
+        member: "FantaCastleOutSide.ftm",
+        blockedTiles: [
+          { x: 1, y: 1 },
+          { x: 2, y: 2 },
+        ],
+      }),
+    });
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.blockedTileCount).toBe(2);
+    expect(existsSync(body.path)).toBe(true);
+  });
+
   test("ftm author add placement and refuse stock install", async () => {
     const authorRes = await fetch(`${base}/api/ftm/author`, {
       method: "POST",

@@ -1562,6 +1562,18 @@ def main() -> None:
     p_obj.add_argument("--obj", required=True)
     p_obj.add_argument("--out", required=True)
 
+    p_from_obj = sub.add_parser("mesh-from-obj")
+    p_from_obj.add_argument("--obj", required=True)
+    p_from_obj.add_argument("--out", required=True)
+
+    p_eft = sub.add_parser("eft-parse")
+    p_eft.add_argument("--path", required=True)
+
+    p_ani_b = sub.add_parser("ani-section-b-status")
+    p_ani_b.add_argument("--archive", default="Res/Player/PlayerA/AniA.res")
+    p_ani_b.add_argument("--member", default="NikiAniA.ani")
+    p_ani_b.add_argument("--char", default="NIKI")
+
     args = parser.parse_args()
     from author_cmds import make_handlers as make_author_handlers
 

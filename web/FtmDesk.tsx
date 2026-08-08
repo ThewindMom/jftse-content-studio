@@ -54,6 +54,10 @@ export function FtmDesk() {
   const [draftRotX, setDraftRotX] = useState("");
   const [exportPath, setExportPath] = useState("");
   const [copyHint, setCopyHint] = useState("");
+  const [paintBlocked, setPaintBlocked] = useState(false);
+  const [blockedDraft, setBlockedDraft] = useState<Array<{ x: number; y: number }>>(
+    [],
+  );
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const exportPanelRef = useRef<HTMLDivElement | null>(null);
 
@@ -131,6 +135,7 @@ export function FtmDesk() {
       }
       setKind("ftm");
       setFtm(body.ftm);
+      setBlockedDraft(body.ftm.blockedTiles ?? []);
       const count = body.ftm.sceneObjectCount ?? body.ftm.sceneObjects?.length ?? 0;
       // Auto-select first placement so export path is one edit away
       if ((body.ftm.sceneObjects?.length ?? 0) > 0) {
@@ -184,10 +189,10 @@ export function FtmDesk() {
       ctx.stroke();
     }
 
-    // blocked tiles (sample first 800 for paint cost)
-    const blocked = ftm.blockedTiles ?? [];
-    ctx.fillStyle = "rgba(255, 107, 122, 0.22)";
-    for (const tile of blocked.slice(0, 800)) {
+    // blocked tiles (draft for paint mode; sample first 2000)
+    const blocked = blockedDraft.length ? blockedDraft : (ftm.blockedTiles ?? []);
+    ctx.fillStyle = "rgba(255, 107, 122, 0.28)";
+    for (const tile of blocked.slice(0, 2000)) {
       ctx.fillRect(ox + tile.x * cell, oy + tile.y * cell, cell, cell);
     }
 
@@ -218,7 +223,7 @@ export function FtmDesk() {
       pad,
       h - 6,
     );
-  }, [ftm, objects, selected]);
+  }, [ftm, objects, selected, blockedDraft]);
 
   const onCanvasClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
     if (!ftm || !canvasRef.current) return;
@@ -235,6 +240,20 @@ export function FtmDesk() {
     const cell = Math.min((w - pad * 2) / cols, (h - pad * 2) / rows);
     const ox = pad + (w - pad * 2 - cell * cols) / 2;
     const oy = pad + (h - pad * 2 - cell * rows) / 2;
+
+    if (paintBlocked) {
+      const tx = Math.floor((mx - ox) / cell);
+      const ty = Math.floor((my - oy) / cell);
+      if (tx < 0 || ty < 0 || tx >= cols || ty >= rows) return;
+      setBlockedDraft((prev) => {
+        const exists = prev.some((t) => t.x === tx && t.y === ty);
+        if (exists) return prev.filter((t) => !(t.x === tx && t.y === ty));
+        return [...prev, { x: tx, y: ty }];
+      });
+      setStatus(`Blocked paint · tile (${tx},${ty}) · count will update on export`);
+      return;
+    }
+
     let best = -1;
     let bestDist = Infinity;
     objects.forEach((obj, i) => {
@@ -248,6 +267,43 @@ export function FtmDesk() {
     });
     if (best >= 0 && bestDist < (Math.max(cell, 8) * 2) ** 2) {
       setSelected(best);
+    }
+  };
+
+  const exportBlockedPaint = async () => {
+    if (!ftm) return;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/ftm/author", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          archive: archive.trim(),
+          member: member.trim(),
+          blockedTiles: blockedDraft,
+        }),
+      });
+      const body = (await response.json()) as {
+        ok?: boolean;
+        path?: string;
+        archive?: string;
+        blockedTileCount?: number;
+        error?: string;
+        detail?: string;
+      };
+      if (!response.ok || !body.ok) {
+        throw new Error(body.detail ?? body.error ?? `HTTP ${response.status}`);
+      }
+      setExportPath(body.path ?? body.archive ?? "");
+      setStatus(
+        `Exported blocked tiles · ${body.blockedTileCount ?? blockedDraft.length} → ${body.path}`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setStatus("Blocked tile export failed");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -499,6 +555,23 @@ export function FtmDesk() {
       <div className="actions">
         <button className="btn primary" type="button" disabled={busy} onClick={() => void load()}>
           {busy ? "Parsing…" : "Parse FTM"}
+        </button>
+        <button
+          className="btn"
+          type="button"
+          disabled={busy || !ftm}
+          data-active={paintBlocked}
+          onClick={() => setPaintBlocked((v) => !v)}
+        >
+          {paintBlocked ? "Paint blocked: ON" : "Paint blocked tiles"}
+        </button>
+        <button
+          className="btn primary"
+          type="button"
+          disabled={busy || !ftm}
+          onClick={() => void exportBlockedPaint()}
+        >
+          Export blocked paint
         </button>
       </div>
       <div className="empty">{status}</div>
