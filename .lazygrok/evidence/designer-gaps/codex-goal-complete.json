@@ -1,0 +1,10 @@
+{
+  "available": true,
+  "status": "complete",
+  "objective": "Complete the durable ulw-loop plan in .lazygrok/ulw-loop/019fe094-1eaa-7df1-8ebc-e192abed8ad7/goals.json, including later accepted/appended stories, under the original brief constraints; use .lazygrok/ulw-loop/019fe094-1eaa-7df1-8ebc-e192abed8ad7/ledger.jsonl as the audit trail.",
+  "goal": {
+    "status": "complete",
+    "objective": "Complete the durable ulw-loop plan in .lazygrok/ulw-loop/019fe094-1eaa-7df1-8ebc-e192abed8ad7/goals.json, including later accepted/appended stories, under the original brief constraints; use .lazygrok/ulw-loop/019fe094-1eaa-7df1-8ebc-e192abed8ad7/ledger.jsonl as the audit trail."
+  },
+  "id": "ulw-aggregate-019fe094-1eaa-7df1-8ebc-e192abed8ad7"
+}

@@ -1,0 +1,25 @@
+{
+  "hasRotations": true,
+  "rotationSource": "hierarchical-derived",
+  "confident": true,
+  "recommendedDriveMode": "quat",
+  "extract": {
+    "source": "hierarchical-derived",
+    "confident": true,
+    "unitRatio": 1.0,
+    "lookAtCoverage": 1.0,
+    "lookAtHits": 1100,
+    "lookAtTotal": 1100,
+    "trackCount": 40,
+    "frameCount": 44,
+    "note": "Local unit quats derived from float3 multi-clip + skeleton bind (multi-child look-at). unitRatio=1.000 lookAt=1.000."
+  },
+  "sampleQuatTrack3Frame10": [
+    -0.045179987388975454,
+    -0.02977343243548297,
+    0.6658955385468425,
+    0.7440802666406041
+  ],
+  "sampleLen": 1.0,
+  "trackCountWithRots": 40
+}

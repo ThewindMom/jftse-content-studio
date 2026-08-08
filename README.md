@@ -158,7 +158,8 @@ See [`docs/client-re.md`](docs/client-re.md) for field-level detail and remainin
 | FTM / ANI / bones | `/api/ftm/parse`, `POST /api/ftm/export`, **`POST /api/ftm/author`**, `/api/ani/parse`, `/api/bone-attach` |
 | Meshes | `/api/mesh-studio/*` + **`POST /api/mesh-studio/import-obj`**, **`POST /api/tex/encode`** |
 | Equipment / skin | `/api/item-mesh/resolve` (multi-mat silhouette), `/api/skin/parse`, **`POST /api/equipment/pack`**, **`POST /api/client/install`** |
-| Content pack | **`POST /api/content-pack/build`**, **`/playtest`** (unified equipment+map+stage+FTM install plan) |
+| Content pack | **`POST /api/content-pack/build`**, **`/playtest`**, **`/playtest-full`** |
+| SQL | **`POST /api/sql/apply`** (dry-run default; live needs `JFTSE_DATABASE_URL` + mysql client) |
 | Packs | `GET/POST /api/packs`, `GET /api/packs/:name` |
 
 ### Bridge CLI (Python)
