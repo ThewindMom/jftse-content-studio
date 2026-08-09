@@ -1,378 +1,235 @@
-import React, { useState } from "react";
-
-/**
- * Content Pack desk — one job: build → install → SQL dry-run/apply → playtest checklist.
- * Design: progressive steps, PASS/TODO honesty, mono paths, no marketing chrome.
- */
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    headers: { "content-type": "application/json" },
-    ...init,
-  });
-  const data = (await response.json()) as T & { error?: string; detail?: string };
-  if (!response.ok) {
-    throw new Error(data.detail ?? data.error ?? `HTTP ${response.status}`);
-  }
-  return data;
-}
-
-type Check = { id?: string; ok: boolean; label?: string; destRelative?: string; path?: string };
+import { useEffect, useReducer, useRef, useState } from "react";
+import { ConfirmDialog } from "./ConfirmDialog";
+import {
+  ContentPackPanels,
+  type DraftField,
+} from "./ContentPackPanels";
+import {
+  contentPackApi as api,
+  initialContentPackDraft,
+  type ApiRecord,
+  type PackManifest,
+  type PreflightResult,
+} from "./contentPackApi";
+import {
+  createContentPackWorkflow,
+  getContentPackActionReason,
+  getNextContentPackAction,
+  reduceContentPackWorkflow,
+  type ContentPackAction,
+} from "./contentPackWorkflow";
 
 export function ContentPackDesk() {
-  const [name, setName] = useState("designer-pack");
-  const [meshIndex, setMeshIndex] = useState("214");
-  const [char, setChar] = useState("NIKI");
-  const [itemDesc, setItemDesc] = useState("Studio Custom Racket");
-  const [mapName, setMapName] = useState("Studio Custom Court");
-  const [scenarioIds, setScenarioIds] = useState("1");
-  const [stageScript, setStageScript] = useState("1_Emerald_Beach.set");
-  const [includeFtm, setIncludeFtm] = useState(true);
-  const [ftmArchive, setFtmArchive] = useState("Res/MapSet/FantaCastle.res");
-  const [ftmMember, setFtmMember] = useState("FantaCastleOutSide.ftm");
-  const [status, setStatus] = useState("Configure a pack, then Build.");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [manifest, setManifest] = useState<{
-    outDir?: string;
-    installPlan?: Array<{ source: string; destRelative: string }>;
-    parts?: Record<string, unknown>;
-  } | null>(null);
-  const [sqlPath, setSqlPath] = useState("");
-  const [sqlResult, setSqlResult] = useState("");
-  const [checks, setChecks] = useState<Check[]>([]);
-  const [ready, setReady] = useState(false);
+  const [workflow, dispatch] = useReducer(
+    reduceContentPackWorkflow,
+    undefined,
+    createContentPackWorkflow,
+  );
+  const revisionRef = useRef(workflow.revision);
+  revisionRef.current = workflow.revision;
+  const [draft, setDraft] = useState(initialContentPackDraft);
+  const [localClient, setLocalClient] = useState("");
+  const [busy, setBusy] = useState<ContentPackAction | null>(null);
+  const [confirm, setConfirm] = useState<"install" | "sqlApply" | null>(null);
+  const [status, setStatus] = useState("Configure the draft, then build.");
+  const [preflight, setPreflight] = useState<PreflightResult | null>(null);
+  const manifest = workflow.build?.value as PackManifest | undefined;
+  const sqlPath = manifest?.sqlPath ?? "";
+  const next = getNextContentPackAction(workflow);
+
+  useEffect(() => {
+    let active = true;
+    void api<{ localClient?: string }>("/api/health")
+      .then((result) => active && setLocalClient(result.localClient ?? ""))
+      .catch(() => active && setLocalClient(""));
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const edit = (field: DraftField, value: string | boolean) => {
+    setDraft((current) => ({ ...current, [field]: value }));
+    dispatch({ type: "draftChanged" });
+    setPreflight(null);
+    setStatus("Draft changed — rebuild required.");
+  };
+  const can = (action: ContentPackAction) =>
+    !busy && (
+      action === "build" ||
+      next === action ||
+      (action === "preflight" && next === "complete")
+    );
+  const fail = (action: ContentPackAction, label: string, error: unknown) => {
+    const detail = error instanceof Error ? error.message : String(error);
+    dispatch({ type: "actionFailed", action, message: detail });
+    setStatus(`${label} MISS — ${detail}`);
+  };
 
   const build = async () => {
-    setBusy(true);
-    setError("");
-    setStatus("Building content pack…");
+    const revision = workflow.revision;
+    setBusy("build");
+    dispatch({ type: "retry", action: "build" });
     try {
-      const scn = scenarioIds
-        .split(/[,\s]+/)
-        .filter(Boolean)
-        .map((s) => Number(s))
-        .filter((n) => Number.isFinite(n));
-      const body: Record<string, unknown> = {
-        name,
+      const scenarios = draft.scenarioIds.split(/[,\s]+/).filter(Boolean)
+        .map(Number).filter(Number.isFinite);
+      const body: ApiRecord = {
+        name: draft.name,
         equipment: {
-          meshIndex: Number(meshIndex) || meshIndex,
-          char,
-          desc: itemDesc,
+          meshIndex: Number(draft.meshIndex) || draft.meshIndex,
+          char: draft.char,
+          desc: draft.itemDesc,
         },
         map: {
-          draft: { name: mapName, playTime: 180, breathTime: 100 },
-          scenarioIds: scn,
-          stageScript,
+          draft: { name: draft.mapName, playTime: 180, breathTime: 100 },
+          scenarioIds: scenarios,
+          stageScript: draft.stageScript,
         },
-        stage: {
-          member: stageScript,
-          fields: {},
-        },
+        stage: { member: draft.stageScript, fields: {} },
       };
-      if (includeFtm) {
+      if (draft.includeFtm) {
         body.ftm = {
-          archive: ftmArchive,
-          member: ftmMember,
+          archive: draft.ftmArchive,
+          member: draft.ftmMember,
           patches: [{ index: 0, x: 10, y: 10 }],
         };
       }
-      const pack = await api<{
-        ok?: boolean;
-        outDir?: string;
-        installPlan?: Array<{ source: string; destRelative: string }>;
-        parts?: { map?: { sql?: string }; equipment?: { sql?: string } };
-      }>("/api/content-pack/build", {
+      const result = await api<PackManifest>("/api/content-pack/build", {
         method: "POST",
         body: JSON.stringify(body),
       });
-      setManifest(pack);
-      const mapSql = pack.parts?.map?.sql ?? pack.parts?.equipment?.sql ?? "";
-      setSqlPath(mapSql);
-      setStatus(
-        `Built · ${pack.installPlan?.length ?? 0} install files · ${pack.outDir ?? ""}`,
-      );
-      setChecks([]);
-      setReady(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setStatus("Build failed");
+      if (revision !== revisionRef.current) {
+        setStatus("Build result ignored — draft changed.");
+        return;
+      }
+      dispatch({
+        type: "buildSucceeded",
+        revision,
+        hasSql: Boolean(result.sqlPath),
+        receipt: result,
+      });
+      setPreflight(null);
+      setStatus(`Build PASS — ${result.installPlan?.length ?? 0} files.`);
+    } catch (error) {
+      fail("build", "Build", error);
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
   const install = async () => {
-    if (!manifest?.installPlan?.length) {
-      setError("Build a pack first");
-      return;
-    }
-    setBusy(true);
-    setError("");
-    setStatus("Installing to local client…");
+    if (!manifest?.installPlan?.length || !localClient) return;
+    const revision = workflow.revision;
+    setBusy("install");
+    setConfirm(null);
     try {
-      const result = await api<{ ok?: boolean; installed?: Record<string, string> }>(
-        "/api/client/install",
+      const result = await api<ApiRecord>("/api/content-pack/install", {
+        method: "POST",
+        body: JSON.stringify({
+          targetClient: localClient,
+          installPlan: manifest.installPlan,
+        }),
+      });
+      dispatch({ type: "installSucceeded", revision, receipt: result });
+      setStatus(`Install PASS — ${manifest.installPlan.length} verified files.`);
+    } catch (error) {
+      fail("install", "Install", error);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const runSql = async (dryRun: boolean) => {
+    if (!sqlPath) return;
+    const action = dryRun ? "sqlAudit" : "sqlApply";
+    setBusy(action);
+    setConfirm(null);
+    try {
+      const result = await api<ApiRecord>("/api/sql/apply", {
+        method: "POST",
+        body: JSON.stringify({ path: sqlPath, dryRun }),
+      });
+      dispatch({
+        type: dryRun ? "sqlAuditSucceeded" : "sqlApplySucceeded",
+        revision: workflow.revision,
+        receipt: result,
+      });
+      setStatus(dryRun ? "SQL audit PASS." : "SQL apply PASS.");
+    } catch (error) {
+      fail(action, dryRun ? "SQL audit" : "SQL apply", error);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const runPreflight = async () => {
+    if (!manifest?.installPlan) return;
+    setBusy("preflight");
+    try {
+      const result = await api<PreflightResult>(
+        "/api/content-pack/playtest-full",
         {
           method: "POST",
-          body: JSON.stringify({ files: manifest.installPlan }),
+          body: JSON.stringify({
+            targetClient: localClient,
+            installPlan: manifest.installPlan,
+            sqlPath: sqlPath || undefined,
+            sqlApplyReceipt: workflow.sqlApply?.value,
+          }),
         },
       );
-      setStatus(
-        `Installed · ${Object.keys(result.installed ?? {}).length} paths`,
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setStatus("Install failed");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const sqlDryRun = async () => {
-    if (!sqlPath) {
-      setError("No SQL path from pack (map create)");
-      return;
-    }
-    setBusy(true);
-    setError("");
-    try {
-      const result = await api<{
-        ok?: boolean;
-        dryRun?: boolean;
-        audit?: { insertCount?: number; statementCount?: number; safe?: boolean };
-        error?: string;
-      }>("/api/sql/apply", {
-        method: "POST",
-        body: JSON.stringify({ path: sqlPath, dryRun: true }),
-      });
-      setSqlResult(
-        `Dry-run · statements ${result.audit?.statementCount ?? "?"} · inserts ${result.audit?.insertCount ?? "?"} · safe=${result.audit?.safe}`,
-      );
-      setStatus("SQL dry-run complete");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setStatus("SQL dry-run failed");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const sqlApply = async () => {
-    if (!sqlPath) {
-      setError("No SQL path");
-      return;
-    }
-    setBusy(true);
-    setError("");
-    try {
-      const result = await api<{
-        ok?: boolean;
-        applied?: boolean;
-        error?: string;
-        hint?: string;
-      }>("/api/sql/apply", {
-        method: "POST",
-        body: JSON.stringify({ path: sqlPath, dryRun: false }),
-      });
-      if (!result.ok) {
-        throw new Error(result.error ?? result.hint ?? "apply failed");
+      setPreflight(result);
+      if (!result.preflightPassed) {
+        fail("preflight", "Local client preflight", "Fix every MISS below.");
+        return;
       }
-      setSqlResult(`Applied · applied=${result.applied}`);
-      setStatus("SQL applied to database");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setStatus("SQL apply failed (need JFTSE_DATABASE_URL + mysql client)");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const runPlaytest = async () => {
-    setBusy(true);
-    setError("");
-    setStatus("Running playtest checklist…");
-    try {
-      const body: Record<string, unknown> = {};
-      if (manifest?.installPlan) body.installPlan = manifest.installPlan;
-      if (sqlPath) body.sqlPath = sqlPath;
-      const result = await api<{
-        ready?: boolean;
-        checklist?: Check[];
-        checks?: Check[];
-        launchCommand?: string;
-      }>("/api/content-pack/playtest-full", {
-        method: "POST",
-        body: JSON.stringify(body),
+      dispatch({
+        type: "preflightSucceeded",
+        revision: workflow.revision,
+        receipt: result,
       });
-      const list = result.checklist ?? result.checks ?? [];
-      setChecks(list);
-      setReady(Boolean(result.ready));
-      setStatus(
-        result.ready
-          ? `Playtest ready · ${result.launchCommand ?? "launch local client"}`
-          : "Playtest incomplete — fix failing checks",
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setStatus("Playtest check failed");
+      setStatus("Local client preflight PASS — manual DX9 check required.");
+    } catch (error) {
+      fail("preflight", "Local client preflight", error);
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
-  return (
-    <main className="workspace">
-      <section className="panel" aria-label="Pack configuration">
-        <header>
-          <h2>Content pack</h2>
-        </header>
-        <div className="body">
-          <p className="empty">
-            One path: build multi-asset pack → install local client → dry-run/apply map SQL →
-            checklist. Stock client writes are refused.
-          </p>
-          <div className="field-grid">
-            <label>
-              Pack name
-              <input value={name} onChange={(e) => setName(e.target.value)} />
-            </label>
-            <label>
-              Mesh index
-              <input value={meshIndex} onChange={(e) => setMeshIndex(e.target.value)} />
-            </label>
-            <label>
-              Character
-              <input value={char} onChange={(e) => setChar(e.target.value)} />
-            </label>
-            <label>
-              Item name
-              <input value={itemDesc} onChange={(e) => setItemDesc(e.target.value)} />
-            </label>
-            <label>
-              Map name
-              <input value={mapName} onChange={(e) => setMapName(e.target.value)} />
-            </label>
-            <label>
-              Scenario ids
-              <input value={scenarioIds} onChange={(e) => setScenarioIds(e.target.value)} />
-            </label>
-            <label>
-              Stage script
-              <input value={stageScript} onChange={(e) => setStageScript(e.target.value)} />
-            </label>
-            <label>
-              <span>
-                <input
-                  type="checkbox"
-                  checked={includeFtm}
-                  onChange={(e) => setIncludeFtm(e.target.checked)}
-                />{" "}
-                Include FTM patch sample
-              </span>
-            </label>
-            {includeFtm && (
-              <>
-                <label>
-                  FTM archive
-                  <input value={ftmArchive} onChange={(e) => setFtmArchive(e.target.value)} />
-                </label>
-                <label>
-                  FTM member
-                  <input value={ftmMember} onChange={(e) => setFtmMember(e.target.value)} />
-                </label>
-              </>
-            )}
-          </div>
-          <div className="actions">
-            <button className="btn primary" type="button" disabled={busy} onClick={() => void build()}>
-              1 · Build pack
-            </button>
-            <button
-              className="btn primary"
-              type="button"
-              disabled={busy || !manifest?.installPlan?.length}
-              onClick={() => void install()}
-            >
-              2 · Install local
-            </button>
-            <button
-              className="btn"
-              type="button"
-              disabled={busy || !sqlPath}
-              onClick={() => void sqlDryRun()}
-            >
-              3 · SQL dry-run
-            </button>
-            <button
-              className="btn"
-              type="button"
-              disabled={busy || !sqlPath}
-              onClick={() => void sqlApply()}
-            >
-              3b · SQL apply
-            </button>
-            <button
-              className="btn primary"
-              type="button"
-              disabled={busy}
-              onClick={() => void runPlaytest()}
-            >
-              4 · Playtest checklist
-            </button>
-          </div>
-        </div>
-      </section>
+  const act = (action: ContentPackAction) => {
+    dispatch({ type: "retry", action });
+    if (action === "build") void build();
+    if (action === "install") setConfirm("install");
+    if (action === "sqlAudit") void runSql(true);
+    if (action === "sqlApply") setConfirm("sqlApply");
+    if (action === "preflight") void runPreflight();
+  };
 
-      <section className="panel" aria-label="Pack status">
-        <header>
-          <h2>Status</h2>
-        </header>
-        <div className="body">
-          <div className="empty">{status}</div>
-          {error && (
-            <div className="mono" style={{ color: "var(--danger)" }} role="alert">
-              {error}
-            </div>
-          )}
-          {manifest?.outDir && (
-            <div>
-              <strong>Out</strong>
-              <div className="mono">{manifest.outDir}</div>
-            </div>
-          )}
-          {sqlPath && (
-            <div>
-              <strong>Map SQL</strong>
-              <div className="mono">{sqlPath}</div>
-            </div>
-          )}
-          {sqlResult && <div className="empty mono">{sqlResult}</div>}
-          {manifest?.installPlan && (
-            <ul className="validation">
-              {manifest.installPlan.map((f) => (
-                <li key={f.destRelative} className="ok">
-                  FILE — {f.destRelative}
-                </li>
-              ))}
-            </ul>
-          )}
-          {checks.length > 0 && (
-            <>
-              <strong>Playtest</strong>
-              <ul className="validation">
-                <li className={ready ? "ok" : "bad"}>
-                  {ready ? "PASS" : "TODO"} — overall ready
-                </li>
-                {checks.map((row, i) => (
-                  <li key={row.id ?? row.destRelative ?? i} className={row.ok ? "ok" : "bad"}>
-                    {row.ok ? "PASS" : "MISS"} — {row.label ?? row.destRelative ?? row.path}
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </div>
-      </section>
-    </main>
-  );
+  return <>
+    <ContentPackPanels
+      busy={busy}
+      can={can}
+      draft={draft}
+      installPlan={manifest?.installPlan}
+      localClient={localClient}
+      next={next}
+      onAction={act}
+      onDraftChange={edit}
+      preflight={preflight}
+      reason={(action) => getContentPackActionReason(workflow, action)}
+      sqlPath={sqlPath}
+      status={status}
+      workflow={workflow}
+    />
+    <ConfirmDialog
+      confirmLabel={confirm === "install" ? "Install verified files" : "Apply audited SQL"}
+      description={confirm === "install"
+        ? `Write ${manifest?.installPlan?.length ?? 0} generated files to ${localClient}. Stock files are refused.`
+        : `Apply ${sqlPath} using only the server-configured database credentials.`}
+      onCancel={() => setConfirm(null)}
+      onConfirm={() => void (confirm === "install" ? install() : runSql(false))}
+      open={confirm !== null}
+      title={confirm === "install" ? "Install to local client?" : "Apply SQL to local database?"}
+      tone={confirm === "sqlApply" ? "danger" : "default"}
+    />
+  </>;
 }
