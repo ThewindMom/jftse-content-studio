@@ -1,0 +1,15 @@
+Command:
+bun test tests/api.test.ts -t "rejects injected equipment part SQL"
+
+Result:
+GREEN
+
+Suite summary:
+1 pass
+130 filtered out
+0 fail
+6 expect() calls
+
+The generated equipment SQL now remains exactly two INSERT statements
+targeting `s_product` and `product`; the malicious `part` value remains
+inside its quoted string literal.

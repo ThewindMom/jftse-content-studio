@@ -1,16 +1,40 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { EquipmentMeshPreview } from "./EquipmentMeshPreview";
+import { EquipmentCreatorPanel } from "./EquipmentCreatorPanel.tsx";
 import { createRoot } from "react-dom/client";
 import { ContentPackDesk } from "./ContentPackDesk.tsx";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { MapStudio } from "./MapStudio.tsx";
 import { MeshStudio } from "./MeshStudio.tsx";
 import {
+  createProjectModel,
+  projectReducer,
+  serializeProject,
+  type ProjectDraft,
+  type ProjectModel,
+} from "./projectModel";
+import {
+  equipmentDraftProjectValue,
+  mapSceneProjectValue,
+  readProjectEquipmentDraft,
+  readProjectMapScene,
+  updateProjectEditor,
+  updateProjectShell,
+} from "./projectEditors.ts";
+import {
+  PROJECT_TEMPLATES,
+  instantiateProjectTemplate,
+  recoverProjectAutosave,
+  type ProjectTemplateId,
+} from "./projectHardening.ts";
+import {
   moveTab,
   WORKSPACE_ORDER,
   type WorkspaceMode,
 } from "./workspaceNavigation";
 type StepId = "item" | "effect" | "export" | "install" | "playtest";
+const PROJECT_STORAGE_KEY = "jftse-content-studio.project";
+const PROJECT_BACKUP_KEY = "jftse-content-studio.project.backup";
 
 type Atlas = {
   archive: string;
@@ -274,9 +298,121 @@ function ParticlePreview({
   );
 }
 
+function projectDraft(workspace: WorkspaceMode, step: StepId): ProjectDraft {
+  return {
+    shell: { workspace, step },
+    editors: {},
+  };
+}
+
+export function recoveredWorkspace(model: ProjectModel): WorkspaceMode {
+  const value = model.present.envelope.draft.shell.workspace;
+  return typeof value === "string" &&
+    WORKSPACE_ORDER.includes(value as WorkspaceMode)
+    ? (value as WorkspaceMode)
+    : "equipment";
+}
+
+export function recoveredStep(model: ProjectModel): StepId {
+  const value = model.present.envelope.draft.shell.step;
+  return typeof value === "string" &&
+    STEPS.some((entry) => entry.id === value)
+    ? (value as StepId)
+    : "item";
+}
+
+export function travelProjectSnapshot(
+  model: ProjectModel,
+  type: "undo" | "redo",
+): { model: ProjectModel; workspace: WorkspaceMode; step: StepId } {
+  const next = projectReducer(model, { type });
+  return {
+    model: next,
+    workspace: recoveredWorkspace(next),
+    step: recoveredStep(next),
+  };
+}
+
+function loadInitialProject(): {
+  model: ProjectModel;
+  recovery:
+    | "new"
+    | "recovered"
+    | "recovered-from-backup"
+    | "malformed"
+    | "newer-version";
+} {
+  try {
+    const primary = localStorage.getItem(PROJECT_STORAGE_KEY);
+    if (primary) {
+      const recovery = recoverProjectAutosave(
+        primary,
+        localStorage.getItem(PROJECT_BACKUP_KEY),
+      );
+      if (
+        recovery.status === "ready" ||
+        recovery.status === "recovered-from-backup"
+      ) {
+        return {
+          model: createProjectModel(
+            recovery.envelope.name,
+            recovery.envelope.draft,
+          ),
+          recovery:
+            recovery.status === "recovered-from-backup"
+              ? "recovered-from-backup"
+              : "recovered",
+        };
+      }
+      return {
+        model: createProjectModel(
+          "Untitled project",
+          projectDraft("equipment", "item"),
+        ),
+        recovery:
+          recovery.primary.status === "unavailable" &&
+          recovery.primary.reason === "newer-version"
+            ? "newer-version"
+            : "malformed",
+      };
+    }
+    return {
+      model: createProjectModel(
+        "Untitled project",
+        projectDraft("equipment", "item"),
+      ),
+      recovery: "new",
+    };
+  } catch {
+    return {
+      model: createProjectModel(
+        "Untitled project",
+        projectDraft("equipment", "item"),
+      ),
+      recovery: "new",
+    };
+  }
+}
+
 function App() {
-  const [workspace, setWorkspace] = useState<WorkspaceMode>("equipment");
-  const [step, setStep] = useState<StepId>("item");
+  const [initialProject] = useState(loadInitialProject);
+  const [projectModel, setProjectModel] = useState(initialProject.model);
+  const [projectTemplate, setProjectTemplate] =
+    useState<ProjectTemplateId>("equipment-starter");
+  const [workspace, setWorkspace] = useState<WorkspaceMode>(() =>
+    recoveredWorkspace(initialProject.model),
+  );
+  const [step, setStep] = useState<StepId>(() =>
+    recoveredStep(initialProject.model),
+  );
+  const equipmentProjectDraft = useMemo(
+    () => readProjectEquipmentDraft(projectModel.present.envelope.draft),
+    [projectModel.present.envelope.draft],
+  );
+  const mapProjectScene = useMemo(
+    () => readProjectMapScene(projectModel.present.envelope.draft),
+    [projectModel.present.envelope.draft],
+  );
   const [healthOk, setHealthOk] = useState(false);
   const [healthDetail, setHealthDetail] = useState("connecting…");
   const [launchHint, setLaunchHint] = useState("");
@@ -335,6 +471,96 @@ function App() {
   const stepTabs = useRef<Partial<Record<StepId, HTMLButtonElement | null>>>(
     {},
   );
+  const pendingTravel = useRef<ReturnType<typeof travelProjectSnapshot> | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (pendingTravel.current) return;
+    setProjectModel((current) =>
+      projectReducer(current, {
+        type: "update",
+        draft: updateProjectShell(
+          current.present.envelope.draft,
+          workspace,
+          step,
+        ),
+      }),
+    );
+  }, [step, workspace]);
+
+  const updateEditorDraft = (
+    key: "equipment" | "map",
+    value: ReturnType<typeof equipmentDraftProjectValue>,
+  ) => {
+    setProjectModel((current) =>
+      projectReducer(current, {
+        type: "update",
+        draft: updateProjectEditor(
+          current.present.envelope.draft,
+          key,
+          value,
+        ),
+      }),
+    );
+  };
+
+  const serializedProject = useMemo(
+    () => serializeProject(projectModel),
+    [projectModel],
+  );
+
+  useEffect(() => {
+    try {
+      const current = localStorage.getItem(PROJECT_STORAGE_KEY);
+      if (current && current !== serializedProject) {
+        localStorage.setItem(PROJECT_BACKUP_KEY, current);
+      }
+      localStorage.setItem(PROJECT_STORAGE_KEY, serializedProject);
+      setProjectModel((current) =>
+        projectReducer(current, { type: "mark-saved" }),
+      );
+    } catch {
+      setStatus("Autosave unavailable in this browser.");
+    }
+  }, [serializedProject]);
+
+  const travelProject = (type: "undo" | "redo") => {
+    setProjectModel((current) => {
+      const result = travelProjectSnapshot(current, type);
+      pendingTravel.current = result.model === current ? null : result;
+      return result.model;
+    });
+    pushToast(type === "undo" ? "Project change undone" : "Project change redone");
+  };
+
+  useEffect(() => {
+    const pending = pendingTravel.current;
+    if (!pending || pending.model.present !== projectModel.present) return;
+    if (workspace !== pending.workspace) setWorkspace(pending.workspace);
+    if (step !== pending.step) setStep(pending.step);
+    if (workspace === pending.workspace && step === pending.step) {
+      pendingTravel.current = null;
+    }
+  }, [projectModel, step, workspace]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "z") {
+        return;
+      }
+      if (
+        event.target instanceof Element &&
+        event.target.closest("input, textarea, select, [contenteditable='true']")
+      ) {
+        return;
+      }
+      event.preventDefault();
+      travelProject(event.shiftKey ? "redo" : "undo");
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [projectModel]);
 
   const focusWorkspace = (next: WorkspaceMode) => {
     setWorkspace(next);
@@ -799,6 +1025,97 @@ function App() {
         </button>
       </header>
 
+      <section className="project-bar" aria-label="Project controls">
+        <label>
+          Project
+          <input
+            aria-label="Project name"
+            value={projectModel.present.envelope.name}
+            onChange={(event) =>
+              setProjectModel((current) =>
+                projectReducer(current, {
+                  type: "update",
+                  name: event.target.value,
+                }),
+              )
+            }
+          />
+        </label>
+        <span className={`project-state ${projectModel.dirty ? "dirty" : ""}`}>
+          {projectModel.dirty ? "Saving…" : "Autosaved"}
+        </span>
+        <label className="project-template">
+          Template
+          <select
+            aria-label="Project template"
+            value={projectTemplate}
+            onChange={(event) =>
+              setProjectTemplate(event.target.value as ProjectTemplateId)
+            }
+          >
+            {PROJECT_TEMPLATES.map((template) => (
+              <option key={template.id} value={template.id}>
+                {template.title}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          className="btn"
+          onClick={() => {
+            const template = PROJECT_TEMPLATES.find(
+              ({ id }) => id === projectTemplate,
+            );
+            if (!template) return;
+            const envelope = instantiateProjectTemplate(
+              projectTemplate,
+              `${template.title} project`,
+            );
+            const next = createProjectModel(envelope.name, envelope.draft);
+            setProjectModel(next);
+            setWorkspace(recoveredWorkspace(next));
+            setStep(recoveredStep(next));
+            pushToast(`${template.title} template applied`);
+          }}
+          type="button"
+        >
+          Apply template
+        </button>
+        <button
+          className="btn"
+          disabled={projectModel.past.length === 0}
+          onClick={() => travelProject("undo")}
+          type="button"
+        >
+          Undo
+        </button>
+        <button
+          className="btn"
+          disabled={projectModel.future.length === 0}
+          onClick={() => travelProject("redo")}
+          type="button"
+        >
+          Redo
+        </button>
+        <details className="advanced-diagnostics">
+          <summary>Advanced diagnostics</summary>
+          <dl className="kv">
+            <div>
+              <dt>Recovery</dt>
+              <dd>{initialProject.recovery}</dd>
+            </div>
+            <div>
+              <dt>Revision</dt>
+              <dd>{projectModel.present.revision}</dd>
+            </div>
+            <div>
+              <dt>Bridge</dt>
+              <dd>{healthDetail}</dd>
+            </div>
+          </dl>
+        </details>
+      </section>
+
       {toast && (
         <div className="toast" role="status" aria-live="polite">
           {toast}
@@ -845,9 +1162,11 @@ function App() {
       )}
 
       {setup && !setup.ready && (
-        <section className="banner panel-lite warn" aria-label="Setup checklist">
-          <div className="banner-copy">
-            <strong>Finish environment setup</strong>
+        <details className="setup-disclosure panel-lite warn">
+          <summary>
+            Setup incomplete · expand checklist
+          </summary>
+          <div className="banner-copy" aria-label="Setup checklist">
             <ul className="validation">
               {setup.checklist.map((row) => (
                 <li key={row.id} className={row.ok ? "ok" : "bad"}>
@@ -860,7 +1179,7 @@ function App() {
               <code>JFTSE_LOCAL_CLIENT</code>, then restart <code>bun run dev</code>.
             </p>
           </div>
-        </section>
+        </details>
       )}
 
       <section
@@ -879,6 +1198,10 @@ function App() {
       >
         <MapStudio
           active={workspace === "maps"}
+          projectScene={mapProjectScene}
+          onProjectSceneChange={(scene) =>
+            updateEditorDraft("map", mapSceneProjectValue(scene))
+          }
           onOpenMesh={(archive, member) => {
             setMeshFocus({ archive, member });
             setWorkspace("meshes");
@@ -1104,6 +1427,18 @@ function App() {
             </h2>
           </header>
           <div className="body">
+            {step === "item" && (
+              <EquipmentCreatorPanel
+                stockMeshIndex={selectedItem ? Number(selectedItem.mesh) : null}
+                value={equipmentProjectDraft}
+                onChange={(draft) =>
+                  updateEditorDraft(
+                    "equipment",
+                    draft ? equipmentDraftProjectValue(draft) : null,
+                  )
+                }
+              />
+            )}
             {step === "item" && selectedItem && (
               <>
                 <div className="field-grid">
@@ -1665,7 +2000,9 @@ PT_Life=${slotFields.PT_Life}`}
   );
 }
 
-const rootElement = document.getElementById("root");
+const rootElement = typeof document === "undefined"
+  ? null
+  : document.getElementById("root");
 if (rootElement) {
   const existing = (
     rootElement as HTMLElement & { __studioRoot?: ReturnType<typeof createRoot> }

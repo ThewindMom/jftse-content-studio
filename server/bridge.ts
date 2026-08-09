@@ -2,6 +2,7 @@ import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { kill as signalProcess, platform } from "node:process";
 import { bridgeEnv, config } from "./config.ts";
+import { BridgeScheduler } from "./bridgeScheduler.ts";
 
 export type BridgeResult = Record<string, unknown>;
 
@@ -26,6 +27,27 @@ const DEFAULT_TIMEOUT_MS = 180_000;
 const DETAIL_LIMIT = 2_000;
 const OUTPUT_LIMIT = 1_000_000;
 const TERMINATION_GRACE_MS = 1_000;
+const bridgeScheduler = new BridgeScheduler({ concurrency: 4, maxQueue: 16 });
+const ownedProcesses = new Set<ReturnType<typeof Bun.spawn>>();
+
+function terminateOwnedProcess(
+  process: ReturnType<typeof Bun.spawn>,
+  signal: "SIGTERM" | "SIGKILL",
+): void {
+  if (platform !== "win32") {
+    try {
+      signalProcess(-process.pid, signal);
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ESRCH") return;
+    }
+  }
+  try {
+    process.kill(signal);
+  } catch {
+    // The direct child already exited.
+  }
+}
 
 function sanitizeDetail(value: string): string {
   return value.replace(/[^\x09\x0a\x0d\x20-\x7e]/g, "?").slice(-DETAIL_LIMIT);
@@ -51,7 +73,7 @@ async function readBoundedTail(
   }
 }
 
-export async function runBridge(
+async function executeBridge(
   args: string[],
   options: BridgeOptions = {},
 ): Promise<BridgeResult> {
@@ -77,6 +99,11 @@ export async function runBridge(
       stdin: "ignore",
     },
   );
+  ownedProcesses.add(process);
+  void process.exited.then(
+    () => ownedProcesses.delete(process),
+    () => ownedProcesses.delete(process),
+  );
   const completion = Promise.all([
     readBoundedTail(process.stdout),
     readBoundedTail(process.stderr),
@@ -92,23 +119,7 @@ export async function runBridge(
   ]);
   if (timeout) clearTimeout(timeout);
   if (outcome.kind === "timeout") {
-    const terminate = (signal: "SIGTERM" | "SIGKILL") => {
-      if (platform !== "win32") {
-        try {
-          signalProcess(-process.pid, signal);
-          return;
-        } catch (error) {
-          const code = (error as NodeJS.ErrnoException).code;
-          if (code === "ESRCH") return;
-        }
-      }
-      try {
-        process.kill(signal);
-      } catch {
-        // The direct child already exited.
-      }
-    };
-    terminate("SIGTERM");
+    terminateOwnedProcess(process, "SIGTERM");
     let grace: Timer | undefined;
     const exitedDuringGrace = await Promise.race([
       process.exited.then(() => true),
@@ -117,7 +128,7 @@ export async function runBridge(
       }),
     ]);
     if (grace) clearTimeout(grace);
-    if (!exitedDuringGrace) terminate("SIGKILL");
+    if (!exitedDuringGrace) terminateOwnedProcess(process, "SIGKILL");
     await completion;
     throw new BridgeError(
       "BRIDGE_TIMEOUT",
@@ -140,6 +151,31 @@ export async function runBridge(
       "BRIDGE_INVALID_JSON",
       sanitizeDetail(line || "Bridge returned no JSON"),
     );
+  }
+}
+
+export function runBridge(
+  args: string[],
+  options: BridgeOptions = {},
+): Promise<BridgeResult> {
+  return bridgeScheduler.schedule(() => executeBridge(args, options));
+}
+
+export async function shutdownBridgeProcesses(): Promise<void> {
+  bridgeScheduler.close();
+  const processes = [...ownedProcesses];
+  for (const process of processes) terminateOwnedProcess(process, "SIGTERM");
+  let grace: Timer | undefined;
+  const exited = await Promise.race([
+    Promise.allSettled(processes.map((process) => process.exited)).then(() => true),
+    new Promise<boolean>((resolve) => {
+      grace = setTimeout(() => resolve(false), TERMINATION_GRACE_MS);
+    }),
+  ]);
+  if (grace) clearTimeout(grace);
+  if (!exited) {
+    for (const process of processes) terminateOwnedProcess(process, "SIGKILL");
+    await Promise.allSettled(processes.map((process) => process.exited));
   }
 }
 

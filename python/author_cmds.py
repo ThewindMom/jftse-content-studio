@@ -97,12 +97,16 @@ def make_handlers(
             path=str(pack["path"]),
             desc=args.desc or f"Custom mesh {new_index}",
             out_dir=out_dir / "catalog",
+            source_item_index=int(args.source_item_index),
+            part=args.part or "Racket",
+            effect=int(args.effect),
         )
         sql = build_item_sql_pack(
             product_index=int(args.product_index or new_index),
             name=args.desc or f"Custom Item {new_index}",
             mesh=new_index,
             part=args.part or "Racket",
+            effect=int(args.effect),
             gold=int(args.gold or 0),
         )
         sql_path = out_dir / "item-pack.sql"

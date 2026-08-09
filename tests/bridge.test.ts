@@ -4,10 +4,11 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  watch,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runBridge } from "../server/bridge.ts";
+import { runBridge, shutdownBridgeProcesses } from "../server/bridge.ts";
 
 type BridgeFailure = Error & { code?: string; detail?: string };
 type RunBridgeWithOptions = (
@@ -40,7 +41,7 @@ case "$JFTSE_BRIDGE_FIXTURE" in
     exec bun -e 'setTimeout(() => console.log(JSON.stringify({ ok: true })), 200)'
     ;;
   tree-timeout)
-    exec bun -e 'const child = Bun.spawn(["bun", "-e", "setInterval(() => {}, 1000)"], { stdin: "ignore", stdout: "ignore", stderr: "ignore" }); await Bun.write(process.env.JFTSE_CHILD_PID_FILE, String(child.pid)); setInterval(() => {}, 1000)'
+    exec bun -e 'const child = Bun.spawn(["bun", "-e", "setInterval(() => {}, 1000)"], { stdin: "ignore", stdout: "inherit", stderr: "inherit" }); await Bun.write(process.env.JFTSE_CHILD_PID_FILE, String(child.pid)); setInterval(() => {}, 1000)'
     ;;
   exit)
     bun -e 'console.error("x".repeat(5000)); process.exit(9)'
@@ -50,6 +51,10 @@ case "$JFTSE_BRIDGE_FIXTURE" in
     ;;
   valid)
     printf 'diagnostic line\\n{"ok":true,"fixture":"valid"}\\n'
+    ;;
+  shutdown)
+    printf 'ready' > "$JFTSE_BRIDGE_READY_FILE"
+    exec bun -e 'setInterval(() => {}, 1000)'
     ;;
 esac
 `,
@@ -130,5 +135,40 @@ describe("bridge lifecycle", () => {
     process.env.JFTSE_BRIDGE_FIXTURE = "valid";
     const result = await runBridge(["health"]);
     expect(result).toEqual({ ok: true, fixture: "valid" });
+  });
+
+  test("shutdown terminates and awaits owned bridge processes", async () => {
+    const readyFile = join(fakeBinDir, "shutdown.ready");
+    rmSync(readyFile, { force: true });
+    process.env.JFTSE_BRIDGE_FIXTURE = "shutdown";
+    process.env.JFTSE_BRIDGE_READY_FILE = readyFile;
+    const watcher = watch(fakeBinDir);
+    let timeout: Timer | undefined;
+    const ready = Promise.race([
+      new Promise<void>((resolve) => {
+        watcher.on("change", (_event, filename) => {
+          if (filename === "shutdown.ready") resolve();
+        });
+      }),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error("bridge readiness timed out")),
+          2_000,
+        );
+      }),
+    ]);
+    const running = runBridge(["health"]);
+    const failure = captureFailure(() => running);
+    try {
+      await ready;
+      await shutdownBridgeProcesses();
+      const error = await failure;
+      expect(error.code).toBe("BRIDGE_EXIT_FAILED");
+    } finally {
+      if (timeout) clearTimeout(timeout);
+      watcher.close();
+      delete process.env.JFTSE_BRIDGE_READY_FILE;
+      rmSync(readyFile, { force: true });
+    }
   });
 });

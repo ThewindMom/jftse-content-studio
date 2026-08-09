@@ -1,0 +1,19 @@
+Owned production server: bash_316
+URL: http://127.0.0.1:4310
+
+GET /api/compatibility
+HTTP/1.1 200 OK
+
+Observed:
+- ok=true
+- jarsEqual=true
+- both jar SHA-256 values:
+  590ccfa6d88e0e7ae5af864af212543ec41342197603fd183f782315e3b0402f
+- ftm/prj/set/tex status=proven and compatible=true
+- arbitrary-format-compatibility status=unproven
+- live-game-acceptance status=unproven
+
+GET /api/compatibility?path=/etc/passwd
+HTTP/1.1 400 Bad Request
+
+{"ok":false,"error":"COMPATIBILITY_QUERY_FORBIDDEN"}

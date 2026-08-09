@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 1,
+  "kind": "jftse-item-effect-map-spawn-runtime-truth",
+  "provenance": {
+    "capturedOn": "2026-08-09",
+    "siblingRoot": "../JFTSE",
+    "method": "SHA-256 over immutable sibling text and ZIP resources; proprietary archive bytes are referenced, not copied.",
+    "textSources": [
+      {
+        "path": "../JFTSE/docs/custom-content-loading.md",
+        "sha256": "ce775cccffe575794328f1ee4b917df510a8f39bf36f980d576b42659ec9ba7c",
+        "anchors": ["## 2. Custom racket / item loading", "Effect=\"15\" -> fifteenth record", "## 3. Map loading"]
+      },
+      {
+        "path": "../JFTSE/auth-server/src/main/java/com/jftse/emulator/server/module/DBDataLoader.java",
+        "sha256": "8c78cf6285e993d5f6bb0b1c52b4ae3ecd97aca33a28de864da6ff50f0d4c980",
+        "anchors": ["public boolean loadItemPart()", "itemPart.setItemIndex(Integer.valueOf(itemNode.valueOf(\"@Index\")))"]
+      },
+      {
+        "path": "../JFTSE/entities/src/main/java/com/jftse/entities/database/model/item/ItemPart.java",
+        "sha256": "118a157155160c60118dfbfcdb952927d44143870f02d2437a8c944fdcfada20",
+        "anchors": ["public class ItemPart extends Item", "private Byte maxStrength"]
+      },
+      {
+        "path": "../JFTSE/entities/src/main/java/com/jftse/entities/database/model/item/Item.java",
+        "sha256": "8c77dbec025c47b114222fc9bf4e9ff2f15f7adc9d70eb207dfeed17d3a2689a",
+        "anchors": ["private Integer itemIndex"]
+      },
+      {
+        "path": "../JFTSE/entities/src/main/java/com/jftse/entities/database/model/pocket/PlayerPocket.java",
+        "sha256": "4d24ed468ecac2673af71b505ab862eac75b82ac3d45715f46bb6292ea5c59cb",
+        "anchors": ["private Integer itemIndex", "private Integer enchantLevel = 0"]
+      },
+      {
+        "path": "../JFTSE/entities/src/main/java/com/jftse/entities/database/model/player/ClothEquipment.java",
+        "sha256": "f54191ad923073ff04acc13606d5dbcc3106edec587b90fd266dc1e860e5dd2d",
+        "anchors": ["private Integer racket = 0"]
+      },
+      {
+        "path": "../JFTSE/auth-server/src/main/resources/res/Item_Parts_Ini3.xml",
+        "sha256": "8f27df6983b2e60738759296b6da9ce24c96f274d2857a7796fcc908898e93ca",
+        "anchors": ["<Item Index=\"10728\"", "MAX_STR=\"19\" MAX_STA=\"1\" MAX_DEX=\"5\" MAX_WIL=\"0\""]
+      },
+      {
+        "path": "../JFTSE/chat-server/src/main/java/com/jftse/emulator/server/core/manager/GameManager.java",
+        "sha256": "c369f89bfcb3d618bbc516a86ca7e8851f7bc84e2f4b803331cc3cf932e8132c",
+        "anchors": ["spawnX = rnd.nextFloat(10.0f, 21.0f)", "roomPlayer.setLastMapLayer(0)"]
+      },
+      {
+        "path": "../JFTSE/tools/wind_dragon_slayer/wind_assets.py",
+        "sha256": "0bb6652570affee5a5964152909bb5a584f02b57e3b84a7e347bb3f74956ec00",
+        "anchors": ["expected RacketEffectList with positional IDs 1 through 14", "Ice_Smoke02.ssp"]
+      }
+    ],
+    "resourceRoots": {
+      "stock": "../JFTSE/.jftse-client-linux/client",
+      "local": "../JFTSE/FantaTennis-Local-Client/client"
+    },
+    "resources": [
+      { "client": "stock", "path": "Res/Script/Item.res", "sha256": "2900f84d44f6949b4b24a49428b00811d4e708bafc319fee8231da42ef053f92", "members": ["Item_Parts.set"] },
+      { "client": "local", "path": "Res/Script/Item.res", "sha256": "a92d740959359c1c07d65eca7e5c515f7887131573b0b188d032d602d93e53de", "members": ["Item_Parts.set"] },
+      { "client": "stock", "path": "Res/Script/ETC.res", "sha256": "fdd48666d8874df33cb80836b9615565b56a5385e8ef390e211171dde190093e", "members": ["RacketEffect.set"] },
+      { "client": "local", "path": "Res/Script/ETC.res", "sha256": "7a3c7f1e8f7cd0c7455945e96842d881bb3fc82aac704cf3bcb2df8ff9487e1e", "members": ["RacketEffect.set"] },
+      { "client": "stock", "path": "Res/Effect/Particle.res", "sha256": "5155a692bb756f3fd5ff2899b9a187d6f8321c95efaa5e65500bb7a115163d80", "members": ["Ice_Smoke02.set", "Racket_001.set", "Racket_002.set"] },
+      { "client": "local", "path": "Res/Effect/Particle.res", "sha256": "238ad7e41ea5dea50a5f836ce1d6a422e679c3371f1ae9f908f9187d39854237", "members": ["Ice_Smoke02.set", "Racket_001.set", "Racket_002.set"] },
+      { "client": "stock", "path": "Res/Player/PlayerA/Item07.res", "sha256": "416e7b9fdace8b265bbb6cdee9c94b02cdc60cc8a971a66a443e1771ee271f8c", "members": ["Niki_CommonRacket41.dat"] },
+      { "client": "local", "path": "Res/Player/PlayerA/Item07.res", "sha256": "416e7b9fdace8b265bbb6cdee9c94b02cdc60cc8a971a66a443e1771ee271f8c", "members": ["Niki_CommonRacket41.dat"] },
+      { "client": "stock", "path": "Res/Player/PlayerA/Mesh.res", "sha256": "f1161b140db242245854e07e6d08d47792c208e644165710c39cefd7d147486a", "members": ["Niki.dat"] },
+      { "client": "local", "path": "Res/Player/PlayerA/Mesh.res", "sha256": "f1161b140db242245854e07e6d08d47792c208e644165710c39cefd7d147486a", "members": ["Niki.dat"] },
+      { "client": "stock", "path": "Res/Stage/Info.res", "sha256": "82232601e024005673625e3c377b0b9f6ef371d2937875de64618d150a73f703", "members": ["1_Emerald_Beach.set", "15_Dancetime.set"] },
+      { "client": "local", "path": "Res/Stage/Info.res", "sha256": "82232601e024005673625e3c377b0b9f6ef371d2937875de64618d150a73f703", "members": ["1_Emerald_Beach.set", "15_Dancetime.set"] },
+      { "client": "stock", "path": "Res/Stage/Mesh01.res", "sha256": "bfb4602c842bf096ecc47ba66d23bc401a695017fa4e993f74b13fc2f5cd0296", "members": ["BF_All.dat", "BF_Court01.dat"] },
+      { "client": "local", "path": "Res/Stage/Mesh01.res", "sha256": "bfb4602c842bf096ecc47ba66d23bc401a695017fa4e993f74b13fc2f5cd0296", "members": ["BF_All.dat", "BF_Court01.dat"] },
+      { "client": "stock", "path": "Res/MapSet/FantaCastle.res", "sha256": "4c98720bf480d69c218be83c83772bf4149965803e913f9599bfb13957c226db", "members": ["FantaCastle.ftm", "FantaCastle.prj", "FantaCastleOutSide.ftm"] },
+      { "client": "local", "path": "Res/MapSet/FantaCastle.res", "sha256": "4c98720bf480d69c218be83c83772bf4149965803e913f9599bfb13957c226db", "members": ["FantaCastle.ftm", "FantaCastle.prj", "FantaCastleOutSide.ftm"] }
+    ]
+  },
+  "itemIndexContract": {
+    "invariant": "The same itemIndex identifies the imported server item row, owned pocket row, equipped racket slot, and client Item_Parts.set record.",
+    "exemplar": {
+      "itemIndex": 10728,
+      "server": {
+        "forPlayer": "NIKI",
+        "part": "RACKET",
+        "baseEnchantStats": [17, 0, 2, 0],
+        "maxEnchantStats": [19, 1, 5, 0]
+      },
+      "ownership": {
+        "pocketItemIndex": 10728,
+        "equipmentSlot": "ClothEquipment.racket",
+        "maxVisualGate": { "enchantTotals": [2, 1, 3, 0], "enchantLevel": 9 }
+      },
+      "clientItemSetTupleOrder": ["Index", "Char", "Part", "Mesh", "Tex", "Effect"],
+      "stockClientTuple": [10728, "NIKI", "RACKET", 214, 1, 7],
+      "localClientTuple": [10728, "NIKI", "RACKET", 214, 1, 15]
+    },
+    "racketEffect": {
+      "indexing": "one-based positional; no arithmetic offset",
+      "stockRecordCount": 14,
+      "stockEffect7": { "name": "Niki White Flash", "particle": "Res/Effect/Particle/Racket_002.ssp" },
+      "localRecordCount": 15,
+      "localEffect15": { "name": "Wind Dragon +9", "particle": "Res/Effect/Particle/Ice_Smoke02.ssp" }
+    },
+    "particleResolution": {
+      "rule": ".ssp references resolve to same-stem encrypted .set members",
+      "example": { "reference": "Res/Effect/Particle/Ice_Smoke02.ssp", "archive": "Res/Effect/Particle.res", "member": "Ice_Smoke02.set" },
+      "isolation": "Only the dormant Ice_Smoke02.set slot changes; shared Racket_001.set and Racket_002.set remain shared resources."
+    }
+  },
+  "mapSpawnContract": {
+    "authoredCoordinates": {
+      "classification": "design-only",
+      "storedIn": ["map scene document", "design manifest"],
+      "compiledToJftseRuntime": false
+    },
+    "serverRuntime": {
+      "source": "chat-server/src/main/java/com/jftse/emulator/server/core/manager/GameManager.java:497-533",
+      "mode0Ranges": { "x": [10, 21], "y": [15, 50] },
+      "mode1AccountHomePositions": { "default": [9, 12], "level2": [9, 15], "level3": [10, 17], "level4": [10, 20] },
+      "otherModeRanges": { "x": [40, 46], "y": [60, 64] },
+      "lastMapLayer": 0
+    },
+    "runtimeReceiptContract": {
+      "fields": ["path", "hash", "bytes", "dependencies", "contentPack", "runtimeUnsupported"],
+      "forbiddenAuthoredCoordinateFields": ["spawn", "spawns", "position", "facing", "spawnX", "spawnY"],
+      "requiredLimitation": "player-spawn compilation"
+    }
+  }
+}

@@ -1,0 +1,17 @@
+Invocation:
+curl -i -X POST http://127.0.0.1:4310/api/content-pack/build \
+  -H 'content-type: application/json' \
+  --data @evidence/wave-1-security/malicious-request.json
+
+HTTP/1.1 200 OK
+Content-Type: application/json;charset=utf-8
+Content-Length: 2028
+
+Result summary:
+ok=true
+outDir=/home/thewind/Projects/00_Random_Coding/260705_fanta_tennis/jftse-content-studio/exports/content-pack-1786280908222
+sqlPath=/home/thewind/Projects/00_Random_Coding/260705_fanta_tennis/jftse-content-studio/exports/content-pack-1786280908222/content-pack.sql
+fileCount=2
+installPlan destinations:
+- Res/Player/PlayerA/Item07.res
+- Res/Script/Item.res

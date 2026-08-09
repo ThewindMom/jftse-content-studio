@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   readdirSync,
   rmSync,
   symlinkSync,
@@ -12,8 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const port = 4317;
-const base = `http://127.0.0.1:${port}`;
+let base = "";
 const jftseRoot =
   process.env.JFTSE_ROOT ??
   "/home/thewind/Projects/00_Random_Coding/260705_fanta_tennis/JFTSE";
@@ -128,19 +128,19 @@ async function waitForServerOutput(
   stream: ReadableStream<Uint8Array>,
   marker: string,
   timeoutMs: number,
-): Promise<void> {
+): Promise<string> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let output = "";
   let timeout: Timer | undefined;
   try {
-    await Promise.race([
+    return await Promise.race([
       (async () => {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
           output += decoder.decode(value, { stream: true });
-          if (output.includes(marker)) return;
+          if (output.includes(marker)) return output;
         }
         throw new Error(`server exited before startup marker: ${output}`);
       })(),
@@ -172,6 +172,50 @@ const softPayload = {
   subTexCount: 8,
   allowBannedAtlas: false,
   includeItemBinding: false,
+};
+
+const equipmentCreatorDraft = {
+  asset: {
+    sourceName: "aurora.obj",
+    meshName: "Aurora",
+    vertexCount: 3,
+    indexCount: 3,
+    materials: [{ id: "material-0", name: "Frame" }],
+    warnings: ["Imported topology is preview-only."],
+  },
+  materials: {
+    "material-0": {
+      textureName: "aurora.png",
+      color: "#66ddff",
+      metallic: 0.2,
+      roughness: 0.6,
+    },
+  },
+  attachment: {
+    bone: "Bone_Racket",
+    position: [0, 0, 0],
+    rotation: [0, 0, 0],
+    scale: [1, 1, 1],
+  },
+  metadata: {
+    itemIndex: 41001,
+    name: "Aurora Racket",
+    character: "NIKI",
+    compatibleCharacters: ["NIKI"],
+    price: 25000,
+  },
+  particle: {
+    color: "#66ddff",
+    rate: 18,
+    lifetime: 1.2,
+    size: 0.55,
+    curve: [[0, 0], [0.25, 1], [1, 0]],
+  },
+  runtimeEffect: { effectId: 15, sourceItemIndex: 10728 },
+  comparison: {
+    browserScreenshot: "aurora-browser.png",
+    clientScreenshot: "aurora-client.png",
+  },
 };
 
 beforeAll(async () => {
@@ -227,7 +271,7 @@ cat >/dev/null
     cwd: studioRoot,
     env: {
       ...process.env,
-      PORT: String(port),
+      PORT: "0",
       JFTSE_ROOT: jftseRoot,
       JFTSE_STOCK_CLIENT: stockClient,
       JFTSE_LOCAL_CLIENT: disposableClient,
@@ -241,11 +285,18 @@ cat >/dev/null
     stderr: "pipe",
   });
   try {
-    await waitForServerOutput(
+    const startupOutput = await waitForServerOutput(
       serverProc.stdout as ReadableStream<Uint8Array>,
-      `jftse-content-studio listening on http://127.0.0.1:${port}`,
+      "jftse-content-studio listening on http://127.0.0.1:",
       20_000,
     );
+    const match = startupOutput.match(
+      /jftse-content-studio listening on (http:\/\/127\.0\.0\.1:\d+)/,
+    );
+    if (!match) {
+      throw new Error(`server startup URL missing: ${startupOutput}`);
+    }
+    base = match[1];
   } catch (error) {
     serverProc.kill();
     await serverProc.exited;
@@ -277,6 +328,275 @@ afterAll(async () => {
 });
 
 describe("content studio production API", () => {
+  test("operations hardening returns 413 before oversized pack and SQL payload parsing", async () => {
+    for (const [path, bytes] of [
+      ["/api/content-pack/build", 2 * 1024 * 1024 + 1],
+      ["/api/sql/apply", 16 * 1024 + 1],
+    ] as const) {
+      const response = await fetch(`${base}${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ padding: "x".repeat(bytes) }),
+      });
+      expect(response.status).toBe(413);
+      expect(await response.json()).toEqual({
+        ok: false,
+        error: "REQUEST_BODY_TOO_LARGE",
+      });
+    }
+  });
+
+  test("operations hardening returns 400 for extreme parse knobs", async () => {
+    for (const [path, error] of [
+      ["/api/atlases?limit=1000000", "INVALID_LIMIT"],
+      ["/api/items?limit=NaN", "INVALID_LIMIT"],
+      ["/api/ani/parse?archive=a.res&member=a.ani&maxFrames=999999", "INVALID_MAXFRAMES"],
+      ["/api/ani/parse?archive=a.res&member=a.ani&clipIndex=-1", "INVALID_CLIPINDEX"],
+      ["/api/skin/parse?maxVertices=3.5", "INVALID_MAXVERTICES"],
+      ["/api/item-mesh/resolve?meshIndex=1e99", "INVALID_MESHINDEX"],
+    ] as const) {
+      const response = await fetch(`${base}${path}`);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ ok: false, error });
+    }
+  });
+
+  test("mesh transform rejects archive and member path escapes without writing outside exports", async () => {
+    const outside = mkdtempSync(join(tmpdir(), "jftse-mesh-transform-escape-"));
+    const escaped = join(outside, "escaped.dat");
+    const exportsBefore = snapshotExportEntries();
+    const invalid = [
+      { archive: "/etc/passwd", member: "BF_Court01.dat" },
+      { archive: "../Mesh01.res", member: "BF_Court01.dat" },
+      { archive: "Res\\Stage\\Mesh01.res", member: "BF_Court01.dat" },
+      { archive: "Res/Stage/Mesh01.res", member: "../escaped.dat" },
+      { archive: "Res/Stage/Mesh01.res", member: escaped },
+      { archive: "Res/Stage/Mesh01.res", member: "nested/escaped.dat" },
+      { archive: "Res/Stage/Mesh01.res", member: "nested\\escaped.dat" },
+    ];
+    try {
+      for (const payload of invalid) {
+        const response = await expectNoOneShotArtifacts(() =>
+          fetch(`${base}/api/mesh-studio/transform`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              ...payload,
+              translate: [0, 0, 0],
+              scale: [1, 1, 1],
+              rotateDeg: [0, 0, 0],
+            }),
+          }),
+        );
+        expect(response.status).toBe(400);
+        expect((await response.json()).error).toMatch(/PATH_/);
+      }
+      expect(existsSync(escaped)).toBe(false);
+      expect(snapshotExportEntries()).toEqual(exportsBefore);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  test("content pack rejects nested path escapes and untrusted particle archives", async () => {
+    const outside = mkdtempSync(join(tmpdir(), "jftse-content-pack-escape-"));
+    const outsideParticle = join(outside, "Particle.res");
+    const particleLink = join(
+      studioRoot,
+      "exports",
+      `content-pack-particle-${crypto.randomUUID()}.res`,
+    );
+    await Bun.write(outsideParticle, "outside");
+    symlinkSync(outsideParticle, particleLink);
+    const invalid = [
+      { stage: { member: "../escaped.set" } },
+      { stage: { member: "/tmp/escaped.set" } },
+      { stage: { member: "nested/escaped.set" } },
+      { ftm: { archive: "/etc/passwd", member: "Court.ftm" } },
+      { ftm: { archive: "../MapSet.res", member: "Court.ftm" } },
+      { ftm: { archive: "Res\\MapSet\\Court.res", member: "Court.ftm" } },
+      { ftm: { archive: "Res/MapSet/Court.res", member: "../escaped.ftm" } },
+      { ftm: { archive: "Res/MapSet/Court.res", member: "/tmp/escaped.ftm" } },
+      { ftm: { archive: "Res/MapSet/Court.res", member: "nested/escaped.ftm" } },
+      { particleArchive: outsideParticle },
+      { particleArchive: particleLink },
+    ];
+    try {
+      for (const payload of invalid) {
+        const response = await expectNoOneShotArtifacts(() =>
+          fetch(`${base}/api/content-pack/build`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ name: "security-rejection", ...payload }),
+          }),
+        );
+        expect(response.status).toBe(400);
+        expect((await response.json()).error).toMatch(/PATH_/);
+      }
+      expect(readdirSync(outside)).toEqual(["Particle.res"]);
+    } finally {
+      rmSync(particleLink, { force: true });
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  test("effects install validates every optional archive as a regular export file", async () => {
+    const particleArchive = join(
+      studioRoot,
+      "exports",
+      `effect-install-particle-${crypto.randomUUID()}.res`,
+    );
+    const outside = mkdtempSync(join(tmpdir(), "jftse-effect-source-"));
+    const outsideArchive = join(outside, "Item.res");
+    const sourceLink = join(
+      studioRoot,
+      "exports",
+      `effect-install-link-${crypto.randomUUID()}.res`,
+    );
+    await Bun.write(particleArchive, "particle");
+    await Bun.write(outsideArchive, "outside");
+    symlinkSync(outsideArchive, sourceLink);
+    try {
+      for (const extra of [
+        { itemArchive: outsideArchive },
+        { effectArchive: outsideArchive },
+        { itemArchive: sourceLink },
+        { effectArchive: sourceLink },
+      ]) {
+        const response = await expectNoOneShotArtifacts(() =>
+          fetch(`${base}/api/effects/install`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              particleArchive,
+              targetClient: disposableClient,
+              ...extra,
+            }),
+          }),
+        );
+        expect(response.status).toBe(400);
+        expect((await response.json()).error).toBe("SOURCE_OUTSIDE_EXPORTS");
+      }
+      expect(readdirSync(outside)).toEqual(["Item.res"]);
+    } finally {
+      rmSync(sourceLink, { force: true });
+      rmSync(particleArchive, { force: true });
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  test("caller-controlled bridge paths reject absolute, traversal, and symlink escapes", async () => {
+    const obj = join(disposableClient, `path-policy-${crypto.randomUUID()}.obj`);
+    await Bun.write(obj, ["v 0 0 0", "v 1 0 0", "v 0 1 0", "f 1 2 3"].join("\n"));
+    const outside = mkdtempSync(join(tmpdir(), "jftse-path-policy-"));
+    const escapedOutput = join(outside, "escaped.dat");
+    const outputLink = join(studioRoot, "exports", `path-policy-link-${crypto.randomUUID()}`);
+    const readLink = join(studioRoot, "exports", `path-policy-read-${crypto.randomUUID()}.obj`);
+    symlinkSync(outside, outputLink, "dir");
+    symlinkSync("/etc/passwd", readLink);
+
+    try {
+      const requests: Array<{ response: Response; error: string }> = [];
+      for (const payload of [
+        { obj, out: escapedOutput },
+        { obj, out: join(outputLink, "escaped.dat") },
+        { obj: readLink },
+      ]) {
+        const response = await fetch(`${base}/api/mesh-studio/from-obj`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        requests.push({ response, error: (await response.json()).error });
+      }
+      const tex = await fetch(`${base}/api/tex/encode`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ dds: "/etc/passwd", out: escapedOutput }),
+      });
+      requests.push({ response: tex, error: (await tex.json()).error });
+      const texOutput = await fetch(`${base}/api/tex/encode`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ dds: obj, out: escapedOutput }),
+      });
+      requests.push({
+        response: texOutput,
+        error: (await texOutput.json()).error,
+      });
+      const imported = await fetch(`${base}/api/mesh-studio/import-obj`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          archive: "Res/Stage/Mesh01.res",
+          member: "BF_Court01.dat",
+          obj,
+          out: escapedOutput,
+        }),
+      });
+      requests.push({ response: imported, error: (await imported.json()).error });
+
+      for (const result of requests) {
+        expect(result.response.status).toBe(400);
+        expect(result.error).toMatch(/PATH|OUTPUT/);
+      }
+      expect(existsSync(escapedOutput)).toBe(false);
+      expect(existsSync(join(outside, "escaped.dat"))).toBe(false);
+    } finally {
+      rmSync(outputLink, { force: true });
+      rmSync(readLink, { force: true });
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  test("client-relative bridge paths reject absolute and traversal values", async () => {
+    for (const path of ["/etc/passwd", "../outside.Eft", "Res/Stage/../../etc/passwd"]) {
+      const response = await fetch(
+        `${base}/api/eft/parse?path=${encodeURIComponent(path)}`,
+      );
+      const body = await response.json();
+      expect(response.status).toBe(400);
+      expect(body.error).toMatch(/PATH_(ABSOLUTE|TRAVERSAL)_FORBIDDEN/);
+    }
+
+    const response = await fetch(
+      `${base}/api/mesh-studio/parse?archive=${encodeURIComponent("../Mesh01.res")}&member=BF_Court01.dat`,
+    );
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toBe("PATH_TRAVERSAL_FORBIDDEN");
+  });
+
+  test("caller-supplied equipment and particle reads stay in trusted roots", async () => {
+    const equipment = await fetch(`${base}/api/equipment/pack`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ meshIndex: 214, dat: "/etc/passwd" }),
+    });
+    expect(equipment.status).toBe(400);
+    expect((await equipment.json()).error).toMatch(/PATH/);
+
+    const particle = await fetch(
+      `${base}/api/effects/slot-fields?particleArchive=${encodeURIComponent("/etc/passwd")}`,
+    );
+    expect(particle.status).toBe(400);
+    expect((await particle.json()).error).toMatch(/PATH/);
+  });
+
+  test("packs listing skips a corrupt JSON file", async () => {
+    const corruptName = `corrupt-${crypto.randomUUID()}.json`;
+    const corrupt = join(studioRoot, "content-packs", corruptName);
+    await Bun.write(corrupt, "{not-json");
+    try {
+      const response = await fetch(`${base}/api/packs`);
+      const body = await response.json();
+      expect(response.status).toBe(200);
+      expect(Array.isArray(body.packs)).toBe(true);
+      expect(body.packs.some((pack: { file: string }) => pack.file === corruptName)).toBe(false);
+    } finally {
+      rmSync(corrupt, { force: true });
+    }
+  });
+
   test("health bridge is online", async () => {
     const response = await fetch(`${base}/api/health`);
     const body = await response.json();
@@ -461,6 +781,109 @@ describe("content studio production API", () => {
     expect(body.verification.fields.TexturePath).toContain("A_feather");
     expect(body.verification.fields.PQ_Quantity).toBe("18");
     expect(body.verification.archiveSizeBytes).toBeGreaterThan(0);
+  }, 120000);
+
+  test("equipment creator API returns production artifacts and creator manifest", async () => {
+    const response = await fetch(`${base}/api/equipment-creator/package`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ draft: equipmentCreatorDraft, stockMeshIndex: 214 }),
+    });
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.creatorManifestSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(await Bun.file(body.creatorManifestPath).exists()).toBe(true);
+    expect(body.contentPack.installPlan).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ destRelative: "Res/Effect/Particle.res" }),
+        expect.objectContaining({ destRelative: "Res/Script/Item.res" }),
+      ]),
+    );
+    expect(body.contentPack.installPlan.filter(
+      (entry: { source: string }) => entry.source.endsWith(".res"),
+    )).toHaveLength(3);
+    expect(await Bun.file(body.contentPack.sqlPath).exists()).toBe(true);
+    const manifest = await Bun.file(body.creatorManifestPath).json();
+    expect(manifest.writer.mode).toBe("stock-topology-clone");
+    expect(manifest.effect.atlas).toBe("Res/Effect/EftB/A_feather");
+    expect(manifest.contentPack.artifacts.every(
+      (artifact: { sha256: string; bytes: number }) =>
+        /^[a-f0-9]{64}$/.test(artifact.sha256) && artifact.bytes > 0,
+    )).toBe(true);
+  }, 120000);
+
+  test("hands equipment package to install audit preflight", async () => {
+    const profileName = `equipment-handoff-${crypto.randomUUID().slice(0, 8)}`;
+    try {
+      const profileResponse = await fetch(`${base}/api/client-harness/profiles`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: profileName, mode: "pass" }),
+      });
+      expect(profileResponse.status).toBe(200);
+
+      const packageResponse = await fetch(`${base}/api/equipment-creator/package`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          draft: {
+            ...equipmentCreatorDraft,
+            runtimeEffect: { effectId: 15, sourceItemIndex: 10728 },
+          },
+          stockMeshIndex: 214,
+        }),
+      });
+      const built = await packageResponse.json();
+      expect(packageResponse.status).toBe(200);
+      expect(built.handoff.packageId).toMatch(/^equipment-creator-/);
+      expect(built.runtimeReceipt).toMatchObject({
+        itemIndex: 41001,
+        effectId: 15,
+      });
+
+      const installResponse = await fetch(`${base}/api/equipment-creator/install`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          packageId: built.handoff.packageId,
+          profileName,
+        }),
+      });
+      const installed = await installResponse.json();
+      expect(installResponse.status).toBe(200);
+      expect(installed.ok).toBe(true);
+      expect(installed.profileName).toBe(profileName);
+      expect(installed.rollbackReceipt).toBeDefined();
+
+      const auditResponse = await fetch(`${base}/api/equipment-creator/audit`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ packageId: built.handoff.packageId }),
+      });
+      const audited = await auditResponse.json();
+      expect(auditResponse.status).toBe(200);
+      expect(audited.audit).toMatchObject({ safe: true });
+      expect(audited.sqlApplyEligible).toBe(true);
+
+      const preflightResponse = await fetch(
+        `${base}/api/equipment-creator/preflight`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            packageId: built.handoff.packageId,
+            profileName,
+          }),
+        },
+      );
+      const preflight = await preflightResponse.json();
+      expect(preflightResponse.status).toBe(200);
+      expect(preflight.preflightPassed).toBe(true);
+      expect(preflight.manualHandoff).toContain("DX9");
+    } finally {
+      await fetch(`${base}/api/client-harness/profiles`, { method: "DELETE" });
+    }
   }, 120000);
 
   test("soft effect build is idempotent when stock slot already matches", async () => {
@@ -2264,6 +2687,31 @@ describe("content studio production API", () => {
     expect(play.manualHandoff.length).toBeGreaterThan(0);
   });
 
+  test("rejects injected equipment part SQL", async () => {
+    const response = await fetch(`${base}/api/content-pack/build`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "part-injection-regression",
+        equipment: {
+          meshIndex: 214,
+          char: "NIKI",
+          desc: "Part injection regression",
+          part: "Racket', 0, 0, 0, 0); INSERT INTO S_Maps (id) VALUES (424242); --",
+        },
+      }),
+    });
+    const pack = await response.json();
+    expect(response.status).toBe(200);
+    expect(pack.ok).toBe(true);
+
+    const dryRun = await postSql({ path: pack.sqlPath, dryRun: true });
+    expect(dryRun.response.status).toBe(200);
+    expect(dryRun.body.audit?.safe).toBe(true);
+    expect(dryRun.body.audit?.insertCount).toBe(2);
+    expect(dryRun.body.audit?.tables).toEqual(["s_product", "product"]);
+  });
+
   test("item mesh resolve exposes multi-material silhouette stems", async () => {
     const response = await fetch(
       `${base}/api/item-mesh/resolve?meshIndex=214&char=NIKI&metaOnly=1`,
@@ -2400,5 +2848,178 @@ describe("content studio production API", () => {
     const refused = await refuse.json();
     expect(refused.ok).toBe(false);
     expect(refused.error).toBe("REFUSE_STOCK_CLIENT");
+  });
+
+  test("map scene package writes a verified complete manifest receipt", async () => {
+    const dependencies = [
+      "court/net.glb",
+      "1_Emerald_Beach.set",
+      "Res/MapSet/FantaCastle.res",
+      "roundtrip/QA_Court.blend",
+      "Texture/Court01.tex",
+    ];
+    const response = await fetch(`${base}/api/map-scene/package`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        availableDependencies: dependencies,
+        scene: {
+          schemaVersion: 1,
+          name: "QA_Court",
+          layers: [
+            { id: "terrain", name: "Terrain", visible: true },
+            { id: "objects", name: "Objects", visible: true },
+            { id: "collision", name: "Collision", visible: true },
+            { id: "spawns", name: "Spawns", visible: true },
+            { id: "effects", name: "Effects", visible: true },
+          ],
+          objects: [
+            {
+              id: "object-1",
+              assetId: "court/net.glb",
+              name: "Center net",
+              layer: "objects",
+              position: [0, 0, 0],
+              rotation: [0, 0, 0],
+              scale: [1, 1, 1],
+            },
+          ],
+          spawns: [
+            {
+              id: "spawn-1",
+              team: "home",
+              position: [-4, 0, 0],
+              facing: 90,
+            },
+            {
+              id: "spawn-2",
+              team: "away",
+              position: [4, 0, 0],
+              facing: -90,
+            },
+          ],
+          collision: { blockedCells: [[2, 2]] },
+          references: {
+            stageScript: "1_Emerald_Beach.set",
+            ftmArchive: "Res/MapSet/FantaCastle.res",
+            ftmMember: "FantaCastleOutSide.ftm",
+            collisionAsset: "Res/MapSet/FantaCastle.res",
+            terrainSource: "roundtrip/QA_Court.blend",
+            materials: [
+              { slot: "court", texture: "Texture/Court01.tex" },
+            ],
+          },
+        },
+      }),
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(body.dependencies).toEqual(dependencies);
+    expect(existsSync(body.path)).toBe(true);
+    expect(body.contentPack.installPlan).toHaveLength(2);
+    expect(existsSync(body.contentPack.sqlPath)).toBe(true);
+    expect(body.contentPack.parts).toHaveProperty("map");
+    expect(body.contentPack.parts).toHaveProperty("stage");
+    expect(body.contentPack.parts).toHaveProperty("ftm");
+    const manifest = JSON.parse(readFileSync(body.path, "utf8"));
+    expect(manifest.name).toBe("QA_Court");
+    expect(manifest.contentPack.installPlan).toEqual(
+      body.contentPack.installPlan,
+    );
+    expect(manifest.runtimeUnsupported).toEqual([
+      "player-spawn compilation",
+      "terrain geometry compilation",
+      "stage material binding compilation",
+    ]);
+  });
+
+  test("managed client profiles launch capture and rollback through HTTP", async () => {
+    const suffix = crypto.randomUUID().slice(0, 8);
+    const passName = `api-pass-${suffix}`;
+    const failName = `api-fail-${suffix}`;
+    for (const [name, mode] of [
+      [passName, "pass"],
+      [failName, "fail"],
+    ] as const) {
+      const created = await fetch(`${base}/api/client-harness/profiles`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name, mode }),
+      });
+      expect(created.status).toBe(200);
+      expect((await created.json()).profile.name).toBe(name);
+    }
+
+    const passed = await fetch(`${base}/api/client-harness/run`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: passName }),
+    });
+    const passResult = await passed.json();
+    expect(passed.status).toBe(200);
+    expect(passResult.status).toBe("passed");
+    expect(passResult.ready).toBe(true);
+    expect(passResult.capture.sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(passResult.stdout).toContain("FAKE_CLIENT_READY");
+
+    const failed = await fetch(`${base}/api/client-harness/run`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: failName }),
+    });
+    const failResult = await failed.json();
+    expect(failed.status).toBe(200);
+    expect(failResult.status).toBe("failed");
+    expect(failResult.rolledBack).toBe(true);
+    expect(failResult.before.sha256).toBe(failResult.after.sha256);
+
+    const pipelinePassed = await fetch(
+      `${base}/api/client-harness/pipeline`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: passName, applySql: false }),
+      },
+    );
+    const pipelinePassResult = await pipelinePassed.json();
+    expect(pipelinePassed.status).toBe(200);
+    expect(pipelinePassResult.status).toBe("passed");
+    expect(pipelinePassResult.receipts.build.status).toBe("passed");
+    expect(pipelinePassResult.receipts.install.status).toBe("passed");
+    expect(pipelinePassResult.receipts.sqlAudit.status).toBe("passed");
+    expect(pipelinePassResult.receipts.sqlApply.status).toBe("skipped");
+    expect(pipelinePassResult.sqlApplyEligible).toBe(true);
+    expect(
+      pipelinePassResult.receipts.install.value.files.every(
+        ({ destination }: { destination: string }) =>
+          destination.startsWith("Res/"),
+      ),
+    ).toBe(true);
+
+    const pipelineFailed = await fetch(
+      `${base}/api/client-harness/pipeline`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: failName, applySql: false }),
+      },
+    );
+    const pipelineFailResult = await pipelineFailed.json();
+    expect(pipelineFailed.status).toBe(200);
+    expect(pipelineFailResult.status).toBe("failed");
+    expect(pipelineFailResult.failedStage).toBe("launch");
+    expect(pipelineFailResult.receipts.install.status).toBe("passed");
+    expect(pipelineFailResult.rolledBack).toBe(true);
+    expect(pipelineFailResult.before.sha256).toBe(
+      pipelineFailResult.after.sha256,
+    );
+
+    const listed = await fetch(`${base}/api/client-harness/profiles`);
+    const listBody = await listed.json();
+    expect(listBody.profiles.map((profile: { name: string }) => profile.name))
+      .toEqual(expect.arrayContaining([passName, failName]));
   });
 });

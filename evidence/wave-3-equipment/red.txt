@@ -1,0 +1,22 @@
+Command:
+bun test -t "writes explicit equipment effect binding|reports design-only equipment fields|hands equipment package to install audit preflight"
+
+Result:
+0 pass
+239 filtered out
+3 fail
+3 expectations
+
+Intended failures:
+
+1. writes explicit equipment effect binding
+   The effect writer payload is missing `effectId: 15` and
+   `includeEffectBinding: true`.
+
+2. reports design-only equipment fields
+   `server/equipmentRuntimeContract.ts` does not exist.
+
+3. hands equipment package to install audit preflight
+   The package response has no `handoff.packageId`.
+
+No Equipment production code changed before this RED.

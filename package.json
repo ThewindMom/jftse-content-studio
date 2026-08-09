@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun run server/index.ts",
+    "dev": "JFTSE_STUDIO_DEV=1 bun run server/index.ts",
     "start": "bun run server/index.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit"

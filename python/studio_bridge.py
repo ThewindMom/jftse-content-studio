@@ -162,6 +162,8 @@ def _validate_effect_payload(payload: dict[str, Any]) -> None:
         raise ValueError("SHARED_RACKET_SCRIPT_FORBIDDEN")
     if (not allow_banned) and any(marker in lower for marker in BANNED_ATLAS_MARKERS):
         raise ValueError("BANNED_ATLAS")
+    if bool(payload.get("includeEffectBinding", False)) and int(payload.get("effectId", 0)) != 15:
+        raise ValueError("EFFECT_ID_UNSUPPORTED")
     quantity = int(payload.get("quantity", 0))
     if quantity < 1 or quantity > 40:
         raise ValueError("QUANTITY_OUT_OF_RANGE")
@@ -234,11 +236,17 @@ def cmd_build_effect(args: argparse.Namespace) -> dict[str, Any]:
 
     item_out = out_dir / "Item.studio.res"
     etc_out = out_dir / "ETC.studio.res"
-    if bool(payload.get("includeItemBinding", True)):
+    include_item_binding = bool(payload.get("includeItemBinding", True))
+    include_effect_binding = bool(
+        payload.get("includeEffectBinding", include_item_binding)
+    )
+    if include_item_binding:
         wind_assets.build_item_binding_archive(source_item, item_out)
-        wind_assets.build_racket_effect_archive(source_etc, etc_out)
     else:
         item_out = None
+    if include_effect_binding:
+        wind_assets.build_racket_effect_archive(source_etc, etc_out)
+    else:
         etc_out = None
 
     verification = _verify_particle_archive(
@@ -1194,6 +1202,10 @@ def cmd_mesh_transform(args: argparse.Namespace) -> dict[str, Any]:
     payload = json.loads(Path(args.payload).read_text(encoding="utf-8"))
     archive = str(payload["archive"])
     member = str(payload["member"])
+    if Path(archive).is_absolute() or "\\" in archive or ".." in archive.split("/"):
+        raise ValueError("PATH_CLIENT_RELATIVE_INVALID")
+    if not member or member in {".", ".."} or "/" in member or "\\" in member:
+        raise ValueError("PATH_MEMBER_INVALID")
     def _vec3(raw: object, default: tuple[float, float, float]) -> tuple[float, float, float]:
         if not isinstance(raw, (list, tuple)) or len(raw) < 3:
             return default
@@ -1214,7 +1226,7 @@ def cmd_mesh_transform(args: argparse.Namespace) -> dict[str, Any]:
         transformed,
         stride=getattr(mesh, "vertexStride", 12) or 12,
     )
-    dat_path = out_dir / member
+    dat_path = out_dir / Path(member).name
     dat_path.write_bytes(rewritten)
     mesh.positions = transformed
     obj_path = out_dir / f"{Path(member).stem}.transformed.obj"
@@ -1423,6 +1435,8 @@ def main() -> None:
     p_equip.add_argument("--product-index", default="")
     p_equip.add_argument("--desc", default="")
     p_equip.add_argument("--part", default="Racket")
+    p_equip.add_argument("--source-item-index", default="10728")
+    p_equip.add_argument("--effect", choices=("0", "15"), default="0")
     p_equip.add_argument("--gold", default="0")
 
     p_cinst = sub.add_parser("client-install")

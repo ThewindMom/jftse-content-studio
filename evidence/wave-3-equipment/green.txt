@@ -1,0 +1,26 @@
+Wave 3 Equipment GREEN receipt
+
+Automated verification
+- `bun run typecheck`: PASS
+- `bun test tests/equipmentCreator.test.ts tests/equipmentCreatorPackage.test.ts tests/api.test.ts`: PASS
+- `bun build web/index.html --outdir /tmp/jftse-wave3-build`: PASS
+- focused source diagnostics: PASS
+- `git diff --check`: PASS
+
+Real browser workflow
+- Viewports: 1440x1200 and 720x1200
+- Built package:
+  equipment-creator-1786286263735-25dc84bb-663c-46cf-b447-cc2a96c6bcd4
+- Creator manifest SHA-256:
+  fced2246fe6383046128a76b9b58a88fbd784e374b7d5e39be7e536f4e62a2e5
+- Managed profile: equipment-9ed59c0d
+- PASS: managed archive install
+- PASS: generated item SQL audit
+- OPTIONAL: live SQL apply was intentionally not run
+- PASS: managed local-client preflight
+- Manual boundary remains explicit:
+  open the real DX9 client, log in, equip the authored item, and visually inspect it.
+
+Fresh visual artifacts
+- equipment-workflow-pass-viewport.png
+- equipment-workflow-pass-mobile.png

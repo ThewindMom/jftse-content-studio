@@ -1,0 +1,3 @@
+[Compatibility]
+Name=JFTSE Studio
+Value=42

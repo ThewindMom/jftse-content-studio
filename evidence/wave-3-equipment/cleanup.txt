@@ -1,0 +1,30 @@
+Wave 3 cleanup and integrity receipt
+
+Owned runtime resources
+- Closed the wrapper-managed browser session.
+- Killed Content Studio server `bash_437`.
+- Port 4317 has no listener.
+- No owned `bun run server/index.ts` or `python/studio_bridge.py` process remains.
+
+Managed test resources
+- `DELETE /api/client-harness/profiles` returned `{"ok":true,"deleted":2}`.
+- Follow-up `GET /api/client-harness/profiles` returned an empty profile list.
+- Removed these exact generated package directories:
+  - exports/equipment-creator-1786285711255-f8b8bb59-5408-4703-9b92-69df9ed59c0d
+  - exports/equipment-creator-1786286263735-25dc84bb-663c-46cf-b447-cc2a96c6bcd4
+- Follow-up existence checks confirmed both directories are absent.
+
+Immutable stock boundary
+- Stock client aggregate:
+  be1f78f3acdf7ad2b934c393675d9c4b049bd5c61007f901992bfc9f6b948fe3
+- This exactly matches the pre-Wave-1 immutable baseline.
+
+Shared external state left untouched
+- The local-client aggregate no longer matches its earlier baseline.
+  Files with Wave 3-window mtimes include crash dumps, `ft-crash.log`,
+  launcher configuration, runtime archives, and `FantaTennis.exe`.
+  The Equipment workflow installed only into its managed profile; these
+  shared local-client changes were not reverted.
+- Sibling JFTSE status gained untracked `ac-server` Eclipse metadata
+  relative to the frozen baseline. No tracked sibling source was changed
+  by Wave 3, and the shared metadata was not removed.

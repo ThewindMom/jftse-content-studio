@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "name": "Golden Aurora Racket",
+  "draft": {
+    "shell": {
+      "workspace": "equipment",
+      "step": "item"
+    },
+    "editors": {
+      "equipment": {
+        "asset": {
+          "sourceName": "aurora-racket.gltf",
+          "meshName": "Aurora Racket",
+          "vertexCount": 96,
+          "indexCount": 144,
+          "materials": [
+            {
+              "id": "frame",
+              "name": "Frame"
+            }
+          ],
+          "warnings": []
+        },
+        "materials": {
+          "frame": {
+            "textureName": "aurora-frame.png",
+            "color": "#66ddff",
+            "metallic": 0.45,
+            "roughness": 0.35
+          }
+        },
+        "attachment": {
+          "bone": "Bone_Racket",
+          "position": [0, 0, 0],
+          "rotation": [0, 0, 0],
+          "scale": [1, 1, 1]
+        },
+        "metadata": {
+          "itemIndex": 41001,
+          "name": "Aurora Racket",
+          "character": "NIKI",
+          "compatibleCharacters": ["NIKI"],
+          "price": 2500
+        },
+        "particle": {
+          "color": "#66ddff",
+          "rate": 18,
+          "lifetime": 1.4,
+          "size": 0.75,
+          "curve": [[0, 0], [0.25, 1], [1, 0]]
+        },
+        "runtimeEffect": {
+          "effectId": 15,
+          "sourceItemIndex": 10728
+        },
+        "comparison": {
+          "browserScreenshot": "aurora-browser.png",
+          "clientScreenshot": "aurora-client.png"
+        }
+      }
+    }
+  }
+}

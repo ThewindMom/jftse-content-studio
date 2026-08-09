@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { FtmDesk } from "./FtmDesk.tsx";
+import { MapCreatorPanel } from "./MapCreatorPanel.tsx";
+import type { MapSceneDocument } from "./mapSceneDocument.ts";
 import { StageMeshPreview } from "./StageMeshPreview.tsx";
 
 type Guardian = {
@@ -96,9 +98,13 @@ function errorText(error: unknown): string {
 export function MapStudio({
   active,
   onOpenMesh,
+  projectScene,
+  onProjectSceneChange,
 }: {
   active: boolean;
   onOpenMesh?: (archive: string, member: string) => void;
+  projectScene?: MapSceneDocument;
+  onProjectSceneChange?: (scene: MapSceneDocument) => void;
 }) {
   const [maps, setMaps] = useState<MapStudioRow[]>([]);
   const [query, setQuery] = useState("");
@@ -477,6 +483,11 @@ export function MapStudio({
           <h2>Map design desk</h2>
         </header>
         <div className="body">
+          <MapCreatorPanel
+            value={projectScene}
+            onChange={onProjectSceneChange}
+          />
+          <hr className="soft-rule" />
           {!selected && <p className="empty">Select a map to inspect bindings.</p>}
           {selected && (
             <>

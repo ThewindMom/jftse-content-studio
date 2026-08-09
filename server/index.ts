@@ -15,9 +15,47 @@ import {
   installClientFiles,
   runBridge,
   runBridgeWithPayload,
+  shutdownBridgeProcesses,
 } from "./bridge.ts";
+import { BridgeSchedulerBusyError } from "./bridgeScheduler.ts";
+import { buildCompatibilityReport } from "./compatibility.ts";
 import { config } from "./config.ts";
+import { runManagedClient } from "./clientHarness.ts";
+import { runClientHarnessPipeline } from "./clientHarnessPipeline.ts";
+import { managedHarnessBuildPayload } from "./clientHarnessPayload.ts";
+import {
+  clearManagedProfiles,
+  createManagedProfile,
+  listManagedProfiles,
+  loadManagedProfile,
+  type ManagedProfileMode,
+} from "./clientProfileStore.ts";
+import { buildRuntimeMapPackage } from "./mapScenePackage.ts";
+import {
+  packageEquipmentCreator,
+  validateEquipmentPackageRequest,
+} from "./equipmentCreatorPackage.ts";
+import {
+  auditEquipmentPackage,
+  installEquipmentPackage,
+  preflightEquipmentPackage,
+} from "./equipmentManagedWorkflow.ts";
+import {
+  archiveMemberName,
+  clientRelativePath,
+  exportOutputPath,
+  PathPolicyError,
+  trustedReadPath,
+  trustedRegularFilePath,
+} from "./pathPolicy.ts";
 import { EFFECT_PRESETS } from "./presets.ts";
+import { parseMapScene } from "../web/mapSceneDocument.ts";
+import {
+  parseBoundedInteger,
+  readJsonObject,
+  RequestPolicyError,
+} from "./requestPolicy.ts";
+import { developmentServeOptions } from "./serverMode.ts";
 
 mkdirSync(config.exportsDir, { recursive: true });
 mkdirSync(config.packsDir, { recursive: true });
@@ -31,6 +69,46 @@ function json(data: unknown, status = 200): Response {
 function bad(error: string, status = 400): Response {
   return json({ ok: false, error }, status);
 }
+
+function operationalError(error: unknown): Response | null {
+  if (error instanceof RequestPolicyError) return bad(error.code, error.status);
+  if (error instanceof BridgeSchedulerBusyError) return bad(error.code, error.status);
+  if (error instanceof BridgeError) {
+    return json(
+      { ok: false, error: error.code, detail: error.detail },
+      error.code === "BRIDGE_TIMEOUT" ? 504 : 500,
+    );
+  }
+  return null;
+}
+
+function checkedInteger(
+  raw: string | null,
+  policy: Parameters<typeof parseBoundedInteger>[1],
+): { value: string } | { response: Response } {
+  try {
+    return { value: String(parseBoundedInteger(raw, policy)) };
+  } catch (error) {
+    const response = operationalError(error);
+    if (response) return { response };
+    throw error;
+  }
+}
+
+function checkedPath<T>(work: () => T): { value: T } | { response: Response } {
+  try {
+    return { value: work() };
+  } catch (error) {
+    if (error instanceof PathPolicyError) return { response: bad(error.code) };
+    throw error;
+  }
+}
+
+const trustedStudioReadRoots = [
+  config.exportsDir,
+  config.stockClient,
+  config.localClient,
+];
 
 type SetupCheck = { id: string; ok: boolean; label: string };
 
@@ -187,12 +265,8 @@ async function safeBridge(
     }
     return json(result);
   } catch (error) {
-    if (error instanceof BridgeError) {
-      return json(
-        { ok: false, error: error.code, detail: error.detail },
-        error.code === "BRIDGE_TIMEOUT" ? 504 : 500,
-      );
-    }
+    const response = operationalError(error);
+    if (response) return response;
     return json(
       {
         ok: false,
@@ -204,7 +278,9 @@ async function safeBridge(
 }
 
 const server = Bun.serve({
+  hostname: "127.0.0.1",
   port: config.port,
+  idleTimeout: 120,
   routes: {
     "/": index,
     "/api/health": {
@@ -242,12 +318,24 @@ const server = Bun.serve({
     "/api/presets": {
       GET: () => json({ presets: EFFECT_PRESETS }),
     },
+    "/api/compatibility": {
+      GET: async (req) =>
+        new URL(req.url).search
+          ? bad("COMPATIBILITY_QUERY_FORBIDDEN")
+          : json(await buildCompatibilityReport()),
+    },
     "/api/atlases": {
       GET: async (req) => {
         const url = new URL(req.url);
-        const limit = url.searchParams.get("limit") ?? "0";
+        const limit = checkedInteger(url.searchParams.get("limit"), {
+          name: "limit",
+          minimum: 1,
+          maximum: 500,
+          fallback: 200,
+        });
+        if ("response" in limit) return limit.response;
         const q = (url.searchParams.get("q") ?? "").toLowerCase();
-        const result = await runBridge(["list-atlases", "--limit", limit]);
+        const result = await runBridge(["list-atlases", "--limit", limit.value]);
         const atlases = Array.isArray(result.atlases) ? result.atlases : [];
         const filtered = q
           ? atlases.filter((entry) => {
@@ -266,6 +354,11 @@ const server = Bun.serve({
         if (!archive || !member) {
           return bad("ARCHIVE_AND_MEMBER_REQUIRED");
         }
+        const paths = checkedPath(() => ({
+          archive: clientRelativePath(archive),
+          member: clientRelativePath(member),
+        }));
+        if ("response" in paths) return paths.response;
         const safeArchive = archive.replace(/[^A-Za-z0-9._-]/g, "_");
         const safeMember = member.replace(/[^A-Za-z0-9._-]/g, "_");
         const output = join(
@@ -307,14 +400,20 @@ const server = Bun.serve({
       GET: async (req) => {
         const url = new URL(req.url);
         const part = url.searchParams.get("part") ?? "RACKET";
-        const limit = url.searchParams.get("limit") ?? "80";
+        const limit = checkedInteger(url.searchParams.get("limit"), {
+          name: "limit",
+          minimum: 1,
+          maximum: 500,
+          fallback: 80,
+        });
+        if ("response" in limit) return limit.response;
         const q = (url.searchParams.get("q") ?? "").toLowerCase();
         const result = await runBridge([
           "list-items",
           "--part",
           part,
           "--limit",
-          limit,
+          limit.value,
         ]);
         const items = Array.isArray(result.items) ? result.items : [];
         const filtered = q
@@ -376,14 +475,20 @@ const server = Bun.serve({
     "/api/item-mesh/resolve": {
       GET: async (req) => {
         const url = new URL(req.url);
-        const meshIndex = url.searchParams.get("meshIndex") ?? "";
+        const rawMeshIndex = url.searchParams.get("meshIndex");
         const char = url.searchParams.get("char") ?? "NIKI";
-        if (!meshIndex) return bad("MESH_INDEX_REQUIRED");
+        if (!rawMeshIndex) return bad("MESH_INDEX_REQUIRED");
+        const meshIndex = checkedInteger(rawMeshIndex, {
+          name: "meshIndex",
+          minimum: 0,
+          maximum: 1_000_000,
+        });
+        if ("response" in meshIndex) return meshIndex.response;
         const metaOnly = url.searchParams.get("metaOnly") === "1";
         const args = [
           "item-mesh-resolve",
           "--mesh-index",
-          meshIndex,
+          meshIndex.value,
           "--char",
           char,
         ];
@@ -395,8 +500,10 @@ const server = Bun.serve({
       GET: async (req) => {
         const url = new URL(req.url);
         const member = url.searchParams.get("member") ?? "1_Emerald_Beach.set";
+        const path = checkedPath(() => clientRelativePath(member));
+        if ("response" in path) return path.response;
         return safeBridge(() =>
-          runBridge(["stage-set-decrypt", "--member", member]),
+          runBridge(["stage-set-decrypt", "--member", path.value]),
         );
       },
     },
@@ -405,9 +512,11 @@ const server = Bun.serve({
         const url = new URL(req.url);
         const member = url.searchParams.get("member") ?? "1_Emerald_Beach.set";
         const listAll = url.searchParams.get("listAll") === "1";
+        const path = checkedPath(() => clientRelativePath(member));
+        if ("response" in path) return path.response;
         const args = ["stage-scene"];
         if (listAll) args.push("--list-all");
-        else args.push("--member", member);
+        else args.push("--member", path.value);
         return safeBridge(() => runBridge(args));
       },
     },
@@ -420,8 +529,13 @@ const server = Bun.serve({
         const archive = url.searchParams.get("archive") ?? "";
         const member = url.searchParams.get("member");
         if (!member) return bad("MEMBER_REQUIRED");
-        const args = ["ftm-parse", "--member", member];
-        if (archive) args.push("--archive", archive);
+        const paths = checkedPath(() => ({
+          archive: archive ? clientRelativePath(archive) : "",
+          member: clientRelativePath(member),
+        }));
+        if ("response" in paths) return paths.response;
+        const args = ["ftm-parse", "--member", paths.value.member];
+        if (paths.value.archive) args.push("--archive", paths.value.archive);
         return safeBridge(() => runBridge(args));
       },
     },
@@ -437,15 +551,20 @@ const server = Bun.serve({
         if (!archive || !member) {
           return bad("ARCHIVE_AND_MEMBER_REQUIRED");
         }
+        const paths = checkedPath(() => ({
+          archive: clientRelativePath(archive),
+          member: clientRelativePath(member),
+        }));
+        if ("response" in paths) return paths.response;
         const outDir = join(config.exportsDir, `ftm-${Date.now()}`);
         const patches = Array.isArray(body.patches) ? body.patches : [];
         return safeBridge(() =>
           runBridge([
             "ftm-export",
             "--archive",
-            archive,
+            paths.value.archive,
             "--member",
-            member,
+            paths.value.member,
             "--out-dir",
             outDir,
             "--patches",
@@ -460,29 +579,47 @@ const server = Bun.serve({
         const archive = url.searchParams.get("archive");
         const member = url.searchParams.get("member");
         if (!archive || !member) return bad("ARCHIVE_AND_MEMBER_REQUIRED");
-        const maxFrames = url.searchParams.get("maxFrames") ?? "8";
-        const clipIndex = url.searchParams.get("clipIndex") ?? "0";
+        const maxFrames = checkedInteger(url.searchParams.get("maxFrames"), {
+          name: "maxFrames",
+          minimum: 1,
+          maximum: 5_000,
+          fallback: 8,
+        });
+        if ("response" in maxFrames) return maxFrames.response;
+        const clipIndex = checkedInteger(url.searchParams.get("clipIndex"), {
+          name: "clipIndex",
+          minimum: 0,
+          maximum: 255,
+          fallback: 0,
+        });
+        if ("response" in clipIndex) return clipIndex.response;
         const channel = url.searchParams.get("channel") ?? "A";
         const char = url.searchParams.get("char") ?? "";
         const motion = url.searchParams.get("motion") ?? "";
+        const paths = checkedPath(() => ({
+          archive: clientRelativePath(archive),
+          member: clientRelativePath(member),
+          motion: motion ? clientRelativePath(motion) : "",
+        }));
+        if ("response" in paths) return paths.response;
         const args = [
           "ani-parse",
           "--archive",
-          archive,
+          paths.value.archive,
           "--member",
-          member,
+          paths.value.member,
           "--max-frames",
-          maxFrames,
+          maxFrames.value,
           "--clip-index",
-          clipIndex,
+          clipIndex.value,
           "--channel",
           channel,
         ];
         if (char.trim()) {
           args.push("--char", char.trim());
         }
-        if (motion.trim()) {
-          args.push("--motion", motion.trim());
+        if (paths.value.motion.trim()) {
+          args.push("--motion", paths.value.motion.trim());
         }
         return safeBridge(() => runBridge(args));
       },
@@ -510,8 +647,14 @@ const server = Bun.serve({
         const char = url.searchParams.get("char") ?? "NIKI";
         const includeVertices =
           url.searchParams.get("includeVertices") === "1";
-        const maxVertices = url.searchParams.get("maxVertices") ?? "2000";
-        const args = ["skin-parse", "--char", char, "--max-vertices", maxVertices];
+        const maxVertices = checkedInteger(url.searchParams.get("maxVertices"), {
+          name: "maxVertices",
+          minimum: 1,
+          maximum: 10_000,
+          fallback: 2_000,
+        });
+        if ("response" in maxVertices) return maxVertices.response;
+        const args = ["skin-parse", "--char", char, "--max-vertices", maxVertices.value];
         if (includeVertices) args.push("--include-vertices");
         return safeBridge(() => runBridge(args));
       },
@@ -522,8 +665,19 @@ const server = Bun.serve({
         const archive = url.searchParams.get("archive");
         const member = url.searchParams.get("member");
         if (!archive || !member) return bad("ARCHIVE_AND_MEMBER_REQUIRED");
+        const paths = checkedPath(() => ({
+          archive: clientRelativePath(archive),
+          member: clientRelativePath(member),
+        }));
+        if ("response" in paths) return paths.response;
         return safeBridge(() =>
-          runBridge(["mesh-meta", "--archive", archive, "--member", member]),
+          runBridge([
+            "mesh-meta",
+            "--archive",
+            paths.value.archive,
+            "--member",
+            paths.value.member,
+          ]),
         );
       },
     },
@@ -533,8 +687,19 @@ const server = Bun.serve({
         const archive = url.searchParams.get("archive");
         const member = url.searchParams.get("member");
         if (!archive || !member) return bad("ARCHIVE_AND_MEMBER_REQUIRED");
+        const paths = checkedPath(() => ({
+          archive: clientRelativePath(archive),
+          member: clientRelativePath(member),
+        }));
+        if ("response" in paths) return paths.response;
         const metaOnly = url.searchParams.get("metaOnly") === "1";
-        const args = ["mesh-parse", "--archive", archive, "--member", member];
+        const args = [
+          "mesh-parse",
+          "--archive",
+          paths.value.archive,
+          "--member",
+          paths.value.member,
+        ];
         if (metaOnly) args.push("--meta-only");
         return safeBridge(() => runBridge(args));
       },
@@ -550,14 +715,19 @@ const server = Bun.serve({
         const archive = String(body.archive ?? "");
         const member = String(body.member ?? "");
         if (!archive || !member) return bad("ARCHIVE_AND_MEMBER_REQUIRED");
+        const paths = checkedPath(() => ({
+          archive: clientRelativePath(archive),
+          member: clientRelativePath(member),
+        }));
+        if ("response" in paths) return paths.response;
         const outDir = join(config.exportsDir, `mesh-${Date.now()}`);
         return safeBridge(() =>
           runBridge([
             "mesh-export",
             "--archive",
-            archive,
+            paths.value.archive,
             "--member",
-            member,
+            paths.value.member,
             "--out-dir",
             outDir,
           ]),
@@ -572,15 +742,27 @@ const server = Bun.serve({
         } catch {
           return bad("INVALID_JSON");
         }
+        const archive = String(body.archive ?? "");
+        const member = String(body.member ?? "");
+        if (!archive || !member) return bad("ARCHIVE_AND_MEMBER_REQUIRED");
+        const paths = checkedPath(() => ({
+          archive: clientRelativePath(archive),
+          member: archiveMemberName(member),
+        }));
+        if ("response" in paths) return paths.response;
         const outDir = join(config.exportsDir, `mesh-edit-${Date.now()}`);
         return safeBridge(() =>
-          runBridgeWithPayload("mesh-transform", body, (payloadPath) => [
+          runBridgeWithPayload(
             "mesh-transform",
-            "--payload",
-            payloadPath,
-            "--out-dir",
-            outDir,
-          ]),
+            { ...body, ...paths.value },
+            (payloadPath) => [
+              "mesh-transform",
+              "--payload",
+              payloadPath,
+              "--out-dir",
+              outDir,
+            ],
+          ),
         );
       },
     },
@@ -593,11 +775,17 @@ const server = Bun.serve({
         if (!meshMember && (!archive || !member)) {
           return bad("MESH_MEMBER_OR_TEXTURE_REQUIRED");
         }
+        const paths = checkedPath(() => ({
+          meshMember: meshMember ? clientRelativePath(meshMember) : "",
+          archive: archive ? clientRelativePath(archive) : "",
+          member: member ? clientRelativePath(member) : "",
+        }));
+        if ("response" in paths) return paths.response;
         const outDir = join(config.tmpDir, `mesh-tex-${crypto.randomUUID()}`);
         const args = ["mesh-texture", "--out-dir", outDir];
-        if (meshMember) args.push("--mesh-member", meshMember);
-        if (archive) args.push("--archive", archive);
-        if (member) args.push("--member", member);
+        if (paths.value.meshMember) args.push("--mesh-member", paths.value.meshMember);
+        if (paths.value.archive) args.push("--archive", paths.value.archive);
+        if (paths.value.member) args.push("--member", paths.value.member);
         try {
           const body = (await runBridge(args)) as {
             ok?: boolean;
@@ -669,6 +857,35 @@ const server = Bun.serve({
         );
       },
     },
+    "/api/map-scene/package": {
+      POST: async (req) => {
+        let body: Record<string, unknown>;
+        try {
+          body = (await req.json()) as Record<string, unknown>;
+        } catch {
+          return bad("INVALID_JSON");
+        }
+        if (
+          !Array.isArray(body.availableDependencies) ||
+          !body.availableDependencies.every(
+            (dependency) => typeof dependency === "string",
+          )
+        ) {
+          return bad("AVAILABLE_DEPENDENCIES_REQUIRED");
+        }
+        try {
+          const scene = parseMapScene(JSON.stringify(body.scene));
+          const receipt = await buildRuntimeMapPackage(
+            scene,
+            new Set(body.availableDependencies),
+            config.exportsDir,
+          );
+          return json({ ok: true, ...receipt });
+        } catch (error) {
+          return bad(error instanceof Error ? error.message : String(error));
+        }
+      },
+    },
     "/api/effects/preview-build": {
       POST: async (req) => {
         let payload: Record<string, unknown>;
@@ -685,9 +902,16 @@ const server = Bun.serve({
         const url = new URL(req.url);
         const particleArchive = url.searchParams.get("particleArchive") ?? "";
         const member = url.searchParams.get("member") ?? "Ice_Smoke02.set";
-        const args = ["effect-slot-fields", "--member", member];
+        const paths = checkedPath(() => ({
+          particleArchive: particleArchive
+            ? trustedReadPath(particleArchive, [config.exportsDir])
+            : "",
+          member: clientRelativePath(member),
+        }));
+        if ("response" in paths) return paths.response;
+        const args = ["effect-slot-fields", "--member", paths.value.member];
         if (particleArchive) {
-          args.push("--particle-archive", particleArchive);
+          args.push("--particle-archive", paths.value.particleArchive);
         }
         return safeBridge(() => runBridge(args));
       },
@@ -696,11 +920,159 @@ const server = Bun.serve({
       GET: async (req) => {
         const url = new URL(req.url);
         const exportArchive = url.searchParams.get("exportArchive") ?? "";
+        const path = checkedPath(() =>
+          exportArchive
+            ? trustedReadPath(exportArchive, [config.exportsDir])
+            : "",
+        );
+        if ("response" in path) return path.response;
         const args = ["playtest-status"];
         if (exportArchive) {
-          args.push("--export-archive", exportArchive);
+          args.push("--export-archive", path.value);
         }
         return safeBridge(() => runBridge(args));
+      },
+    },
+    "/api/client-harness/profiles": {
+      GET: () => {
+        const profileRoot = join(config.tmpDir, "managed-client-profiles");
+        return json({
+          ok: true,
+          profiles: listManagedProfiles(profileRoot).map(
+            ({ name, mode, profile }) => ({
+              name,
+              mode,
+              root: profile.root,
+              launcher: profile.launcher,
+              capturePath: profile.capturePath,
+            }),
+          ),
+          realClientAutomation: false,
+          limitation:
+            "The managed harness automates disposable profiles only. Real DX9 login and content selection remain manual.",
+        });
+      },
+      POST: async (req) => {
+        let body: Record<string, unknown>;
+        try {
+          body = (await req.json()) as Record<string, unknown>;
+        } catch {
+          return bad("INVALID_JSON");
+        }
+        const name = String(body.name ?? "");
+        const mode = String(body.mode ?? "");
+        try {
+          const stored = createManagedProfile(
+            join(config.tmpDir, "managed-client-profiles"),
+            name,
+            mode as ManagedProfileMode,
+          );
+          return json({
+            ok: true,
+            profile: {
+              name: stored.name,
+              mode: stored.mode,
+              root: stored.profile.root,
+              launcher: stored.profile.launcher,
+              capturePath: stored.profile.capturePath,
+            },
+          });
+        } catch (error) {
+          return bad(error instanceof Error ? error.message : String(error));
+        }
+      },
+      DELETE: () => {
+        const deleted = clearManagedProfiles(
+          join(config.tmpDir, "managed-client-profiles"),
+        );
+        return json({ ok: true, deleted });
+      },
+    },
+    "/api/client-harness/run": {
+      POST: async (req) => {
+        let body: Record<string, unknown>;
+        try {
+          body = (await req.json()) as Record<string, unknown>;
+        } catch {
+          return bad("INVALID_JSON");
+        }
+        try {
+          const stored = loadManagedProfile(
+            join(config.tmpDir, "managed-client-profiles"),
+            String(body.name ?? ""),
+          );
+          const result = await runManagedClient(stored.profile, {
+            forbiddenRoots: [config.stockClient],
+            timeoutMs: 10_000,
+          });
+          const capturePath = result.capture
+            ? join(stored.profile.root, result.capture.relativePath)
+            : "";
+          const captureDataUrl =
+            capturePath && existsSync(capturePath)
+              ? `data:image/png;base64,${readFileSync(capturePath).toString(
+                  "base64",
+                )}`
+              : null;
+          return json({
+            ok: true,
+            profile: { name: stored.name, mode: stored.mode },
+            ...result,
+            captureDataUrl,
+            realClientAutomation: false,
+          });
+        } catch (error) {
+          return bad(error instanceof Error ? error.message : String(error));
+        }
+      },
+    },
+    "/api/client-harness/pipeline": {
+      POST: async (req) => {
+        let body: Record<string, unknown>;
+        try {
+          body = (await req.json()) as Record<string, unknown>;
+        } catch {
+          return bad("INVALID_JSON");
+        }
+        try {
+          const managedStoreRoot = join(
+            config.tmpDir,
+            "managed-client-profiles",
+          );
+          const stored = loadManagedProfile(
+            managedStoreRoot,
+            String(body.name ?? ""),
+          );
+          const result = await runClientHarnessPipeline({
+            profile: stored.profile,
+            buildPayload: managedHarnessBuildPayload(stored.name),
+            applySql: body.applySql === true,
+            forbiddenRoots: [config.stockClient],
+            managedStoreRoot,
+            exportsRoot: config.exportsDir,
+          });
+          const capturePath = result.launch?.capture
+            ? join(
+                stored.profile.root,
+                result.launch.capture.relativePath,
+              )
+            : "";
+          const captureDataUrl =
+            capturePath && existsSync(capturePath)
+              ? `data:image/png;base64,${readFileSync(capturePath).toString(
+                  "base64",
+                )}`
+              : null;
+          return json({
+            ok: true,
+            profile: { name: stored.name, mode: stored.mode },
+            ...result,
+            captureDataUrl,
+            sqlApplyEligible: result.receipts.sqlAudit.status === "passed",
+          });
+        } catch (error) {
+          return bad(error instanceof Error ? error.message : String(error));
+        }
       },
     },
     "/api/effects/install": {
@@ -716,21 +1088,35 @@ const server = Bun.serve({
         if (!particleArchive) {
           return bad("PARTICLE_ARCHIVE_REQUIRED");
         }
+        const sourcePaths = checkedPath(() => ({
+          particleArchive: trustedRegularFilePath(particleArchive, [config.exportsDir]),
+          itemArchive:
+            typeof body.itemArchive === "string" && body.itemArchive
+              ? trustedRegularFilePath(body.itemArchive, [config.exportsDir])
+              : "",
+          effectArchive:
+            typeof body.effectArchive === "string" && body.effectArchive
+              ? trustedRegularFilePath(body.effectArchive, [config.exportsDir])
+              : "",
+        }));
+        if ("response" in sourcePaths) {
+          return bad("SOURCE_OUTSIDE_EXPORTS");
+        }
         const files = [
           {
-            source: particleArchive,
+            source: sourcePaths.value.particleArchive,
             destRelative: "Res/Effect/Particle.res",
           },
         ];
-        if (typeof body.itemArchive === "string" && body.itemArchive) {
+        if (sourcePaths.value.itemArchive) {
           files.push({
-            source: body.itemArchive,
+            source: sourcePaths.value.itemArchive,
             destRelative: "Res/Script/Item.res",
           });
         }
-        if (typeof body.effectArchive === "string" && body.effectArchive) {
+        if (sourcePaths.value.effectArchive) {
           files.push({
-            source: body.effectArchive,
+            source: sourcePaths.value.effectArchive,
             destRelative: "Res/Script/ETC.res",
           });
         }
@@ -775,7 +1161,11 @@ const server = Bun.serve({
           args.push("--product-index", String(body.productIndex));
         }
         if (typeof body.dat === "string" && body.dat) {
-          args.push("--dat", body.dat);
+          const dat = checkedPath(() =>
+            trustedReadPath(body.dat as string, trustedStudioReadRoots),
+          );
+          if ("response" in dat) return dat.response;
+          args.push("--dat", dat.value);
         }
         return safeBridge(() => runBridge(args));
       },
@@ -830,6 +1220,10 @@ const server = Bun.serve({
           return bad("INVALID_JSON");
         }
         const outDir = join(config.exportsDir, `stage-set-${Date.now()}`);
+        const member = checkedPath(() =>
+          clientRelativePath(String(body.member ?? "1_Emerald_Beach.set")),
+        );
+        if ("response" in member) return member.response;
         return safeBridge(() =>
           runBridgeWithPayload("stage-set-write", body, (payloadPath) => [
             "stage-set-write",
@@ -838,7 +1232,7 @@ const server = Bun.serve({
             "--out-dir",
             outDir,
             "--member",
-            String(body.member ?? "1_Emerald_Beach.set"),
+            member.value,
           ]),
         );
       },
@@ -852,6 +1246,11 @@ const server = Bun.serve({
           return bad("INVALID_JSON");
         }
         const outDir = join(config.exportsDir, `ftm-author-${Date.now()}`);
+        const paths = checkedPath(() => ({
+          archive: clientRelativePath(String(body.archive ?? "")),
+          member: clientRelativePath(String(body.member ?? "")),
+        }));
+        if ("response" in paths) return paths.response;
         return safeBridge(() =>
           runBridgeWithPayload("ftm-author", body, (payloadPath) => [
             "ftm-author",
@@ -860,9 +1259,9 @@ const server = Bun.serve({
             "--out-dir",
             outDir,
             "--archive",
-            String(body.archive ?? ""),
+            paths.value.archive,
             "--member",
-            String(body.member ?? ""),
+            paths.value.member,
           ]),
         );
       },
@@ -877,11 +1276,16 @@ const server = Bun.serve({
         }
         const dds = String(body.dds ?? "");
         if (!dds) return bad("DDS_REQUIRED");
-        const out = String(
-          body.out ?? join(config.exportsDir, `tex-${Date.now()}.tex`),
-        );
+        const paths = checkedPath(() => ({
+          dds: trustedReadPath(dds, trustedStudioReadRoots),
+          out: exportOutputPath(
+            String(body.out ?? join(config.exportsDir, `tex-${Date.now()}.tex`)),
+            config.exportsDir,
+          ),
+        }));
+        if ("response" in paths) return paths.response;
         return safeBridge(() =>
-          runBridge(["tex-encode", "--dds", dds, "--out", out]),
+          runBridge(["tex-encode", "--dds", paths.value.dds, "--out", paths.value.out]),
         );
       },
     },
@@ -899,21 +1303,30 @@ const server = Bun.serve({
         if (!archive || !member || !obj) {
           return bad("ARCHIVE_MEMBER_OBJ_REQUIRED");
         }
-        const out = String(
-          body.out ??
-            join(config.exportsDir, `mesh-obj-${Date.now()}`, member),
-        );
+        const paths = checkedPath(() => ({
+          archive: clientRelativePath(archive),
+          member: clientRelativePath(member),
+          obj: trustedReadPath(obj, trustedStudioReadRoots),
+          out: exportOutputPath(
+            String(
+              body.out ??
+                join(config.exportsDir, `mesh-obj-${Date.now()}`, member),
+            ),
+            config.exportsDir,
+          ),
+        }));
+        if ("response" in paths) return paths.response;
         return safeBridge(() =>
           runBridge([
             "mesh-obj-import",
             "--archive",
-            archive,
+            paths.value.archive,
             "--member",
-            member,
+            paths.value.member,
             "--obj",
-            obj,
+            paths.value.obj,
             "--out",
-            out,
+            paths.value.out,
           ]),
         );
       },
@@ -928,12 +1341,25 @@ const server = Bun.serve({
         }
         const obj = String(body.obj ?? "");
         if (!obj) return bad("OBJ_REQUIRED");
-        const out = String(
-          body.out ??
-            join(config.exportsDir, `mesh-new-${Date.now()}`, "authored.dat"),
-        );
+        const paths = checkedPath(() => ({
+          obj: trustedReadPath(obj, trustedStudioReadRoots),
+          out: exportOutputPath(
+            String(
+              body.out ??
+                join(config.exportsDir, `mesh-new-${Date.now()}`, "authored.dat"),
+            ),
+            config.exportsDir,
+          ),
+        }));
+        if ("response" in paths) return paths.response;
         return safeBridge(() =>
-          runBridge(["mesh-from-obj", "--obj", obj, "--out", out]),
+          runBridge([
+            "mesh-from-obj",
+            "--obj",
+            paths.value.obj,
+            "--out",
+            paths.value.out,
+          ]),
         );
       },
     },
@@ -942,7 +1368,9 @@ const server = Bun.serve({
         const url = new URL(req.url);
         const path = url.searchParams.get("path") ?? "";
         if (!path) return bad("PATH_REQUIRED");
-        return safeBridge(() => runBridge(["eft-parse", "--path", path]));
+        const checked = checkedPath(() => clientRelativePath(path));
+        if ("response" in checked) return checked.response;
+        return safeBridge(() => runBridge(["eft-parse", "--path", checked.value]));
       },
     },
     "/api/ani/section-b-status": {
@@ -952,13 +1380,18 @@ const server = Bun.serve({
           url.searchParams.get("archive") ?? "Res/Player/PlayerA/AniA.res";
         const member = url.searchParams.get("member") ?? "NikiAniA.ani";
         const char = url.searchParams.get("char") ?? "NIKI";
+        const paths = checkedPath(() => ({
+          archive: clientRelativePath(archive),
+          member: clientRelativePath(member),
+        }));
+        if ("response" in paths) return paths.response;
         return safeBridge(() =>
           runBridge([
             "ani-section-b-status",
             "--archive",
-            archive,
+            paths.value.archive,
             "--member",
-            member,
+            paths.value.member,
             "--char",
             char,
           ]),
@@ -969,16 +1402,62 @@ const server = Bun.serve({
       POST: async (req) => {
         let body: Record<string, unknown>;
         try {
-          body = (await req.json()) as Record<string, unknown>;
-        } catch {
-          return bad("INVALID_JSON");
+          body = await readJsonObject(req, 2 * 1024 * 1024);
+        } catch (error) {
+          return operationalError(error) ?? bad("INVALID_JSON");
         }
+        const stage =
+          body.stage && typeof body.stage === "object" && !Array.isArray(body.stage)
+            ? (body.stage as Record<string, unknown>)
+            : null;
+        const ftm =
+          body.ftm && typeof body.ftm === "object" && !Array.isArray(body.ftm)
+            ? (body.ftm as Record<string, unknown>)
+            : null;
+        const paths = checkedPath(() => ({
+          stageMember: stage?.member
+            ? archiveMemberName(String(stage.member))
+            : "",
+          ftmArchive: ftm?.archive
+            ? clientRelativePath(String(ftm.archive))
+            : "",
+          ftmMember: ftm?.member
+            ? archiveMemberName(String(ftm.member))
+            : "",
+          particleArchive:
+            typeof body.particleArchive === "string" && body.particleArchive
+              ? trustedRegularFilePath(body.particleArchive, [config.exportsDir])
+              : "",
+        }));
+        if ("response" in paths) return paths.response;
+        const payload = {
+          ...body,
+          ...(stage && paths.value.stageMember
+            ? { stage: { ...stage, member: paths.value.stageMember } }
+            : {}),
+          ...(ftm
+            ? {
+                ftm: {
+                  ...ftm,
+                  ...(paths.value.ftmArchive
+                    ? { archive: paths.value.ftmArchive }
+                    : {}),
+                  ...(paths.value.ftmMember
+                    ? { member: paths.value.ftmMember }
+                    : {}),
+                },
+              }
+            : {}),
+          ...(paths.value.particleArchive
+            ? { particleArchive: paths.value.particleArchive }
+            : {}),
+        };
         const outDir = join(
           config.exportsDir,
           `content-pack-${Date.now()}`,
         );
         return safeBridge(() =>
-          runBridgeWithPayload("content-pack", body, (payloadPath) => [
+          runBridgeWithPayload("content-pack", payload, (payloadPath) => [
             "content-pack-build",
             "--payload",
             payloadPath,
@@ -987,6 +1466,69 @@ const server = Bun.serve({
           ]),
         );
       },
+    },
+    "/api/equipment-creator/package": {
+      POST: async (req) => {
+        let body: unknown;
+        try {
+          body = await req.json();
+        } catch {
+          return bad("INVALID_JSON");
+        }
+        try {
+          validateEquipmentPackageRequest(body);
+        } catch (error) {
+          return bad(error instanceof Error ? error.message : "INVALID_EQUIPMENT_PACKAGE");
+        }
+        return safeBridge(() => packageEquipmentCreator(body));
+      },
+    },
+    "/api/equipment-creator/install": {
+      POST: (req) =>
+        safeBridge(async () => {
+          const body = await readJsonObject(req, 4 * 1024);
+          return installEquipmentPackage(
+            String(body.packageId ?? ""),
+            String(body.profileName ?? ""),
+            {
+              exportsRoot: config.exportsDir,
+              managedStoreRoot: join(
+                config.tmpDir,
+                "managed-client-profiles",
+              ),
+              forbiddenRoots: [config.stockClient],
+            },
+          );
+        }),
+    },
+    "/api/equipment-creator/audit": {
+      POST: (req) =>
+        safeBridge(async () => {
+          const body = await readJsonObject(req, 4 * 1024);
+          return auditEquipmentPackage(String(body.packageId ?? ""), {
+            exportsRoot: config.exportsDir,
+            managedStoreRoot: join(config.tmpDir, "managed-client-profiles"),
+            forbiddenRoots: [config.stockClient],
+          });
+        }),
+    },
+    "/api/equipment-creator/preflight": {
+      POST: (req) =>
+        safeBridge(async () => {
+          const body = await readJsonObject(req, 4 * 1024);
+          return preflightEquipmentPackage(
+            String(body.packageId ?? ""),
+            String(body.profileName ?? ""),
+            {
+              exportsRoot: config.exportsDir,
+              managedStoreRoot: join(
+                config.tmpDir,
+                "managed-client-profiles",
+              ),
+              forbiddenRoots: [config.stockClient],
+            },
+          );
+        }),
     },
     "/api/content-pack/install": {
       POST: async (req) => {
@@ -1072,9 +1614,9 @@ const server = Bun.serve({
       POST: async (req) => {
         let body: Record<string, unknown>;
         try {
-          body = (await req.json()) as Record<string, unknown>;
-        } catch {
-          return bad("INVALID_JSON");
+          body = await readJsonObject(req, 16 * 1024);
+        } catch (error) {
+          return operationalError(error) ?? bad("INVALID_JSON");
         }
         if (!body.path) return bad("PATH_REQUIRED");
         if ("databaseUrl" in body) {
@@ -1104,9 +1646,15 @@ const server = Bun.serve({
         const files = readdirSync(config.packsDir).filter((name) =>
           name.endsWith(".json"),
         );
-        const packs = files.map((name) => {
-          const raw = readFileSync(join(config.packsDir, name), "utf8");
-          return { file: name, ...(JSON.parse(raw) as Record<string, unknown>) };
+        const packs = files.flatMap((name) => {
+          try {
+            const raw = readFileSync(join(config.packsDir, name), "utf8");
+            return [
+              { file: name, ...(JSON.parse(raw) as Record<string, unknown>) },
+            ];
+          } catch {
+            return [];
+          }
         });
         return json({ packs });
       },
@@ -1196,11 +1744,21 @@ const server = Bun.serve({
         }),
     },
   },
-  development: {
-    hmr: true,
-    console: true,
+  error(error) {
+    return operationalError(error) ?? bad("INTERNAL_SERVER_ERROR", 500);
   },
+  ...developmentServeOptions(process.env),
 });
+
+let shuttingDown = false;
+async function shutdown(): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  server.stop();
+  await shutdownBridgeProcesses();
+}
+process.once("SIGINT", shutdown);
+process.once("SIGTERM", shutdown);
 
 process.stdout.write(
   `jftse-content-studio listening on http://127.0.0.1:${server.port}\n`,

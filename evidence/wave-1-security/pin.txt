@@ -1,0 +1,15 @@
+Command:
+bun test tests/api.test.ts -t "aggregate content pack SQL orders equipment before map"
+
+Result:
+PASS
+
+Evidence:
+1 pass
+129 filtered out
+0 fail
+21 expect() calls
+
+Purpose:
+Characterizes the unchanged aggregate content-pack ordering, SQL path,
+SQL dry-run, install, and preflight behavior before the injection fix.

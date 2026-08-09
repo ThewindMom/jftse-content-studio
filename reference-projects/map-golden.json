@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "name": "Golden QA Court",
+  "draft": {
+    "shell": {
+      "workspace": "maps",
+      "step": "item"
+    },
+    "editors": {
+      "map": {
+        "schemaVersion": 1,
+        "name": "QA Court",
+        "layers": [
+          { "id": "terrain", "name": "Terrain", "visible": true },
+          { "id": "objects", "name": "Objects", "visible": true },
+          { "id": "collision", "name": "Collision", "visible": true },
+          { "id": "spawns", "name": "Spawns", "visible": true },
+          { "id": "effects", "name": "Effects", "visible": true }
+        ],
+        "objects": [
+          {
+            "assetId": "court/net.glb",
+            "name": "Center net",
+            "layer": "objects",
+            "position": [0, 0, 0],
+            "rotation": [0, 0, 0],
+            "scale": [1, 1, 1],
+            "id": "object-1"
+          }
+        ],
+        "spawns": [
+          {
+            "team": "home",
+            "position": [-4, 0, 0],
+            "facing": 90,
+            "id": "spawn-1"
+          },
+          {
+            "team": "away",
+            "position": [4, 0, 0],
+            "facing": -90,
+            "id": "spawn-2"
+          }
+        ],
+        "collision": {
+          "blockedCells": [[2, 2]]
+        },
+        "references": {
+          "stageScript": "1_Emerald_Beach.set",
+          "ftmArchive": "Res/MapSet/FantaCastle.res",
+          "ftmMember": "FantaCastleOutSide.ftm",
+          "collisionAsset": "Res/MapSet/FantaCastle.res",
+          "terrainSource": "roundtrip/QA_Court.blend",
+          "materials": [
+            { "slot": "court", "texture": "Texture/Court01.tex" }
+          ]
+        }
+      }
+    }
+  }
+}

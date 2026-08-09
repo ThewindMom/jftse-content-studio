@@ -1,0 +1,14 @@
+Command:
+bun test tests/equipmentCreatorPackage.test.ts tests/equipmentCreator.test.ts
+
+Result:
+10 pass, 0 fail, 30 expectations
+
+Pinned behavior:
+- OBJ/glTF import and validation
+- comparison capture matching
+- deterministic creator manifest
+- current production package writer orchestration
+- failed-writer export cleanup
+
+No Equipment production code changed before the Wave 3 RED tests.

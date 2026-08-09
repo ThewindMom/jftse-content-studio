@@ -1,0 +1,29 @@
+Wave 2 cleanup and immutability receipt:
+
+Owned processes stopped:
+- Production compatibility server `bash_316`
+- ResTool GUI `bash_374`
+- Isolated Xvfb display `bash_321`
+
+No listener/process remains for:
+- port 4310
+- ft_restool.jar
+- Xvfb :121
+- bun run server/index.ts
+- python/studio_bridge.py
+
+Disposable work removed:
+- evidence/wave-2-compat/oracle-work
+- evidence/wave-2-compat/gui-client
+
+Immutable baselines after cleanup:
+- Stock client:
+  be1f78f3acdf7ad2b934c393675d9c4b049bd5c61007f901992bfc9f6b948fe3
+- Local client:
+  e68db0142baa201ec29866ae12e4b57849a6bb27ea2b4a15f7a278d901f7c61e
+- Sibling JFTSE status:
+  2f1ce364c9d6fbc6fb0a7f63198d6fad48c48b1108c23ebd86e72d29aa16dce2
+- Both ResTool jars:
+  590ccfa6d88e0e7ae5af864af212543ec41342197603fd183f782315e3b0402f
+
+All match pre-wave baselines. `git diff --check` is clean.

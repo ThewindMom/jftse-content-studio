@@ -1,0 +1,11 @@
+Invocation:
+curl -i -X POST http://127.0.0.1:4310/api/sql/apply \
+  -H 'content-type: application/json' \
+  -H 'content-length: 20000' \
+  --data '{}'
+
+HTTP/1.1 413 Payload Too Large
+Content-Type: application/json;charset=utf-8
+Content-Length: 45
+
+{"ok":false,"error":"REQUEST_BODY_TOO_LARGE"}

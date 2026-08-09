@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "oracle": {
+    "implementation": "FT-ResTool Java API",
+    "sha256": "590ccfa6d88e0e7ae5af864af212543ec41342197603fd183f782315e3b0402f",
+    "clients": [
+      "/home/thewind/Downloads/ft_restool.jar",
+      "/home/thewind/Downloads/ft_restool (1).jar"
+    ]
+  },
+  "fixtures": {
+    "ftm": {
+      "binary": "sample.ftm.b64",
+      "semantic": "sample.ftm.json",
+      "decodedSha256": "a55c5a375e1eb0083a0c99d7027bcbeb1c0817db119ecc350662cdb9dad445bd"
+    },
+    "prj": {
+      "binary": "sample.prj.b64",
+      "decodedSha256": "64136f6be70a4372a9617d8f66eee8006fbfa478af63845974665445a5f6425b"
+    },
+    "set": {
+      "plain": "set.plain.txt",
+      "encryptedBase64": "BTwUixKTo9WN105ODMry9ih2AMa/4fO8eArFf+1MB4/fDwLwZ1Vb8eBC+QKggpr9qw=="
+    },
+    "tex": {
+      "decoded": "tex.dds.b64",
+      "encoded": "tex.encoded.b64"
+    }
+  }
+}

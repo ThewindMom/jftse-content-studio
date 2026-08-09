@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "name": "Golden Combined Pack",
+  "draft": {
+    "shell": {
+      "workspace": "equipment",
+      "step": "item"
+    },
+    "editors": {
+      "equipment": null,
+      "map": {
+        "schemaVersion": 1,
+        "name": "Untitled Court",
+        "layers": [
+          { "id": "terrain", "name": "Terrain", "visible": true },
+          { "id": "objects", "name": "Objects", "visible": true },
+          { "id": "collision", "name": "Collision", "visible": true },
+          { "id": "spawns", "name": "Spawns", "visible": true },
+          { "id": "effects", "name": "Effects", "visible": true }
+        ],
+        "objects": [],
+        "spawns": [],
+        "collision": {
+          "blockedCells": []
+        },
+        "references": {
+          "stageScript": "1_Emerald_Beach.set",
+          "ftmArchive": "Res/MapSet/FantaCastle.res",
+          "ftmMember": "FantaCastleOutSide.ftm",
+          "collisionAsset": "Res/MapSet/FantaCastle.res",
+          "terrainSource": "roundtrip/Untitled_Court.blend",
+          "materials": [
+            { "slot": "court", "texture": "Texture/Court01.tex" }
+          ]
+        }
+      }
+    }
+  }
+}

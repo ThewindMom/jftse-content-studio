@@ -1,0 +1,32 @@
+Wave 1 operations hardening RED - 2026-08-09
+
+$ bun test tests/operationsHardening.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/operationsHardening.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '../server/requestPolicy.ts' from '/home/thewind/Projects/00_Random_Coding/260705_fanta_tennis/jftse-content-studio/tests/operationsHardening.test.ts'
+-------------------------------
+
+
+ 0 pass
+ 1 fail
+ 1 error
+Ran 1 test across 1 file. [59.00ms]
+
+$ python3 -m unittest tests/test_local_install.py
+F
+======================================================================
+FAIL: test_direct_python_prefers_read_only_stock_before_local_client (tests.test_local_install.StockDiscoveryTests.test_direct_python_prefers_read_only_stock_before_local_client)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/thewind/Projects/00_Random_Coding/260705_fanta_tennis/jftse-content-studio/tests/test_local_install.py", line 21, in test_direct_python_prefers_read_only_stock_before_local_client
+    self.assertEqual(resolve_stock_client(jftse), stock.resolve())
+AssertionError: PosixPath('/tmp/tmplf1hh8fm/FantaTennis-Local-Client/client') != PosixPath('/tmp/tmplf1hh8fm/.jftse-client-linux/client')
+
+----------------------------------------------------------------------
+Ran 1 test in 0.001s
+
+FAILED (failures=1)

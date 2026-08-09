@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import zipfile
+from html import escape
 from pathlib import Path
 from typing import Any
 
@@ -16,13 +17,62 @@ parse_item_mesh_entries = _item_mesh.parse_item_mesh_entries
 resolve_item_mesh_path = _item_mesh.resolve_item_mesh_path
 
 
-def _patch_zip_member(archive_path: Path, member: str, data: bytes, out_path: Path) -> None:
+def _patch_zip_members(
+    archive_path: Path,
+    replacements: dict[str, bytes],
+    out_path: Path,
+) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(archive_path, "r") as zin:
+        missing = replacements.keys() - set(zin.namelist())
+        if missing:
+            raise ValueError(f"ITEM_MEMBER_MISSING: {', '.join(sorted(missing))}")
         with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_DEFLATED) as zout:
             for info in zin.infolist():
-                payload = data if info.filename == member else zin.read(info.filename)
-                zout.writestr(info, payload)
+                zout.writestr(info, replacements.get(info.filename, zin.read(info.filename)))
+
+
+def _set_xml_attribute(record: str, name: str, value: str) -> str:
+    pattern = re.compile(rf'\b{re.escape(name)}="[^"]*"', re.IGNORECASE)
+    replacement = f'{name}="{escape(value, quote=True)}"'
+    if pattern.search(record):
+        return pattern.sub(replacement, record, count=1)
+    return record[:-2].rstrip() + f" {replacement}/>"
+
+
+def _patch_item_parts(
+    plaintext: str,
+    *,
+    source_item_index: int,
+    target_item_index: int,
+    char: str,
+    part: str,
+    effect: int,
+) -> str:
+    record_re = re.compile(r'<Item\b[^>]*\bIndex="(\d+)"[^>]*/>', re.IGNORECASE)
+    records = list(record_re.finditer(plaintext))
+    source = next(
+        (match.group(0) for match in records if int(match.group(1)) == source_item_index),
+        None,
+    )
+    if source is None:
+        raise ValueError("SOURCE_ITEM_BINDING_MISSING")
+    target = source
+    for name, value in (
+        ("Index", str(target_item_index)),
+        ("Char", char.upper()),
+        ("Part", part.upper()),
+        ("Mesh", str(target_item_index)),
+        ("Effect", str(effect)),
+    ):
+        target = _set_xml_attribute(target, name, value)
+    existing = next(
+        (match.group(0) for match in records if int(match.group(1)) == target_item_index),
+        None,
+    )
+    if existing is not None:
+        return plaintext.replace(existing, target, 1)
+    return plaintext.replace(source, source + "\n" + target, 1)
 
 
 def clone_equipment_mesh(
@@ -81,20 +131,22 @@ def patch_item_mesh_catalog(
     path: str,
     desc: str,
     out_dir: Path,
+    source_item_index: int | str = 10728,
+    part: str = "Racket",
+    effect: int = 0,
 ) -> dict[str, Any]:
-    """Clone/patch Info_Item_Mesh entry into exported Item.res."""
+    """Patch mesh catalog and runtime item tuple into one exported Item.res."""
+    if effect not in {0, 15}:
+        raise ValueError("EQUIPMENT_EFFECT_UNSUPPORTED")
     item_res = client_root / "Res" / "Script" / "Item.res"
     if not item_res.is_file():
         return {"ok": False, "error": "ITEM_RES_MISSING"}
     with zipfile.ZipFile(item_res, "r") as zin:
         raw = zin.read("Info_Item_Mesh.set")
+        raw_parts = zin.read("Item_Parts.set")
     plain = decrypt_set_file(raw).decode("utf-8", errors="replace")
     want = str(int(source_index))
     char_u = char.upper()
-    pattern = re.compile(
-        rf'(<Item\s+Char="{re.escape(char_u)}"\s+Index="{re.escape(want)}"\s+Path=")([^"]*)("(?:\s+Desc="[^"]*")?[^/]*/>)',
-        re.IGNORECASE,
-    )
     # Prefer exact line clone then replace index/path/desc
     entry_re = re.compile(
         r'<Item\s+Char="([^"]+)"\s+Index="(\d+)"\s+Path="([^"]+)"(?:\s+Desc="([^"]*)")?\s*/>',
@@ -111,7 +163,8 @@ def patch_item_mesh_catalog(
                 break
     new_line = (
         f'<Item Char="{char_u}" Index="{int(new_index)}" '
-        f'Path="{path.replace(chr(92), "/")}" Desc="{desc}"/>'
+        f'Path="{escape(path.replace(chr(92), "/"), quote=True)}" '
+        f'Desc="{escape(desc, quote=True)}"/>'
     )
     if f'Index="{int(new_index)}"' in plain and char_u in plain:
         # Replace existing new index
@@ -140,9 +193,26 @@ def patch_item_mesh_catalog(
         if pad > 0:
             encrypted = encrypt_set_file(plain2.encode("utf-8") + (b"\n" * pad))
         # If still different, write anyway (install uses full member replace)
+    parts_plain = decrypt_set_file(raw_parts).decode("utf-8", errors="replace")
+    patched_parts = _patch_item_parts(
+        parts_plain,
+        source_item_index=int(source_item_index),
+        target_item_index=int(new_index),
+        char=char_u,
+        part=part,
+        effect=effect,
+    )
+    encrypted_parts = encrypt_set_file(patched_parts.encode("utf-8"))
     out_dir.mkdir(parents=True, exist_ok=True)
     out_item = out_dir / "Item.res"
-    _patch_zip_member(item_res, "Info_Item_Mesh.set", encrypted, out_item)
+    _patch_zip_members(
+        item_res,
+        {
+            "Info_Item_Mesh.set": encrypted,
+            "Item_Parts.set": encrypted_parts,
+        },
+        out_item,
+    )
     return {
         "ok": True,
         "itemArchive": str(out_item),
@@ -154,6 +224,13 @@ def patch_item_mesh_catalog(
         "encryptedBytes": len(encrypted),
         "stockBytes": len(raw),
         "sizeMatch": len(encrypted) == len(raw),
+        "itemBinding": {
+            "sourceItemIndex": int(source_item_index),
+            "itemIndex": int(new_index),
+            "mesh": int(new_index),
+            "effect": effect,
+            "encryptedBytes": len(encrypted_parts),
+        },
     }
 
 
@@ -168,19 +245,24 @@ def build_item_sql_pack(
     gold: int = 0,
 ) -> str:
     """Minimal designer SQL stub for custom shop rows (JFTSE-aligned fields)."""
-    safe_name = name.replace("'", "''")
+    def sql_literal(value: str) -> str:
+        escaped = value.replace("'", "''")
+        return f"'{escaped}'"
+
+    name_sql = sql_literal(name)
+    part_sql = sql_literal(part)
     lines = [
         "-- jftse-content-studio item pack",
         f"-- product index {product_index} mesh {mesh}",
         (
             "INSERT INTO S_Product (`index`, name, part, mesh, tex, effect, gold) "
-            f"VALUES ({product_index}, '{safe_name}', '{part}', {mesh}, {tex}, {effect}, {gold}) "
+            f"VALUES ({product_index}, {name_sql}, {part_sql}, {mesh}, {tex}, {effect}, {gold}) "
             "ON DUPLICATE KEY UPDATE name=VALUES(name), part=VALUES(part), mesh=VALUES(mesh), "
             "tex=VALUES(tex), effect=VALUES(effect), gold=VALUES(gold);"
         ),
         (
             "INSERT INTO product (`index`, name, part, mesh, tex, effect, gold) "
-            f"VALUES ({product_index}, '{safe_name}', '{part}', {mesh}, {tex}, {effect}, {gold}) "
+            f"VALUES ({product_index}, {name_sql}, {part_sql}, {mesh}, {tex}, {effect}, {gold}) "
             "ON DUPLICATE KEY UPDATE name=VALUES(name), mesh=VALUES(mesh);"
         ),
     ]

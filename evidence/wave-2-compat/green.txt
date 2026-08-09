@@ -1,0 +1,14 @@
+bun test v1.3.14 (0d9b296a)
+
+tests/compatibility.test.ts:
+(pass) ResTool compatibility fixtures > FTM semantic parse/store/fromJson/toJson agrees with the Java oracle [0.09ms]
+(pass) ResTool compatibility fixtures > PRJ read/write round-trip agrees with the Java oracle [0.05ms]
+(pass) ResTool compatibility fixtures > SET encrypt/decrypt agrees with the Java oracle [0.05ms]
+(pass) ResTool compatibility fixtures > TEX XOR round-trip agrees with the Java oracle [0.03ms]
+(pass) ResTool compatibility fixtures > both read-only ResTool jars have the recorded identical hash [2.30ms]
+(pass) ResTool compatibility fixtures > live endpoint reports proven and unproven capabilities without path input [5.82ms]
+
+ 6 pass
+ 0 fail
+ 23 expect() calls
+Ran 6 tests across 1 file. [735.00ms]

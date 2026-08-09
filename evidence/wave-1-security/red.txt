@@ -1,0 +1,18 @@
+Command:
+bun test tests/api.test.ts -t "rejects injected equipment part SQL"
+
+Result:
+RED — failed for the intended SQL statement-count regression.
+
+Assertion:
+Expected insertCount: 2
+Received insertCount: 4
+
+The generated SQL allowed the malicious `part` value to terminate the
+S_Product/product string literal and add two S_Maps INSERT statements.
+
+Suite summary:
+0 pass
+130 filtered out
+1 fail
+5 expect() calls

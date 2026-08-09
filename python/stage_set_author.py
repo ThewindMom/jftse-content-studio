@@ -10,8 +10,21 @@ from typing import Any
 from client_crypto import decrypt_set_file, encrypt_set_file
 
 
+def _safe_member_name(member: str) -> str:
+    if (
+        not member
+        or member in {".", ".."}
+        or "/" in member
+        or "\\" in member
+        or Path(member).name != member
+    ):
+        raise ValueError("PATH_MEMBER_INVALID")
+    return member
+
+
 def load_stage_set_plain(client_root: Path, member: str) -> tuple[bytes, bytes]:
     """Return (encrypted raw, plaintext)."""
+    member = _safe_member_name(member)
     archive = client_root / "Res" / "Stage" / "Info.res"
     with zipfile.ZipFile(archive, "r") as zin:
         raw = zin.read(member)
@@ -58,6 +71,7 @@ def write_stage_set(
     append_objects: list[dict[str, Any]] | None = None,
     plaintext_override: str | None = None,
 ) -> dict[str, Any]:
+    member = _safe_member_name(member)
     raw, plain_b = load_stage_set_plain(client_root, member)
     plain = plaintext_override if plaintext_override is not None else plain_b.decode(
         "utf-8", errors="replace"

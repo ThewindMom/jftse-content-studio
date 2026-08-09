@@ -1,0 +1,42 @@
+Wave 2 JFTSE item/effect and map-spawn runtime truth
+Captured: 2026-08-09
+
+Authoritative sibling root (read-only): ../JFTSE
+Fixture: tests/fixtures/compatibility/jftse-runtime-truth.json
+Focused test: tests/jftseRuntimeTruth.test.ts
+
+The fixture pins full-file SHA-256 provenance for:
+- docs/custom-content-loading.md
+- DBDataLoader.java, Item.java, ItemPart.java, PlayerPocket.java, ClothEquipment.java
+- Item_Parts_Ini3.xml and its item 10728 server row
+- chat-server GameManager.java spawn logic at lines 497-533
+- tools/wind_dragon_slayer/wind_assets.py
+- stock and local Item.res, ETC.res, Particle.res, PlayerA/Item07.res,
+  PlayerA/Mesh.res, Stage/Info.res, Stage/Mesh01.res, and MapSet/FantaCastle.res
+
+Characterized contract:
+- itemIndex 10728 is consistent across the imported server row, pocket ownership,
+  ClothEquipment.racket, and client Item_Parts.set tuple.
+- Client tuple order is (Index, Char, Part, Mesh, Tex, Effect).
+- RacketEffect.set is one-based positional: stock effect 7 is record 7; the
+  isolated local effect 15 is appended record 15. No arithmetic offset exists.
+- Ice_Smoke02.ssp resolves to Particle.res::Ice_Smoke02.set.
+- Authored map spawn coordinates are design-only. GameManager selects runtime
+  room coordinates by mode/account-home level and sets lastMapLayer to zero.
+- Runtime package receipts contain hashes, paths, dependencies, content-pack
+  receipts, and explicit unsupported limitations; they must not claim or carry
+  authored spawn coordinates. The separate design manifest may preserve them.
+
+No proprietary archive was copied. External source/resource trees were read and
+hashed only. No external file, server/index.ts, or tests/compatibility.test.ts was
+modified.
+
+Verification:
+- PASS: jq fixture schema (schemaVersion 1, expected kind, 16 resource refs).
+- PASS: fixture receipt fields are disjoint from authored-coordinate fields.
+- PASS: bun test tests/jftseRuntimeTruth.test.ts (3 pass, 0 fail, 85 assertions).
+- PASS: changed TypeScript LSP diagnostics (no diagnostics).
+- PASS: untracked-file diff --check for all three touched files.
+- NOT ATTRIBUTABLE TO THIS CHANGE: tests/compatibility.test.ts is concurrently
+  owned by the oracle child and currently cannot load its not-yet-present
+  ../server/compatibility.ts module (0 tests executed). It was not edited here.

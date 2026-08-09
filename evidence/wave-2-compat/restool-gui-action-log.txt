@@ -1,0 +1,33 @@
+Surface:
+FT - Resource Tool by XxharCs, version 0.0.7
+Hidden isolated display: :121
+Read-only jar: /home/thewind/Downloads/ft_restool.jar
+
+Linux path compatibility:
+1. The Windows-only GUI initially crashed because `new File(".\\").listFiles()`
+   returns null on Linux.
+2. `javap` proved `checkAndSaveFTPath()` appends another literal backslash,
+   so the runtime tree root is the Linux filename `.\\`.
+3. `createNodes()` proved the top-level filter accepts only exact `Res` and
+   `_resources` names.
+4. A disposable directory view under `evidence/wave-2-compat/gui-client`
+   supplied those literal names and symlinked only read-only stock inputs.
+   The stock client itself was never modified.
+
+Manual interaction:
+1. ResTool launched successfully on display :121.
+2. The tree showed `Res/Compat.res`.
+3. Selecting `Compat.res` displayed:
+   - `sample.ftm` (106 bytes, 74 compressed)
+   - `sample.prj` (32 bytes, 26 compressed)
+4. The FTM and PRJ rows were selected in the real ResTool archive table.
+
+Screenshots:
+- restool-gui-res-tree.png
+- restool-gui-archive-open.png
+- restool-gui-prj-selected.png
+
+Interpretation:
+This proves the generated archive and members are accepted and listed by
+ResTool. It is compatibility evidence only, not Fantasy Tennis runtime/DX9
+acceptance.

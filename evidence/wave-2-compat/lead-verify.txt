@@ -1,0 +1,27 @@
+Independent lead verification:
+
+- bun test tests/compatibility.test.ts
+  6 pass, 0 fail, 23 expectations
+- bun test tests/jftseRuntimeTruth.test.ts
+  3 pass, 0 fail, 85 expectations
+- bun run typecheck
+  Exit 0
+- LSP: server/compatibility.ts
+  No diagnostics
+- LSP: tests/compatibility.test.ts
+  No diagnostics
+- LSP: server/index.ts errors
+  No diagnostics
+- git diff --check
+  Clean
+- Both ResTool jar hashes:
+  590ccfa6d88e0e7ae5af864af212543ec41342197603fd183f782315e3b0402f
+
+Manual Java oracle:
+java --class-path /home/thewind/Downloads/ft_restool.jar \
+  tests/fixtures/compatibility/oracle/CompatibilityOracle.java \
+  evidence/wave-2-compat/oracle-work
+
+FTM semantic round-trip, PRJ byte round-trip, SET encryption round-trip, and
+TEX transform round-trip all returned true. Exact output is in
+`oracle-manual.json`.

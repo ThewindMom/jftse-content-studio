@@ -1,0 +1,27 @@
+{
+  "name": "Compat/Map",
+  "mapHeader": {
+    "mapPath": "Compat/Map",
+    "tileCountX": 2,
+    "tileCountY": 3,
+    "unkI2": 7,
+    "indoorMode": 1,
+    "unkI3": 8,
+    "unkI4": 9,
+    "tileLayerDefinitions": []
+  },
+  "tileLayerIndices": { "layers": [] },
+  "prefabObjects": [{ "name": "Tree", "objId": "OBJ_TREE" }],
+  "sceneObjects": [{
+    "prefabIndex": 0,
+    "x": 11,
+    "y": 22,
+    "scaleHeight": 1.25,
+    "scaleWidth": 0.75,
+    "rotationY": 45.0,
+    "rotationX": -5.0
+  }],
+  "interactableTiles": [],
+  "blockedTiles": [{ "x": 4, "y": 5 }],
+  "unknownBytes": [-91, 90]
+}

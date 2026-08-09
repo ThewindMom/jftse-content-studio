@@ -1,4 +1,5 @@
 import { useEffect, useReducer, useRef, useState } from "react";
+import { ClientHarnessPanel } from "./ClientHarnessPanel.tsx";
 import { ConfirmDialog } from "./ConfirmDialog";
 import {
   ContentPackPanels,
@@ -233,22 +234,25 @@ export function ContentPackDesk() {
   };
 
   return <>
-    <ContentPackPanels
-      busy={busy}
-      can={can}
-      draft={draft}
-      installPlan={manifest?.installPlan}
-      localClient={localClient}
-      next={next}
-      onAction={act}
-      onCopyLaunchCommand={() => void copyLaunchCommand()}
-      onDraftChange={edit}
-      preflight={preflight}
-      reason={(action) => getContentPackActionReason(workflow, action)}
-      sqlPath={sqlPath}
-      status={status}
-      workflow={workflow}
-    />
+    <div className="content-pack-workbench">
+      <ContentPackPanels
+        busy={busy}
+        can={can}
+        draft={draft}
+        installPlan={manifest?.installPlan}
+        localClient={localClient}
+        next={next}
+        onAction={act}
+        onCopyLaunchCommand={() => void copyLaunchCommand()}
+        onDraftChange={edit}
+        preflight={preflight}
+        reason={(action) => getContentPackActionReason(workflow, action)}
+        sqlPath={sqlPath}
+        status={status}
+        workflow={workflow}
+      />
+      <ClientHarnessPanel />
+    </div>
     <ConfirmDialog
       confirmLabel={confirm === "install" ? "Install verified files" : "Apply audited SQL"}
       description={confirm === "install"

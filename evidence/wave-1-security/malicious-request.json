@@ -1,0 +1,9 @@
+{
+  "name": "part-injection-live-http",
+  "equipment": {
+    "meshIndex": 214,
+    "char": "NIKI",
+    "desc": "Part injection live HTTP",
+    "part": "Racket', 0, 0, 0, 0); INSERT INTO S_Maps (id) VALUES (424242); --"
+  }
+}

@@ -25,8 +25,8 @@ def resolve_stock_client(jftse: Path) -> Path:
     if env:
         return Path(env).expanduser().resolve()
     for candidate in (
-        jftse / "FantaTennis-Local-Client" / "client",
         jftse / ".jftse-client-linux" / "client",
+        jftse / "FantaTennis-Local-Client" / "client",
     ):
         if candidate.is_dir():
             return candidate.resolve()
