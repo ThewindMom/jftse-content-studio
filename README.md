@@ -1,255 +1,253 @@
 # JFTSE Content Studio
 
-Designer and reverse-engineering workbench for **Fantasy Tennis / JFTSE** client content.
+A local, stock-safe authoring studio for Fantasy Tennis designers working with
+the sibling JFTSE repository and a separate runnable client copy.
 
-| Workspace | What it does |
-|-----------|----------------|
-| **Items** | Racket/effect particle export, verified install to a **local** client only |
-| **Content Pack** | One desk: build multi-asset pack → install → SQL dry-run/apply → playtest checklist |
-| **Map Studio** | Create/fork maps, stage `.set` write, SQL packs, FTM author + local install |
-| **Mesh Studio** | Stage/player mesh decode, textures, transforms, OBJ/glTF export, OBJ→DAT |
-| **Equipment** | Preview (multi-mat stems/tex) + **pack** + local install |
+The studio turns known JFTSE formats and database contracts into four guided
+workspaces:
 
-Sibling tooling for the [JFTSE](https://github.com/sstokic-tgm/JFTSE) emulator ecosystem. It **never writes the stock client** unless you install into an allowlisted local path.
+- **Equipment** — start from a stock racket, author an effect, build verified
+  archives, install to a local client, and prepare a manual Equipment check.
+- **Packs** — build one equipment + map + stage + optional FTM content pack,
+  install its files, audit/apply its aggregate SQL, and run local-client
+  preflight.
+- **Maps** — edit map metadata, validate the selected stage asset graph, export
+  relational SQL, inspect PRJ/FTM placement data, and author bounded FTM edits.
+- **Meshes** — inspect decoded Stage/Sky/Collision DAT geometry, transform it,
+  export OBJ/glTF, and run experimental authored-DAT workflows.
 
-Deep client format notes: [`docs/client-re.md`](docs/client-re.md).
-
----
-
-## Quick start
-
-```bash
-git clone https://github.com/ThewindMom/jftse-content-studio.git
-cd jftse-content-studio
-bun install
-
-# Point at a JFTSE checkout that contains client Res/ archives
-export JFTSE_ROOT=/path/to/JFTSE
-export JFTSE_STOCK_CLIENT=$JFTSE_ROOT/FantaTennis-Local-Client/client   # or .jftse-client-linux/client
-export JFTSE_LOCAL_CLIENT=$JFTSE_ROOT/FantaTennis-Local-Client/client   # install target (optional)
-
-bun run dev
-# http://127.0.0.1:4310
-```
-
-### Requirements
-
-| Tool | Notes |
-|------|--------|
-| [Bun](https://bun.sh) 1.3+ | App server, UI, tests |
-| Python 3.12+ | Asset bridge (`studio_bridge.py`) |
-| [uv](https://github.com/astral-sh/uv) | Bridge runs `uv run --with pillow --with cryptography` |
-| JFTSE tree + client | `Res/` ZIP archives (Stage, Player, MapSet, Script, …) |
-
-If `JFTSE_ROOT` is unset, the server uses sibling `../JFTSE`. Stock client defaults to `$JFTSE_ROOT/.jftse-client-linux/client`; the Python bridge also accepts `FantaTennis-Local-Client/client` as a fallback.
-
-### Scripts
-
-```bash
-bun run dev          # start API + UI on PORT (default 4310)
-bun test             # API integration suite (45 tests)
-bunx tsc --noEmit    # TypeScript check
-```
-
----
-
-## Architecture
-
-```text
-Browser (React + Three.js)
-        │  HTTP
-        ▼
-server/index.ts          Bun HTTP API, static web/
-        │
-        ▼
-python/studio_bridge.py  CLI commands → JSON stdout
-        │
-        ├── mesh_codec / mesh_meta / mesh_texture
-        ├── stage_scene / map_catalog / ftm_codec
-        ├── item_mesh / bone_attach / ani_codec
-        └── client_crypto (AES .set, XOR .tex)
-                │
-                ▼
-        JFTSE stock/local client Res/*.res
-```
-
-- **UI:** React 19 + Three.js 0.185 (`web/`)
-- **API:** Bun (`server/`)
-- **Assets:** Python codecs; crypto/texture via `cryptography` + Pillow
-
----
-
-## Workspaces
-
-### 1. Items (effects)
-
-Safe racket-aura pipeline:
-
-1. Pick a stock racket (e.g. Dragon Slayer).
-2. Choose effect preset + atlas thumbnails.
-3. Build a verified fixed-size `Particle.res` (only dormant `Ice_Smoke02.set` may change).
-4. Install to **local** client only (stock path refused).
-5. Playtest readiness + launch command for Equipment check.
-
-### 2. Map Studio
-
-Relational map desk + stage authoring:
-
-1. Browse `S_Maps` with scenario / guardian links; edit timings, description, boss flags.
-2. **Create new map** SQL (next id/map byte + scenario links + stage bind comments).
-3. Validate / **write** stage `.set` (WorldFile overrides) into exported `Info.res`.
-4. Preview court geometry (World + Object compositor).
-5. Export SQL packs + **FTM author** (patch/add/remove placements → MapSet RES → local install).
-
-Also exposes decrypted **map catalogs** (`MapObjRes`, `MapTileRes`, `MapHouseRes`).
-
-### 3. Mesh Studio
-
-Recovery-grade mesh modeler for proprietary `.dat` members:
-
-1. List Stage / Sky / Collision meshes.
-2. Multi-stride vertex recovery + solid-area index scoring.
-3. UVs (interleaved or planar XZ) + stage albedo `.tex` → PNG / **DDS→`.tex` encode**.
-4. Translate / rotate / scale with **stride-aware** rewrite (same byte length).
-5. Export OBJ + glTF + meta JSON; **OBJ→DAT** when vertex counts match (topology-preserving).
-
-### 4. Equipment mesh + attach + pack
-
-1. Resolve shop `mesh` index → player DAT via AES `Info_Item_Mesh.set`.
-2. Decode racket geometry + co-located texture when present.
-3. Load body skeleton socket **`Bone_Racket`** bind 4×4 + skinned body + named ANI motions.
-4. **Pack equipment**: clone Item RES + patch `Info_Item_Mesh` (new Index) + item SQL.
-5. **Install pack** to allowlisted local client only (stock refused).
-
----
-
-## Client formats (current RE status)
-
-| Format | Status | Module / API |
-|--------|--------|----------------|
-| `.res` | ZIP containers | — |
-| `.set` | AES-128-ECB `TIMOTEI_ZION\0×4` | `client_crypto`, `/api/stage-set/decrypt` |
-| `.tex` | XOR first 128 B → DDS | `mesh_codec` / `mesh_texture` |
-| Stage `.set` scene | WorldFile + `[Object]` / `[Effect]` | `stage_scene`, `/api/stage-scene` |
-| Mesh `.dat` | Multi-stride verts, area-scored u16 indices, materials, bones | `mesh_codec`, `mesh_meta` |
-| Equipment materials | 64 B records, count @ `0x64` | `mesh_meta` |
-| Item mesh catalog | AES XML Index → Path | `item_mesh`, `/api/item-mesh/resolve` |
-| Map catalogs | MapObj / Tile / House | `map_catalog`, `/api/map-catalog` |
-| **FTM / PRJ** | Full FT-ResTool schema + **serialize/export** of placement patches | `ftm_codec`, `/api/ftm/parse`, `POST /api/ftm/export` |
-| **ANI** | Multi-clip float3 in **A** + secondary stack in **C** (`clipIndex`, `channel`); B/tail classified unknown | `ani_codec`, `/api/ani/parse?clipIndex=&channel=` |
-| **Bone attach** | Bind matrix at `Bone_Racket` | `bone_attach`, `/api/bone-attach` |
-
-FTM layout is a port of decompiled **FT-ResTool** (`FTMParser`): scene objects carry `prefabIndex`, `x`, `y`, `scaleHeight`, `scaleWidth`, `rotationY`, `rotationX`.
-
-See [`docs/client-re.md`](docs/client-re.md) for field-level detail and remaining limits (full skinning playback, FTM→3D map scene compositor).
-
----
-
-## HTTP API
-
-| Area | Endpoints |
-|------|-----------|
-| Health / setup | `GET /api/health`, `GET /api/workflow` |
-| Exports | `GET /api/exports?limit=&kind=` |
-| Items / effects | `/api/items`, `/api/atlases`, `/api/atlases/preview`, `/api/presets`, `/api/effects/preview-build`, `/api/effects/install`, `/api/effects/slot-fields` |
-| Playtest | `GET /api/playtest/status` |
-| Maps | `/api/maps`, `/api/maps/export-sql`, `/api/map-studio/catalog`, `/validate`, `/export-pack`, **`/create`** |
-| Stage RE | `/api/stage-set/decrypt`, **`POST /api/stage-set/write`**, `/api/stage-scene`, `/api/map-catalog` |
-| FTM / ANI / bones | `/api/ftm/parse`, `POST /api/ftm/export`, **`POST /api/ftm/author`**, `/api/ani/parse`, `/api/bone-attach` |
-| Meshes | `/api/mesh-studio/*` + **`POST /api/mesh-studio/import-obj`**, **`POST /api/tex/encode`** |
-| Equipment / skin | `/api/item-mesh/resolve` (multi-mat silhouette), `/api/skin/parse`, **`POST /api/equipment/pack`**, **`POST /api/client/install`** |
-| Content pack | **`POST /api/content-pack/build`**, **`/playtest`**, **`/playtest-full`** |
-| SQL | **`POST /api/sql/apply`** (dry-run default; live needs `JFTSE_DATABASE_URL` + mysql client) |
-| Packs | `GET/POST /api/packs`, `GET /api/packs/:name` |
-
-### Bridge CLI (Python)
-
-```bash
-export JFTSE_ROOT=... JFTSE_STOCK_CLIENT=...
-uv run --with pillow --with cryptography python python/studio_bridge.py <command> ...
-```
-
-Examples:
-
-```bash
-python python/studio_bridge.py stage-scene --member 1_Emerald_Beach.set
-python python/studio_bridge.py ftm-parse --archive Res/MapSet/FantaCastle.res --member FantaCastleOutSide.ftm
-python python/studio_bridge.py ani-parse --archive Res/Player/PlayerA/AniA.res --member NikiAniA.ani
-python python/studio_bridge.py bone-attach --char NIKI --attach-bone Bone_Racket
-python python/studio_bridge.py item-mesh-resolve --mesh-index 214 --char NIKI --meta-only
-python python/studio_bridge.py mesh-parse --archive Res/Stage/Mesh01.res --member BF_Court01.dat --meta-only
-```
-
----
+This is not a replacement for Blender, a terrain sculptor, or an automated game
+client. Browser previews are inspection aids; the DX9 client is the visual
+authority.
 
 ## Safety model
 
-- Particle exports verify only `Ice_Smoke02.set` changes; shared racket scripts stay byte-identical.
-- **Install refuses `JFTSE_STOCK_CLIENT`.**
-- Install allows `JFTSE_LOCAL_CLIENT`, `/tmp/**`, and studio `exports/`.
-- Banned particle atlases (spaak/cloud classes) fail closed unless overridden.
+The repository intentionally separates four locations:
 
-Always use an **isolated local client** for installs.
+| Location | Purpose | Write policy |
+| --- | --- | --- |
+| This repository | Studio code and generated `exports/` | Writable |
+| Sibling JFTSE source | Parsers, format knowledge, helper tools | Read-only |
+| Stock Fantasy Tennis client | Source archives and binaries | Read-only |
+| Local client copy | Explicit designer install/playtest target | Writable after confirmation |
 
----
+The server rejects:
 
-## Day-1 runbook
+- installs aimed at the configured stock client;
+- destinations outside the configured local client;
+- destinations outside `Res/…/*.res`, including traversal, absolute paths, and
+  symlink escapes;
+- source files outside this repository's `exports/` tree;
+- SQL paths outside `exports/`;
+- unsafe generated SQL or live apply without configured credentials.
 
-1. **Configure** env vars (above) → `bun run dev` → open `http://127.0.0.1:4310` → confirm Bridge online / setup checklist.
-2. **Items** → Dragon Slayer → Soft wind preset → Build & verify → Install to local → Copy launch command.
-3. **Map Studio** → Emerald Beach → Validate stage → multi-draw **Stage scene compositor** (World + Object layers) → Export SQL pack.
-4. **FTM desk** (Map Studio right panel) → Parse `FantaCastleOutSide.ftm` → select placement → optional **Export patched FTM** to `exports/`.
-5. **Mesh Studio** → `BF_Court01.dat` → textured 3D view → Export OBJ/glTF.
-6. **Equipment** → mesh index `214` → racket at Bone_Racket → **Load character ANI** → scrub/play live attach.
-7. **Content pack** → `POST /api/content-pack/build` with equipment+map+ftm → install to local → `/api/content-pack/playtest`.
-8. **Artifacts** → `exports/`, `content-packs/`, or `GET /api/exports`.
+Keep the stock `FantaTennis.exe`, `jftse.dll`, and `Res/` archives untouched.
 
----
+## Prerequisites
 
-## Project layout
+- [Bun](https://bun.sh/) installed.
+- [`uv`](https://docs.astral.sh/uv/) installed; the server runs the Python
+  bridge through `uv run`.
+- This repository beside the JFTSE checkout, or `JFTSE_ROOT` set explicitly.
+- A readable stock client for source archives.
+- A separate local client copy containing `FantaTennis.exe` and `jftse.dll`.
+- An executable `START-FANTA-TENNIS.sh` beside the local client directory for
+  full preflight, or an explicit `JFTSE_LAUNCH_SCRIPT`.
+- Optional: a MySQL-compatible client and disposable/local Fantasy Tennis
+  database for live SQL apply.
+
+Expected default layout:
 
 ```text
-server/                 Bun API + config + bridge runner
-web/                    React UI (Items, MapStudio, MeshStudio, EquipmentMeshPreview)
-python/
-  studio_bridge.py      CLI façade (all commands)
-  mesh_codec.py         Geometry decode / rewrite / OBJ-glTF
-  mesh_meta.py          Materials, bones, equipment 64 B table
-  mesh_texture.py       .tex resolve + PNG
-  client_crypto.py      AES .set / key material
-  stage_scene.py        Stage Info.res scene graph
-  map_catalog.py        MapObj / Tile / House catalogs
-  map_sql_models.py     S_Maps / M_Scenarios / relation row types + drafts
-  map_sql_export.py     Parse JFTSE scripts/sql seeds + emit wiki-aligned UPSERT packs
-  ftm_codec.py          FTM/PRJ parse + serialize (FT-ResTool-compatible)
-  char_player.py        Canonical Char → Player* folder map
-  ani_codec.py          Character .ani tracks
-  item_mesh.py          Info_Item_Mesh resolve
-  bone_attach.py        Bone_Racket bind pose
-  skin_codec.py         56 B skinned verts (weights/indices/pos/nrm/uv)
-docs/client-re.md       Format RE notes
-tests/api.test.ts       Integration suite
-exports/                Generated artifacts (local)
-content-packs/          Saved designer packs
-DESIGN.md               Product / visual language
+parent/
+├── JFTSE/
+│   ├── src/
+│   ├── tools/
+│   └── .jftse-client-linux/
+│       └── client/                  # stock/read-only
+└── jftse-content-studio/
 ```
 
----
+The runnable designer client should be a different directory.
 
-## Honest limits (updated)
+## Setup
 
-| In scope today | Remaining RE ceiling |
-|----------------|----------------------|
-| Soft particle export + **equipment pack** + local install | Full stock DX9 FVF multi-submesh material graph (pixel-true silhouette) |
-| Stage scene graph + compositor + **`.set` write** + **`.eft` parse + markers** | Full particle emitter simulation / authoring of new `.eft` binaries |
-| FTM add/remove/patch + **blocked-tile paint** + MapSet install | Full FT-ResTool multi-layer tile index paint + prefab browser |
-| ANI multi-clip + hierarchical-derived unit quats; **`/api/ani/section-b-status`** | On-disk dense float4 / section-B bitstream (client runtime still float4) |
-| Mesh recovery + transform + same-count OBJ import + **new-topology OBJ→studio DAT** | Stock-client-perfect material/submesh ranges inside authored DATs |
+```bash
+bun install
 
----
+export JFTSE_ROOT=/absolute/path/to/JFTSE
+export JFTSE_STOCK_CLIENT=/absolute/path/to/stock/client
+export JFTSE_LOCAL_CLIENT=/absolute/path/to/designer-client/client
 
-## License / credits
+# Optional: required only for live SQL apply.
+export JFTSE_DATABASE_URL='mysql://user:password@127.0.0.1:3306/fantasytennis'
 
-Built for the JFTSE community tooling surface. Fantasy Tennis client assets remain subject to their original rights holders — this repo ships **tools**, not game assets.
+bun run dev
+```
 
-Format knowledge draws on in-tree RE, **FT-ResTool** (Crypter / FTMParser), and community notes (e.g. `tools/wind_dragon_slayer` in JFTSE).
+Open `http://127.0.0.1:4310`.
+
+The health/setup banners show the resolved paths and any missing requirement.
+Do not continue to install until the local target is visibly distinct from the
+stock target.
+
+## Equipment workflow
+
+1. Open **Equipment** and choose a stock racket base.
+2. Continue to **Effect** and choose a preset/atlas or edit the exposed emitter
+   fields.
+3. Continue to **Export** and run **Build & verify export**.
+4. Review the PASS/TODO checklist. Fix every TODO before continuing.
+5. In **Install**, choose **Install to local client**.
+6. Review the confirmation dialog's source and exact configured target, then
+   confirm.
+7. In **Playtest**, copy the launch command.
+8. Launch the game yourself, log in, open Equipment, equip the authored racket,
+   and visually inspect the silhouette and aura.
+
+The browser particle preview is approximate and does not prove DX9 appearance.
+
+## Content Pack workflow
+
+1. Open **Packs** and configure equipment, map, stage script, and optional FTM
+   input.
+2. **Build pack**. Any draft edit after this invalidates the build and all
+   downstream receipts.
+3. **Confirm install** to write only the generated install plan into the
+   configured local client.
+4. **Audit SQL**. This dry-run validates the aggregate SQL without a database
+   connection.
+5. If a local database is configured, **Confirm SQL apply**. Live apply is
+   unavailable until the matching dry-run passes.
+6. Run **Local client preflight**.
+7. Read every PASS/MISS row and follow the manual handoff. Preflight verifies
+   files, SQL receipts, binaries, and launcher; it never claims gameplay passed.
+
+## Map and FTM workflow
+
+1. Open **Maps** and select a catalog entry.
+2. Choose the exact stage script and run **Validate stage assets**.
+3. Export/create actions remain disabled until the currently selected script
+   has a passing validation receipt. Changing the script invalidates that
+   receipt.
+4. Use **Export SQL map pack** or **Create new map SQL** as appropriate.
+5. In **FTM overworld desk**, enter a MapSet archive and `.ftm` or `.prj`
+   member.
+6. Parsing a PRJ shows its child FTM paths. Choose one explicitly; the studio
+   resolves its archive member and then loads the placement desk.
+7. Inspect placements and tile layers before using bounded paint/add/remove
+   authoring actions.
+8. Export the authored FTM + MapSet archive.
+9. Review the explicit install confirmation before writing to the local client.
+10. Launch manually and inspect map selection, placement, collision, and
+    presentation in the DX9 client.
+
+An empty PRJ and an FTM with zero placements are valid, distinct states. API
+errors retain their detail and expose Retry without discarding the current
+draft.
+
+## Mesh workflow
+
+1. Open **Meshes** or use **Open World in Mesh Studio** from a validated map.
+2. Select a Stage/Sky/Collision DAT member.
+3. Inspect decoder confidence, bounds, triangle counts, UV mode, and texture
+   resolution.
+4. Adjust translation, rotation, scale, or wireframe view.
+5. Export OBJ + glTF for external inspection.
+6. Treat **Apply transform to DAT** and OBJ-to-DAT authoring as experimental.
+   Preserve originals and validate results in the local client.
+
+The decoder can recover useful geometry from known DAT layouts, but opaque
+index/topology cases may fall back to triangle-soup interpretation.
+
+## SQL and database behavior
+
+- Map and Content Pack SQL is generated under `exports/`.
+- Content Pack produces one ordered aggregate SQL file.
+- Dry-run rejects unsupported INSERT shapes, dangerous verbs, unknown tables,
+  malformed comments, and parse failures.
+- Live apply invokes the configured MySQL client without exposing the password
+  in the command line or API response.
+- No database URL means no live apply; file builds, installs, and dry-run remain
+  usable.
+
+Use a disposable/local database first. The studio does not migrate, back up, or
+restore a production database for you.
+
+## Generated outputs
+
+Generated binary and SQL artifacts are written beneath:
+
+```text
+exports/
+```
+
+Typical directories include:
+
+- `effect-*`
+- `content-pack-*`
+- `equipment-pack-*`
+- `stage-set-*`
+- `ftm-author-*`
+- `ftm-*`
+- `mesh-edit-*`
+- `mesh-new-*`
+- top-level `map-pack-*.sql`, `map-create-*.sql`, and `maps-*.sql`
+
+Reusable saved-pack metadata is stored separately under `content-packs/`.
+
+Do not treat generated artifacts as validated game content until both server
+checks and the manual client handoff pass.
+
+## Day-one smoke checklist
+
+Run this after setup or before handing the studio to a designer:
+
+1. `bun install`
+2. `bun run typecheck`
+3. `bun test`
+4. `bun run dev`
+5. Open the studio and confirm **Bridge online**.
+6. Confirm the setup checklist points to the intended stock and local clients.
+7. Equipment: select Dragon Slayer, apply **Soft full-racket wind**, build,
+   confirm install, and verify the playtest checklist.
+8. Packs: build once, confirm install, dry-run SQL, and verify preflight. Apply
+   SQL only when using a disposable configured database.
+9. Maps: validate a stage, change scripts to confirm validation is invalidated,
+   then parse `FantaCastle.prj` and explicitly open each child FTM.
+10. Meshes: open a World DAT from Maps, confirm the 3D viewport, switch away and
+    back, and verify the selected mesh and draft controls persist.
+11. At both 1440×900 and 1024×720, visit all four workspaces and confirm there
+    is no horizontal page overflow or clipped primary action.
+12. Launch the local client manually and perform the Equipment/map visual
+    checks. Record any DX9-only issue separately from browser preflight.
+
+## Verification commands
+
+```bash
+bun run typecheck
+bun test
+bun build ./web/index.html --outdir /tmp/jftse-content-studio-build
+```
+
+## Known limitations
+
+- The studio does not launch, log into, or control Fantasy Tennis.
+- Browser particle rendering is not DX9-equivalent.
+- Full Blender-style modeling, rig authoring, terrain sculpting, and arbitrary
+  topology editing are out of scope.
+- Stage/FTM/Mesh authoring is bounded by the format knowledge currently proven
+  in JFTSE and FT-ResTool.
+- Some authored DAT paths are experimental and require careful local-client
+  validation.
+- Live SQL apply requires an installed MySQL-compatible CLI and explicit
+  credentials.
+
+## License and credits
+
+Built for the JFTSE community tooling surface. Fantasy Tennis client assets
+remain subject to their original rights holders; this repository ships tools,
+not game assets.
+
+Format knowledge draws on the sibling JFTSE source, FT-ResTool
+(Crypter/FTMParser), and community reverse-engineering notes.
