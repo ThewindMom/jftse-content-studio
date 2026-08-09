@@ -94,10 +94,12 @@ function errorText(error: unknown): string {
 }
 
 export function MapStudio({
+  active,
   onOpenMesh,
 }: {
+  active: boolean;
   onOpenMesh?: (archive: string, member: string) => void;
-} = {}) {
+}) {
   const [maps, setMaps] = useState<MapStudioRow[]>([]);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -669,6 +671,7 @@ export function MapStudio({
                 <>
                   <strong>Stage scene compositor</strong>
                   <StageMeshPreview
+                    active={active}
                     stageScript={stageScript || undefined}
                     worldPath={worldPath || undefined}
                     onOpenMesh={onOpenMesh}

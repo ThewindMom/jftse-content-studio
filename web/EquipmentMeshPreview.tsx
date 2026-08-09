@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import {
@@ -159,9 +159,11 @@ function sampleTrack(track: AniTrack, frame: number): number[] | null {
  * Racket still places via Bone_Racket bind matrix + optional float3 delta.
  */
 export function EquipmentMeshPreview({
+  active,
   meshIndex,
   char = "NIKI",
 }: {
+  active: boolean;
   meshIndex: string;
   char?: string;
 }) {
@@ -206,19 +208,24 @@ export function EquipmentMeshPreview({
 
   // Load racket mesh + bind attach + body skinned mesh
   useEffect(() => {
+    if (!active) return;
     let cancelled = false;
+    const controller = new AbortController();
     let cleanup: (() => void) | undefined;
     void (async () => {
       try {
         const [meshRes, attachRes, skinRes] = await Promise.all([
           fetch(
             `/api/item-mesh/resolve?meshIndex=${encodeURIComponent(meshIndex)}&char=${encodeURIComponent(char)}`,
+            { signal: controller.signal },
           ),
           fetch(
             `/api/bone-attach?char=${encodeURIComponent(char)}&attachBone=Bone_Racket`,
+            { signal: controller.signal },
           ),
           fetch(
             `/api/skin/parse?char=${encodeURIComponent(char)}&includeVertices=1&maxVertices=8000`,
+            { signal: controller.signal },
           ),
         ]);
         const data = (await meshRes.json()) as ResolvedMesh;
@@ -456,12 +463,14 @@ export function EquipmentMeshPreview({
     })();
     return () => {
       cancelled = true;
+      controller.abort();
       cleanup?.();
     };
-  }, [meshIndex, char]);
+  }, [active, meshIndex, char]);
 
   // Apply live frame: skeleton hierarchical drive + racket delta
   useEffect(() => {
+    if (!active) return;
     const bones = skeletonBonesRef.current;
     const boneRest = boneRestRef.current;
     if (ani && bones.length > 0 && boneRest) {
@@ -502,17 +511,17 @@ export function EquipmentMeshPreview({
     if (markerRef.current) {
       markerRef.current.position.setFromMatrixPosition(composed);
     }
-  }, [activeTrack, frame, playing, ani]);
+  }, [active, activeTrack, frame, playing, ani]);
 
   useEffect(() => {
-    if (!playing || !ani || frameCount < 2 || reducedMotion) return;
+    if (!active || !playing || !ani || frameCount < 2 || reducedMotion) return;
     const fps = frameCount / Math.max(duration, 0.001);
     const interval = Math.max(1000 / Math.min(fps, 60), 16);
     const id = window.setInterval(() => {
       setFrame((f) => (f + 1) % frameCount);
     }, interval);
     return () => window.clearInterval(id);
-  }, [playing, ani, frameCount, duration, reducedMotion]);
+  }, [active, playing, ani, frameCount, duration, reducedMotion]);
 
   const loadAni = async (motionOverride?: string) => {
     setAniBusy(true);

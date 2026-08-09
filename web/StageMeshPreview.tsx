@@ -2,8 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
-async function api<T>(path: string): Promise<T> {
-  const response = await fetch(path);
+async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(path, init);
   const data = (await response.json()) as T & { error?: string; detail?: string };
   if (!response.ok) {
     throw new Error(data.error ?? data.detail ?? `HTTP ${response.status}`);
@@ -54,10 +54,12 @@ function layerKey(layer: MeshLayer): string {
  * Loads stage-scene when `stageScript` is set, otherwise falls back to a single WorldFile path.
  */
 export function StageMeshPreview({
+  active,
   worldPath,
   stageScript,
   onOpenMesh,
 }: {
+  active: boolean;
   worldPath?: string;
   stageScript?: string;
   onOpenMesh?: (archive: string, member: string) => void;
@@ -75,7 +77,12 @@ export function StageMeshPreview({
 
   // Resolve layer catalog from stage-scene or single world path
   useEffect(() => {
+    if (!active) {
+      setBusy(false);
+      return;
+    }
     let cancelled = false;
+    const controller = new AbortController();
     void (async () => {
       setError("");
       setBusy(true);
@@ -103,7 +110,10 @@ export function StageMeshPreview({
               objectCount?: number;
               effectCount?: number;
             };
-          }>(`/api/stage-scene?member=${encodeURIComponent(stageScript)}`);
+          }>(
+            `/api/stage-scene?member=${encodeURIComponent(stageScript)}`,
+            { signal: controller.signal },
+          );
           const scene = body.scene;
           if (!scene) throw new Error("Stage scene empty");
           const effList = (scene.effects ?? []).map((e) => ({
@@ -122,7 +132,10 @@ export function StageMeshPreview({
                 byteLength?: number;
                 emitterHint?: number;
                 note?: string;
-              }>(`/api/eft/parse?path=${encodeURIComponent(effList[0].file)}`);
+              }>(
+                `/api/eft/parse?path=${encodeURIComponent(effList[0].file)}`,
+                { signal: controller.signal },
+              );
               if (!cancelled && eft.ok) {
                 setEftNotes(
                   `${effList[0].file} · ${eft.byteLength ?? "?"}B · emitters~${eft.emitterHint ?? "?"} · ${eft.note ?? ""}`,
@@ -241,8 +254,9 @@ export function StageMeshPreview({
     })();
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [stageScript, worldPath]);
+  }, [active, stageScript, worldPath]);
 
   const drawList = useMemo(() => {
     return layers.filter((layer) => visible[layer.id]).slice(0, MAX_DRAW_LAYERS);
@@ -251,8 +265,9 @@ export function StageMeshPreview({
   // Three.js multi-draw
   useEffect(() => {
     const mount = mountRef.current;
-    if (!mount || drawList.length === 0) return;
+    if (!active || !mount || drawList.length === 0) return;
     let cancelled = false;
+    const controller = new AbortController();
     let frame = 0;
     let controls: OrbitControls | null = null;
     let renderer: THREE.WebGLRenderer | null = null;
@@ -320,6 +335,7 @@ export function StageMeshPreview({
           }
           const result = await api<ParsedMesh>(
             `/api/mesh-studio/parse?archive=${encodeURIComponent(layer.archive)}&member=${encodeURIComponent(layer.member)}`,
+            { signal: controller.signal },
           );
           if (cancelled) {
             disposeAll();
@@ -461,9 +477,10 @@ export function StageMeshPreview({
 
     return () => {
       cancelled = true;
+      controller.abort();
       disposeAll();
     };
-  }, [drawList, effects]);
+  }, [active, drawList, effects]);
 
   const toggleLayer = (id: string) => {
     setVisible((prev) => ({ ...prev, [id]: !prev[id] }));

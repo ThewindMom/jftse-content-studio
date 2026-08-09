@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
@@ -49,9 +49,11 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 function MeshViewport({
+  active,
   mesh,
   wireframe,
 }: {
+  active: boolean;
   mesh: MeshPayload | null;
   wireframe: boolean;
 }) {
@@ -67,7 +69,7 @@ function MeshViewport({
 
   useEffect(() => {
     const mount = mountRef.current;
-    if (!mount) return;
+    if (!active || !mount) return;
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0b1020);
     const camera = new THREE.PerspectiveCamera(
@@ -115,7 +117,7 @@ function MeshViewport({
       mount.removeChild(renderer.domElement);
       stateRef.current = {};
     };
-  }, []);
+  }, [active]);
 
   useEffect(() => {
     const state = stateRef.current;
@@ -235,8 +237,10 @@ function MeshViewport({
 }
 
 export function MeshStudio({
+  active,
   focus = null,
 }: {
+  active: boolean;
   focus?: { archive: string; member: string } | null;
 }) {
   const [rows, setRows] = useState<MeshRow[]>([]);
@@ -456,7 +460,7 @@ export function MeshStudio({
           <h2>Mesh modeler</h2>
         </header>
         <div className="body">
-          <MeshViewport mesh={mesh} wireframe={wireframe} />
+          <MeshViewport active={active} mesh={mesh} wireframe={wireframe} />
           <div className="field-grid">
             <label>
               Translate X

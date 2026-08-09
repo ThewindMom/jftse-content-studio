@@ -1,11 +1,15 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { EquipmentMeshPreview } from "./EquipmentMeshPreview";
 import { createRoot } from "react-dom/client";
 import { ContentPackDesk } from "./ContentPackDesk.tsx";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { MapStudio } from "./MapStudio.tsx";
 import { MeshStudio } from "./MeshStudio.tsx";
-
-type WorkspaceMode = "items" | "maps" | "meshes" | "packs";
+import {
+  moveTab,
+  WORKSPACE_ORDER,
+  type WorkspaceMode,
+} from "./workspaceNavigation";
 type StepId = "item" | "effect" | "export" | "install" | "playtest";
 
 type Atlas = {
@@ -127,14 +131,17 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 function ParticlePreview({
+  active,
   draft,
   atlasSrc,
 }: {
+  active: boolean;
   draft: EffectDraft;
   atlasSrc?: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   useEffect(() => {
+    if (!active) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -253,7 +260,7 @@ function ParticlePreview({
     };
     draw();
     return () => cancelAnimationFrame(raf);
-  }, [draft, atlasSrc]);
+  }, [active, draft, atlasSrc]);
   return (
     <canvas
       className="preview-canvas"
@@ -264,7 +271,7 @@ function ParticlePreview({
 }
 
 function App() {
-  const [workspace, setWorkspace] = useState<WorkspaceMode>("items");
+  const [workspace, setWorkspace] = useState<WorkspaceMode>("equipment");
   const [step, setStep] = useState<StepId>("item");
   const [healthOk, setHealthOk] = useState(false);
   const [healthDetail, setHealthDetail] = useState("connecting…");
@@ -316,6 +323,22 @@ function App() {
     launchScriptExists: boolean;
     checklist: Array<{ id: string; ok: boolean; label: string }>;
   } | null>(null);
+  const workspaceTabs = useRef<
+    Partial<Record<WorkspaceMode, HTMLButtonElement | null>>
+  >({});
+  const stepTabs = useRef<Partial<Record<StepId, HTMLButtonElement | null>>>(
+    {},
+  );
+
+  const focusWorkspace = (next: WorkspaceMode) => {
+    setWorkspace(next);
+    requestAnimationFrame(() => workspaceTabs.current[next]?.focus());
+  };
+
+  const focusStep = (next: StepId) => {
+    setStep(next);
+    requestAnimationFrame(() => stepTabs.current[next]?.focus());
+  };
 
   const pushToast = (message: string) => {
     setToast(message);
@@ -658,52 +681,67 @@ function App() {
       <header className="topbar">
         <div className="brand">
           <strong>JFTSE Content Studio</strong>
-          <span>Items · Packs · Maps · Meshes · stock-safe export</span>
+          <span>Equipment · Packs · Maps · Meshes · stock-safe export</span>
         </div>
-        <nav className="tabs" aria-label="Workspace modes">
-          <button
-            className="tab"
-            type="button"
-            aria-selected={workspace === "items"}
-            onClick={() => setWorkspace("items")}
-          >
-            Items
-          </button>
-          <button
-            className="tab"
-            type="button"
-            aria-selected={workspace === "packs"}
-            onClick={() => setWorkspace("packs")}
-          >
-            Content Pack
-          </button>
-          <button
-            className="tab"
-            type="button"
-            aria-selected={workspace === "maps"}
-            onClick={() => setWorkspace("maps")}
-          >
-            Map Studio
-          </button>
-          <button
-            className="tab"
-            type="button"
-            aria-selected={workspace === "meshes"}
-            onClick={() => setWorkspace("meshes")}
-          >
-            Mesh Studio
-          </button>
+        <nav className="tabs" aria-label="Workspace modes" role="tablist">
+          {WORKSPACE_ORDER.map((mode) => (
+            <button
+              aria-controls={`workspace-panel-${mode}`}
+              aria-selected={workspace === mode}
+              className="tab"
+              id={`workspace-tab-${mode}`}
+              key={mode}
+              onClick={() => setWorkspace(mode)}
+              onKeyDown={(event) => {
+                const next = moveTab(WORKSPACE_ORDER, mode, event.key);
+                if (next === mode) return;
+                event.preventDefault();
+                focusWorkspace(next);
+              }}
+              ref={(element) => {
+                workspaceTabs.current[mode] = element;
+              }}
+              role="tab"
+              tabIndex={workspace === mode ? 0 : -1}
+              type="button"
+            >
+              {{
+                equipment: "Equipment",
+                packs: "Packs",
+                maps: "Maps",
+                meshes: "Meshes",
+              }[mode]}
+            </button>
+          ))}
         </nav>
-        {workspace === "items" && (
-          <nav className="tabs" aria-label="Workflow steps">
+        {workspace === "equipment" && (
+          <nav
+            className="tabs workflow-tabs"
+            aria-label="Equipment workflow steps"
+            role="tablist"
+          >
             {STEPS.map((entry) => (
               <button
-                key={entry.id}
-                className="tab"
-                type="button"
+                aria-controls={`equipment-step-panel-${entry.id}`}
                 aria-selected={step === entry.id}
+                className="tab"
+                id={`equipment-step-tab-${entry.id}`}
+                key={entry.id}
                 onClick={() => setStep(entry.id)}
+                onKeyDown={(event) => {
+                  const order = STEPS.map(({ id }) => id);
+                  const next = moveTab(order, entry.id, event.key);
+                  if (next === entry.id) return;
+                  event.preventDefault();
+                  focusStep(next);
+                }}
+                ref={(element) => {
+                  stepTabs.current[entry.id] = element;
+                }}
+                role="tab"
+                tabIndex={step === entry.id ? 0 : -1}
                 title={entry.detail}
+                type="button"
               >
                 {entry.title}
               </button>
@@ -739,7 +777,7 @@ function App() {
             <strong>Day-1 designer path</strong>
             <ol>
               <li>
-                <strong>Items</strong> — pick Dragon Slayer → soft wind preset → Build &amp; verify →
+                <strong>Equipment</strong> — pick Dragon Slayer → soft wind preset → Build &amp; verify →
                 Install to local client → copy launch command and check Equipment.
               </li>
               <li>
@@ -791,19 +829,57 @@ function App() {
         </section>
       )}
 
-      {workspace === "packs" ? (
+      <section
+        aria-labelledby="workspace-tab-packs"
+        hidden={workspace !== "packs"}
+        id="workspace-panel-packs"
+        role="tabpanel"
+      >
         <ContentPackDesk />
-      ) : workspace === "maps" ? (
+      </section>
+      <section
+        aria-labelledby="workspace-tab-maps"
+        hidden={workspace !== "maps"}
+        id="workspace-panel-maps"
+        role="tabpanel"
+      >
         <MapStudio
+          active={workspace === "maps"}
           onOpenMesh={(archive, member) => {
             setMeshFocus({ archive, member });
             setWorkspace("meshes");
             pushToast(`Opened ${member} in Mesh Studio`);
           }}
         />
-      ) : workspace === "meshes" ? (
-        <MeshStudio focus={meshFocus} />
-      ) : (
+      </section>
+      <section
+        aria-labelledby="workspace-tab-meshes"
+        hidden={workspace !== "meshes"}
+        id="workspace-panel-meshes"
+        role="tabpanel"
+      >
+        <MeshStudio active={workspace === "meshes"} focus={meshFocus} />
+      </section>
+      <section
+        aria-labelledby="workspace-tab-equipment"
+        hidden={workspace !== "equipment"}
+        id="workspace-panel-equipment"
+        role="tabpanel"
+      >
+      {STEPS.filter((entry) => entry.id !== step).map((entry) => (
+        <div
+          aria-labelledby={`equipment-step-tab-${entry.id}`}
+          hidden
+          id={`equipment-step-panel-${entry.id}`}
+          key={entry.id}
+          role="tabpanel"
+        />
+      ))}
+      <div
+        aria-labelledby={`equipment-step-tab-${step}`}
+        id={`equipment-step-panel-${step}`}
+        role="tabpanel"
+      >
       <main className="workspace">
         <section className="panel" aria-label="Library">
           <header>
@@ -1403,6 +1479,7 @@ function App() {
           </header>
           <div className="body">
             <ParticlePreview
+              active={workspace === "equipment"}
               draft={effect}
               atlasSrc={
                 selectedAtlas
@@ -1411,7 +1488,11 @@ function App() {
               }
             />
             {selectedItem?.mesh && (
-              <EquipmentMeshPreview meshIndex={selectedItem.mesh} char="NIKI" />
+              <EquipmentMeshPreview
+                active={workspace === "equipment"}
+                meshIndex={selectedItem.mesh}
+                char="NIKI"
+              />
             )}
             {slotFields && (
               <div>
@@ -1466,51 +1547,17 @@ PT_Life=${slotFields.PT_Life}`}
           </div>
         </section>
       </main>
-      )}
+      </div>
+      </section>
 
-      {installConfirmOpen && (
-        <div
-          className="modal-backdrop"
-          role="presentation"
-          onClick={() => !busy && setInstallConfirmOpen(false)}
-        >
-          <div
-            className="modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="install-confirm-title"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <h3 id="install-confirm-title">Install to local client?</h3>
-            <p className="empty">
-              Writes verified <code>Particle.res</code> into the allowlisted local client only. The
-              stock client path is refused by the API.
-            </p>
-            <div className="mono">{localClient}</div>
-            {lastExport.particleArchive && (
-              <div className="mono">{lastExport.particleArchive}</div>
-            )}
-            <div className="actions">
-              <button
-                className="btn primary"
-                type="button"
-                disabled={busy}
-                onClick={() => void installLocal()}
-              >
-                Confirm install
-              </button>
-              <button
-                className="btn"
-                type="button"
-                disabled={busy}
-                onClick={() => setInstallConfirmOpen(false)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        confirmLabel="Confirm install"
+        description={`Write verified Particle.res from ${lastExport.particleArchive ?? "the current export"} into ${localClient || "the configured local client"}. The stock client path is refused.`}
+        onCancel={() => setInstallConfirmOpen(false)}
+        onConfirm={() => void installLocal()}
+        open={installConfirmOpen}
+        title="Install to local client?"
+      />
 
       <footer className="footer">
         <span>
@@ -1520,7 +1567,7 @@ PT_Life=${slotFields.PT_Life}`}
               ? "Map Studio: catalog → stage validate → relational SQL pack (geometry stays stock-bound)"
               : workspace === "meshes"
                 ? "Mesh Studio: decode Stage/Sky/Collision DAT → view/transform → export OBJ/glTF"
-                : "Items: stock racket → preset → verify export → local install → Equipment QA"}
+                : "Equipment: stock racket → preset → verify export → local install → Equipment QA"}
         </span>
         <span className="mono">{healthDetail}</span>
       </footer>

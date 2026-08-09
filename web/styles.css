@@ -81,6 +81,14 @@ textarea {
   gap: 0.4rem;
 }
 
+.workflow-tabs {
+  order: 5;
+  flex-basis: 100%;
+  justify-content: center;
+  border-top: 1px solid rgba(42, 54, 84, 0.65);
+  padding-top: 0.75rem;
+}
+
 .tab {
   border: 1px solid transparent;
   background: transparent;
