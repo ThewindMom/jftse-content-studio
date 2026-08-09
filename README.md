@@ -217,7 +217,7 @@ Run this after setup or before handing the studio to a designer:
    then parse `FantaCastle.prj` and explicitly open each child FTM.
 10. Mesh Studio: open a World DAT from Map Studio, confirm the 3D viewport, switch away and
     back, and verify the selected mesh and draft controls persist.
-11. At both 1440×900 and 1024×720, visit all four workspaces and confirm there
+11. At both 1440×900 and 390×844, visit all four workspaces and confirm there
     is no horizontal page overflow or clipped primary action.
 12. Launch the local client manually and perform the Equipment/map visual
     checks. Record any DX9-only issue separately from browser preflight.
