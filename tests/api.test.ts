@@ -1746,6 +1746,14 @@ describe("content studio production API", () => {
     expect(existsSync(body.infoArchive)).toBe(true);
   });
 
+  test("mesh texture treats a missing optional member as no content", async () => {
+    const response = await fetch(
+      `${base}/api/mesh-studio/texture?archive=${encodeURIComponent("Res/Player/PlayerA/Item07.res")}&member=${encodeURIComponent("MissingPreviewTexture.tex")}`,
+    );
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe("");
+  });
+
   test("sql apply dry-run accepts generated map SQL", async () => {
     const create = await fetch(`${base}/api/map-studio/create`, {
       method: "POST",
@@ -1753,6 +1761,7 @@ describe("content studio production API", () => {
       body: JSON.stringify({
         draft: { name: "SQL Dry Court", playTime: 90 },
         scenarioIds: [1],
+        stageScript: "1_Emerald_Beach.set",
       }),
     });
     const created = await create.json();

@@ -224,7 +224,7 @@ export function EquipmentMeshPreview({
             { signal: controller.signal },
           ),
           fetch(
-            `/api/skin/parse?char=${encodeURIComponent(char)}&includeVertices=1&maxVertices=8000`,
+            `/api/skin/parse?char=${encodeURIComponent(char)}&includeVertices=1&maxVertices=2000`,
             { signal: controller.signal },
           ),
         ]);

@@ -618,6 +618,17 @@ const server = Bun.serve({
           });
         } catch (error) {
           if (error instanceof BridgeError) {
+            if (
+              error.code === "BRIDGE_EXIT_FAILED" &&
+              error.detail.includes("There is no item named")
+            ) {
+              return new Response(null, {
+                status: 204,
+                headers: {
+                  "x-jftse-texture-missing": "true",
+                },
+              });
+            }
             return json(
               { ok: false, error: error.code, detail: error.detail },
               error.code === "BRIDGE_TIMEOUT" ? 504 : 500,
