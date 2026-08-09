@@ -1,76 +1,155 @@
-# DESIGN.md — JFTSE Content Studio
+# JFTSE Content Studio — Product Design Contract
 
-## 0. Research Log
-- Audience: Fantasy Tennis / JFTSE **modders and designers** who already know rackets, stages, `Res/` paths, and playtest loops.
-- Job: author custom items/effects/map metadata, inspect recovered client formats, and export client-safe archives without hand-editing ZIPs.
-- Friction today: siloed single-mesh stage view; FTM/ANI APIs with no desk; Equipment bind-pose only; RE power buried behind JSON.
-- External references: FT-ResTool `FTMEditor` (2D pan/zoom tile canvas + layer tree + placements — not a 3D DCC); Linear/Supabase operational density; Fanta Tennis cyan accent.
-- Constraint: fixed-size native archives; never mutate shared `Racket_001/002`; stock client writes refused; browser is approximate — game remains authority.
-- Out of product scope (honest): Blender-parity topology authoring; full DX9 FVF skinning parity; pixel-true Equipment silhouette.
+## Product position
 
-## 1. Product principles
-1. **Safety before spectacle** — banned atlases and shared scripts fail closed.
-2. **Export is the product** — every edit ends in a verifiable archive/pack artifact when writing.
-3. **Honest preview** — label recovery confidence; game remains authority.
-4. **One job per pane** — Items / Maps / Meshes modes stay separate; deepen desks inside modes, do not explode top-level tabs.
-5. **Progressive RE power** — default path is the day-1 job; advanced layers (FTM, ANI scrub, multi-draw objects) are opt-in panels with clear labels.
+JFTSE Content Studio is a local production tool for Fantasy Tennis content
+designers. It exposes proven JFTSE/FT-ResTool capabilities as guided workflows
+without pretending to be Blender, a terrain sculptor, or the DX9 client.
 
-## 2. Visual language
-- Background: deep ink `#0B1020`
-- Surface: `#121A2F` / elevated `#18233B`
-- Border: `#2A3654`
-- Text: `#E8EEF9` / muted `#93A0BF`
-- Accent: cyan `#5FD0FF`
-- Danger: `#FF6B7A`
-- Success: `#3DDC97`
-- Font: Inter / system UI sans
-- Radius: 12px cards, 8px controls
-- Density: comfortable operational (not marketing hero)
+The studio optimizes for:
 
-## 3. Information architecture
-- Top nav: Studio title + mode tabs (**Items**, **Content Pack**, **Maps**, **Meshes**) + bridge/export chip
-- **Items**: library → effect editor → export/install → Equipment preview (mesh + Bone_Racket + multi-mat stems + ANI scrub)
-- **Content Pack**: numbered primary actions (Build → Install → SQL dry-run/apply → Playtest checklist); progressive disclosure for FTM fields; PASS/MISS validation list
-- **Maps**: catalog → stage design desk (validate/SQL) → **Stage compositor** → **FTM overworld desk**
-- **Meshes**: catalog → single DAT recovery/transform/export
-- Bottom bar: mode-specific next action copy
+1. **Designer language first** — Equipment, Content Pack, Map Studio, Mesh
+   Studio, build, install, audit, preflight.
+2. **Progressive disclosure** — show the current decision and its required next
+   action; keep advanced data available without making it the primary path.
+3. **Visible trust boundaries** — distinguish generated exports, read-only
+   stock/JFTSE inputs, and the exact configured local client.
+4. **Truth over celebration** — PASS/MISS or PASS/TODO describes evidence; no
+   browser state claims that gameplay or DX9 rendering passed.
+5. **One job per pane** — each workspace retains its draft while inactive, but
+   hidden previews stop render loops and release runtime resources.
 
-### Map Studio sub-desks (same workspace, progressive)
-1. **Metadata** — name, stage script bind, SQL pack (primary job)
-2. **Stage scene** — multi-draw World + Object layers with visibility toggles (after validate)
-3. **FTM overworld** — parse FTM/PRJ, 2D grid + placement table (inspect/select; write binary later)
+## Workspace information architecture
 
-### Equipment desk (Items right rail)
-1. Resolve shop mesh → DAT + texture
-2. Place at Bone_Racket bind matrix (pink socket marker)
-3. Optional: load character ANI → scrub/play → drive socket sample live
+The fixed top-level order and labels are:
 
-## 4. Components
-- ModeTab, FieldGrid, AtlasCard, EmitterSlider, PreviewCanvas, ValidationList, PackList
-- **StageSceneCompositor** — layer checklist + multi-mesh Three.js viewport
-- **FtmDesk** — archive/member fields, 2D canvas, placement table, structured errors
-- **AniScrubber** — play/pause, range input, time readout, track pick
-- Buttons: primary cyan, secondary ghost, danger outline
-- Focus rings: 2px cyan offset
-- Badges: `bind pose` / `live scrub` / `recovery` for honesty
+1. **Equipment**
+2. **Content Pack**
+3. **Map Studio**
+4. **Mesh Studio**
 
-## 5. Motion
-- Tab switch 160ms ease
-- Preview particles continuous but paused under `prefers-reduced-motion`
-- ANI play uses rAF; respect reduced-motion → scrub only
-- No page-load confetti
+Each top-level control is an ARIA tab linked to a persistent tabpanel.
+ArrowLeft/ArrowRight wrap, Home/End jump to boundaries, and only the active tab
+is in the tab order.
 
-## 6. Accessibility
-- Keyboard tabs and form controls
-- Color never sole status signal (icons + text + PASS/MISS labels)
-- Contrast AA on body text
-- Viewport regions have `aria-label`
-- Layer toggles are real checkboxes with names
+### Equipment
 
-## 7. Accepted debt
-- Submesh index ranges per material not fully table-parsed (names + single albedo draw common)
-- ANI uses hierarchical-derived unit quats when skeleton present; on-disk float4 still unknown
-- FTM desk supports patch/add/remove + MapSet install; not full tile-paint GUI
-- Equipment pack clones stock mesh slots + catalog index; not freeform topology authoring
-- Install-to-permanent-client is allowlist only (`JFTSE_LOCAL_CLIENT` / `/tmp`); stock refused
-- `.eft` stage effects listed in scene graph but not meshed/authored
+Five linked workflow tabs:
+
+1. Item — choose a stock racket base.
+2. Effect — choose/edit an atlas and emitter.
+3. Export — build and verify generated archives.
+4. Install — review the exact generated source and configured local target,
+   then confirm.
+5. Local check — verify files/binaries/launcher, copy the launch command, and
+   follow manual login/equip/visual-check instructions.
+
+### Content Pack
+
+Configure equipment, map, stage, and optional FTM inputs; then follow the
+receipt-backed sequence:
+
+`Build → Confirm install → SQL dry-run → Confirm live apply (when SQL exists) → Local client preflight`
+
+Any draft edit invalidates the build and every downstream receipt. Preflight
+shows PASS/MISS rows plus a manual handoff and never claims gameplay passed.
+
+### Map Studio
+
+The map catalog, design desk, and Stage/FTM evidence pane form one workflow.
+Export/create actions require a passing receipt for the currently selected
+stage script. Script or map changes invalidate that receipt.
+
+PRJ parsing exposes an explicit child-FTM picker. FTM authoring is tied to the
+currently parsed archive/member identity; source edits invalidate loaded data
+and authored exports.
+
+### Mesh Studio
+
+The mesh catalog, modeler, and decode evidence remain distinct. The browser
+viewport is an inspection surface. OBJ/glTF export is the interoperability path;
+DAT transform/new-topology authoring remains clearly marked experimental.
+
+## Layout
+
+### Desktop (1440×900 target)
+
+- Preserve a useful three-column hierarchy:
+  catalog/configuration → primary work → evidence/status.
+- Keep primary actions near the fields they affect.
+- Use bounded panel scrolling instead of clipping the page.
+
+### Narrow (390×844 target)
+
+- One page column and one-column field grids.
+- Remove fixed panel minimum heights.
+- Workspace/workflow tabs scroll horizontally without body overflow.
+- Dialogs, canvases, status details, and primary actions remain reachable.
+- Preserve at least a 44px control hit target.
+
+## States and recovery
+
+Every list/workflow distinguishes:
+
+- loading;
+- real empty data;
+- no search matches;
+- actionable API error with retained structured detail;
+- Retry using the current draft/source;
+- success evidence.
+
+Stale async work must not attach status, errors, receipts, or preflight results
+to a newer draft revision.
+
+## Confirmation contract
+
+All local-client installs and live SQL applies use the shared confirmation
+dialog. It:
+
+- names the write and exact target;
+- focuses Cancel first;
+- traps Tab/Shift+Tab while open;
+- closes on Escape or Cancel without issuing the write;
+- restores focus to the triggering control;
+- performs the write only from the explicit confirm action.
+
+## Filesystem and SQL safety
+
+- Sibling JFTSE source and configured stock client are read-only.
+- Install sources must be regular, non-symlink files under this repository's
+  `exports/` root.
+- The destination must be the exact configured local client.
+- Only allowlisted `Res/**/*.res` destinations are accepted; traversal,
+  executable/DLL writes, and intermediate symlinks are rejected.
+- Every successful install returns matching source/installed SHA-256 receipts.
+- SQL files must be regular, non-symlink files under `exports/`.
+- Server configuration is the only database credential source.
+- Dry-run structurally audits allowlisted generated INSERTs; live apply requires
+  the matching audit receipt and explicit confirmation.
+
+No temporary-directory exception or caller-selected prefix is accepted.
+
+## Product-truth language
+
+Use:
+
+- “Local client preflight”
+- “Ready for manual local-client verification”
+- “Browser preview is approximate”
+- “Open the local client, log in, equip/select, and visually inspect”
+
+Do not use:
+
+- claims that playtesting is ready before the human client check
+- “Gameplay passed”
+- “DX9 verified” without a human client check
+- “Safe” without naming the validated boundary
+
+## Visual direction
+
+- Dark, utilitarian workbench rather than game launcher chrome.
+- Accent color communicates selection and primary action, not decoration.
+- Green means a verified check; red means a concrete blocking failure.
+- Monospace is reserved for paths, SQL, hashes, and decoded evidence.
+- Motion is restrained and stops in hidden workspaces or under reduced motion.
+*** End of File
