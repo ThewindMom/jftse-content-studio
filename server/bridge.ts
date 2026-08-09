@@ -155,24 +155,22 @@ export async function buildEffect(
   );
 }
 
-export async function installEffect(input: {
-  particleArchive: string;
+export async function installClientFiles(input: {
   targetClient: string;
-  itemArchive?: string;
-  effectArchive?: string;
+  files: Array<{
+    source: string;
+    destRelative: string;
+  }>;
 }): Promise<BridgeResult> {
-  const args = [
-    "install",
-    "--target-client",
-    input.targetClient,
-    "--particle-archive",
-    input.particleArchive,
-  ];
-  if (input.itemArchive) {
-    args.push("--item-archive", input.itemArchive);
-  }
-  if (input.effectArchive) {
-    args.push("--effect-archive", input.effectArchive);
-  }
-  return runBridge(args);
+  return runBridgeWithPayload(
+    "client-install",
+    { files: input.files },
+    (payloadPath) => [
+      "client-install",
+      "--target-client",
+      input.targetClient,
+      "--payload",
+      payloadPath,
+    ],
+  );
 }

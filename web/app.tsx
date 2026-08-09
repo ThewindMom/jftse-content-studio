@@ -566,7 +566,17 @@ function App() {
     setError("");
     setStatus("Installing to local client…");
     try {
-      const result = await api<{ installed?: { particle?: string } }>(
+      const result = await api<{
+        installed?: Record<
+          string,
+          {
+            destination: string;
+            sourceSha256: string;
+            installedSha256: string;
+            matches: boolean;
+          }
+        >;
+      }>(
         "/api/effects/install",
         {
           method: "POST",
@@ -578,8 +588,10 @@ function App() {
           }),
         },
       );
-      setInstalledPath(result.installed?.particle ?? localClient);
-      setStatus("Installed. Continue to Playtest.");
+      setInstalledPath(
+        result.installed?.["Res/Effect/Particle.res"]?.destination ?? localClient,
+      );
+      setStatus("Installed. Continue to local client verification.");
       setStep("playtest");
       pushToast("Installed to local client");
     } catch (err) {

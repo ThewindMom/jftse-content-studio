@@ -523,8 +523,50 @@ describe("content studio production API", () => {
     const body = await response.json();
     expect(response.status).toBe(200);
     expect(body.ok).toBe(true);
-    expect(body.installed.particle).toContain("Particle.res");
-    expect(await Bun.file(body.installed.particle).exists()).toBe(true);
+    const receipt = body.installed["Res/Effect/Particle.res"];
+    expect(receipt.destination).toContain("Particle.res");
+    expect(receipt.sourceSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(receipt.installedSha256).toBe(receipt.sourceSha256);
+    expect(receipt.matches).toBe(true);
+    expect(await Bun.file(receipt.destination).exists()).toBe(true);
+  }, 120000);
+
+  test("effects install rejects a source outside generated exports", async () => {
+    const response = await fetch(`${base}/api/effects/install`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        particleArchive: "/etc/hosts",
+        targetClient: disposableClient,
+      }),
+    });
+    const body = await response.json();
+    expect(response.status).toBe(400);
+    expect(body.error).toBe("SOURCE_OUTSIDE_EXPORTS");
+  });
+
+  test("effects install rejects an unconfigured tmp target", async () => {
+    const build = await fetch(`${base}/api/effects/preview-build`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(softPayload),
+    }).then((response) => response.json());
+    const target = mkdtempSync(join(tmpdir(), "jftse-effect-target-"));
+    try {
+      const response = await fetch(`${base}/api/effects/install`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          particleArchive: build.particleArchive,
+          targetClient: target,
+        }),
+      });
+      const body = await response.json();
+      expect(response.status).toBe(400);
+      expect(body.error).toBe("TARGET_NOT_ALLOWLISTED");
+    } finally {
+      rmSync(target, { recursive: true, force: true });
+    }
   }, 120000);
 
   test("install containment rejects tmp-like target", async () => {

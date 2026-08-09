@@ -12,7 +12,7 @@ import index from "../web/index.html";
 import {
   BridgeError,
   buildEffect,
-  installEffect,
+  installClientFiles,
   runBridge,
   runBridgeWithPayload,
 } from "./bridge.ts";
@@ -716,16 +716,28 @@ const server = Bun.serve({
         if (!particleArchive) {
           return bad("PARTICLE_ARCHIVE_REQUIRED");
         }
+        const files = [
+          {
+            source: particleArchive,
+            destRelative: "Res/Effect/Particle.res",
+          },
+        ];
+        if (typeof body.itemArchive === "string" && body.itemArchive) {
+          files.push({
+            source: body.itemArchive,
+            destRelative: "Res/Script/Item.res",
+          });
+        }
+        if (typeof body.effectArchive === "string" && body.effectArchive) {
+          files.push({
+            source: body.effectArchive,
+            destRelative: "Res/Script/ETC.res",
+          });
+        }
         return safeBridge(() =>
-          installEffect({
-            particleArchive,
+          installClientFiles({
             targetClient,
-            itemArchive:
-              typeof body.itemArchive === "string" ? body.itemArchive : undefined,
-            effectArchive:
-              typeof body.effectArchive === "string"
-                ? body.effectArchive
-                : undefined,
+            files,
           }),
         );
       },
@@ -782,17 +794,10 @@ const server = Bun.serve({
           return bad("FILES_REQUIRED");
         }
         return safeBridge(() =>
-          runBridgeWithPayload(
-            "client-install",
-            { files },
-            (payloadPath) => [
-              "client-install",
-              "--target-client",
-              targetClient,
-              "--payload",
-              payloadPath,
-            ],
-          ),
+          installClientFiles({
+            targetClient,
+            files: files as Array<{ source: string; destRelative: string }>,
+          }),
         );
       },
     },

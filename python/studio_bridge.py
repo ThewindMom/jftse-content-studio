@@ -345,54 +345,6 @@ def _verify_particle_archive(
         }
 
 
-def cmd_install(args: argparse.Namespace) -> dict[str, Any]:
-    jftse = _jftse_root()
-    stock = _client_root(jftse).resolve()
-    target = Path(args.target_client).expanduser().resolve()
-    if target == stock:
-        return {"ok": False, "error": "REFUSE_STOCK_CLIENT"}
-
-    local_client = os.environ.get("JFTSE_LOCAL_CLIENT", "").strip()
-    allow_prefix = os.environ.get("JFTSE_INSTALL_ALLOW_PREFIX", "").strip()
-    allowed = False
-    if local_client and target == Path(local_client).expanduser().resolve():
-        allowed = True
-    if allow_prefix and str(target).startswith(
-        str(Path(allow_prefix).expanduser().resolve())
-    ):
-        allowed = True
-    if str(target).startswith("/tmp/") or "/tmp/" in str(target):
-        allowed = True
-    if not allowed:
-        return {"ok": False, "error": "TARGET_NOT_ALLOWLISTED"}
-
-    particle_src = Path(args.particle_archive).resolve()
-    if not particle_src.is_file():
-        return {"ok": False, "error": "PARTICLE_ARCHIVE_MISSING"}
-
-    dest_particle = target / "Res" / "Effect" / "Particle.res"
-    dest_particle.parent.mkdir(parents=True, exist_ok=True)
-    dest_particle.write_bytes(particle_src.read_bytes())
-    installed: dict[str, str] = {"particle": str(dest_particle)}
-
-    if args.item_archive:
-        item_src = Path(args.item_archive).resolve()
-        if item_src.is_file():
-            dest_item = target / "Res" / "Script" / "Item.res"
-            dest_item.parent.mkdir(parents=True, exist_ok=True)
-            dest_item.write_bytes(item_src.read_bytes())
-            installed["item"] = str(dest_item)
-    if args.effect_archive:
-        effect_src = Path(args.effect_archive).resolve()
-        if effect_src.is_file():
-            dest_effect = target / "Res" / "Script" / "ETC.res"
-            dest_effect.parent.mkdir(parents=True, exist_ok=True)
-            dest_effect.write_bytes(effect_src.read_bytes())
-            installed["effect"] = str(dest_effect)
-
-    return {"ok": True, "targetClient": str(target), "installed": installed}
-
-
 def _color_bytes(value: str) -> bytes:
     parts = [part.strip() for part in value.split(",")]
     if len(parts) != 3:
@@ -1353,12 +1305,6 @@ def main() -> None:
     p_build.add_argument("--payload", required=True)
     p_build.add_argument("--out-dir", required=True)
 
-    p_install = sub.add_parser("install")
-    p_install.add_argument("--target-client", required=True)
-    p_install.add_argument("--particle-archive", required=True)
-    p_install.add_argument("--item-archive", default="")
-    p_install.add_argument("--effect-archive", default="")
-
     sub.add_parser("list-maps")
 
     p_map_sql = sub.add_parser("export-map-sql")
@@ -1541,7 +1487,6 @@ def main() -> None:
         "list-atlases": cmd_list_atlases,
         "atlas-preview": cmd_atlas_preview,
         "build-effect": cmd_build_effect,
-        "install": cmd_install,
         "list-maps": cmd_list_maps,
         "export-map-sql": cmd_export_map_sql,
         "map-studio-catalog": cmd_map_studio_catalog,
