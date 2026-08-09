@@ -1,4 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ConfirmDialog } from "./ConfirmDialog";
+import {
+  buildFtmChoices,
+  resolveFtmMember,
+  type FtmChoice,
+} from "./ftmSelection";
 
 type SceneObject = {
   readonly prefabIndex: number;
@@ -32,6 +38,25 @@ type FtmPayload = {
   readonly blockedTiles?: Array<{ x: number; y: number }>;
 };
 
+type RetryAction =
+  | "parse"
+  | "paint"
+  | "patch"
+  | "add"
+  | "remove"
+  | "install";
+
+type LoadedSource = {
+  archive: string;
+  member: string;
+};
+
+function detailText(detail: unknown): string {
+  if (typeof detail === "string") return detail;
+  if (detail == null) return "";
+  return JSON.stringify(detail, null, 2);
+}
+
 async function apiJson<T>(path: string): Promise<{ status: number; body: T }> {
   const response = await fetch(path);
   const body = (await response.json()) as T;
@@ -50,6 +75,11 @@ export function FtmDesk() {
   const [busy, setBusy] = useState(false);
   const [ftm, setFtm] = useState<FtmPayload | null>(null);
   const [kind, setKind] = useState<string>("");
+  const [prjChoices, setPrjChoices] = useState<FtmChoice[]>([]);
+  const [selectedPrjPath, setSelectedPrjPath] = useState("");
+  const [loadedSource, setLoadedSource] = useState<LoadedSource | null>(null);
+  const [retryAction, setRetryAction] = useState<RetryAction | null>(null);
+  const [confirmInstall, setConfirmInstall] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
   const [draftX, setDraftX] = useState("");
   const [draftY, setDraftY] = useState("");
@@ -76,6 +106,23 @@ export function FtmDesk() {
 
   const objects = ftm?.sceneObjects ?? [];
   const selectedObj = selected != null ? objects[selected] ?? null : null;
+  const currentSource =
+    loadedSource?.archive === archive.trim() &&
+    loadedSource.member === member.trim();
+
+  const invalidateSource = () => {
+    setFtm(null);
+    setKind("");
+    setPrjChoices([]);
+    setSelectedPrjPath("");
+    setLoadedSource(null);
+    setSelected(null);
+    setExportPath("");
+    setCopyHint("");
+    setRetryAction(null);
+    setConfirmInstall(false);
+    setStatus("Source changed — parse the current FTM/PRJ.");
+  };
 
   useEffect(() => {
     if (!selectedObj) {
@@ -100,46 +147,54 @@ export function FtmDesk() {
     });
   }, [selectedObj]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (memberOverride?: string) => {
+    const requestedArchive = archive.trim();
+    const requestedMember = (memberOverride ?? member).trim();
     setBusy(true);
     setError("");
+    setRetryAction(null);
     setSelected(null);
     setExportPath("");
     setCopyHint("");
     setStatus("Parsing FTM…");
     try {
       const qs = new URLSearchParams();
-      if (archive.trim()) qs.set("archive", archive.trim());
-      qs.set("member", member.trim());
+      if (requestedArchive) qs.set("archive", requestedArchive);
+      qs.set("member", requestedMember);
       const { status: http, body } = await apiJson<{
         ok?: boolean;
         kind?: string;
         ftm?: FtmPayload;
         prj?: { ftmCount: number; ftmPaths: string[] };
         error?: string;
-        detail?: string;
+        detail?: unknown;
       }>(`/api/ftm/parse?${qs.toString()}`);
 
       if (!body.ok) {
-        const msg = body.detail ?? body.error ?? `HTTP ${http}`;
+        const detail = detailText(body.detail);
+        const msg = [body.error ?? `HTTP ${http}`, detail]
+          .filter(Boolean)
+          .join("\n");
         setFtm(null);
         setKind("");
         setError(msg);
+        setRetryAction("parse");
         setStatus("FTM parse failed");
         return;
       }
       if (body.kind === "prj" && body.prj) {
+        const choices = buildFtmChoices(body.prj.ftmPaths);
         setFtm(null);
         setKind("prj");
+        setLoadedSource(null);
+        setPrjChoices(choices);
+        setSelectedPrjPath("");
         setStatus(
-          `PRJ · ${body.prj.ftmCount} FTM paths — pick a .ftm member to open the placement desk`,
+          choices.length
+            ? `PRJ · ${choices.length} child FTM paths — choose one to continue`
+            : "PRJ contains no child FTM paths.",
         );
         setError("");
-        if (body.prj.ftmPaths[0]) {
-          const path = body.prj.ftmPaths[0].replace(/\\/g, "/");
-          const base = path.split("/").pop() ?? path;
-          setMember(base.endsWith(".ftm") ? base : `${base}.ftm`);
-        }
         return;
       }
       if (!body.ftm) {
@@ -148,7 +203,13 @@ export function FtmDesk() {
         return;
       }
       setKind("ftm");
+      setPrjChoices([]);
+      setSelectedPrjPath("");
       setFtm(body.ftm);
+      setLoadedSource({
+        archive: requestedArchive,
+        member: requestedMember,
+      });
       setBlockedDraft(body.ftm.blockedTiles ?? []);
       setTilePaintCells([]);
       const count = body.ftm.sceneObjectCount ?? body.ftm.sceneObjects?.length ?? 0;
@@ -157,16 +218,36 @@ export function FtmDesk() {
         setSelected(0);
       }
       setStatus(
-        `${member} · ${body.ftm.tileCountX}×${body.ftm.tileCountY} · ${count} placements · ${body.ftm.blockedTileCount ?? 0} blocked · ${body.ftm.interactableTileCount ?? 0} interactables` +
+        `${requestedMember} · ${body.ftm.tileCountX}×${body.ftm.tileCountY} · ${count} placements · ${body.ftm.blockedTileCount ?? 0} blocked · ${body.ftm.interactableTileCount ?? 0} interactables` +
           (count > 0 ? " · placement #0 selected — edit & export below" : ""),
       );
     } catch (err) {
       setFtm(null);
       setError(err instanceof Error ? err.message : String(err));
+      setRetryAction("parse");
       setStatus("FTM request failed");    } finally {
       setBusy(false);
     }
-  }, [archive, member, objects.length]);
+  }, [archive, member]);
+
+  const openPrjChoice = (sourcePath: string) => {
+    setSelectedPrjPath(sourcePath);
+    setError("");
+    setRetryAction(null);
+    const resolved = resolveFtmMember(
+      sourcePath,
+      prjChoices.map((choice) => choice.memberCandidate),
+    );
+    if (!resolved) {
+      setError(
+        `No unambiguous archive member matches:\n${sourcePath}`,
+      );
+      setStatus("Choose a child whose archive member can be resolved.");
+      return;
+    }
+    setMember(resolved);
+    void load(resolved);
+  };
 
   // 2D canvas: grid + blocked sample + placements
   useEffect(() => {
@@ -330,9 +411,13 @@ export function FtmDesk() {
   };
 
   const exportBlockedPaint = async () => {
-    if (!ftm) return;
+    if (!ftm || !currentSource) {
+      setError("Parse the current archive/member before exporting map paint.");
+      return;
+    }
     setBusy(true);
     setError("");
+    setRetryAction(null);
     try {
       const response = await fetch("/api/ftm/author", {
         method: "POST",
@@ -366,6 +451,7 @@ export function FtmDesk() {
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      setRetryAction("paint");
       setStatus("Map paint export failed");
     } finally {
       setBusy(false);
@@ -378,12 +464,17 @@ export function FtmDesk() {
   );
 
   const exportPatched = async () => {
-    if (!ftm || selected == null || !selectedObj) {
-      setError("Select a placement to export a patch");
+    if (!ftm || !currentSource || selected == null || !selectedObj) {
+      setError(
+        currentSource
+          ? "Select a placement to export a patch"
+          : "Parse the current archive/member before exporting a patch",
+      );
       return;
     }
     setBusy(true);
     setError("");
+    setRetryAction(null);
     setExportPath("");
     setCopyHint("");
     try {
@@ -451,6 +542,7 @@ export function FtmDesk() {
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      setRetryAction("patch");
       setStatus("FTM export failed");
     } finally {
       setBusy(false);
@@ -458,12 +550,13 @@ export function FtmDesk() {
   };
 
   const addPlacement = async () => {
-    if (!ftm) {
-      setError("Parse an FTM first");
+    if (!ftm || !currentSource) {
+      setError("Parse the current archive/member before adding a placement");
       return;
     }
     setBusy(true);
     setError("");
+    setRetryAction(null);
     try {
       const prefabIndex =
         Number(draftPrefab) >= 0
@@ -504,6 +597,7 @@ export function FtmDesk() {
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      setRetryAction("add");
       setStatus("FTM add failed");
     } finally {
       setBusy(false);
@@ -511,12 +605,17 @@ export function FtmDesk() {
   };
 
   const removePlacement = async () => {
-    if (!ftm || selected == null) {
-      setError("Select a placement to remove");
+    if (!ftm || !currentSource || selected == null) {
+      setError(
+        currentSource
+          ? "Select a placement to remove"
+          : "Parse the current archive/member before removing a placement",
+      );
       return;
     }
     setBusy(true);
     setError("");
+    setRetryAction(null);
     try {
       const response = await fetch("/api/ftm/author", {
         method: "POST",
@@ -544,23 +643,26 @@ export function FtmDesk() {
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      setRetryAction("remove");
       setStatus("FTM remove failed");
     } finally {
       setBusy(false);
     }
   };
 
+  const archiveSource = exportPath.endsWith(".ftm")
+    ? exportPath.replace(/[^/]+$/, archive.split("/").pop() || "Map.res")
+    : exportPath;
+
   const installAuthored = async () => {
-    if (!exportPath) {
+    if (!exportPath || !currentSource) {
       setError("Export an FTM first");
       return;
     }
-    // Prefer MapSet .res sibling if export path is .ftm
-    const archiveSource = exportPath.endsWith(".ftm")
-      ? exportPath.replace(/[^/]+$/, archive.split("/").pop() || "Map.res")
-      : exportPath;
     setBusy(true);
+    setConfirmInstall(false);
     setError("");
+    setRetryAction(null);
     try {
       const response = await fetch("/api/client/install", {
         method: "POST",
@@ -585,6 +687,7 @@ export function FtmDesk() {
       setStatus(`Installed to local client · ${Object.keys(body.installed ?? {}).join(", ")}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      setRetryAction("install");
       setStatus("FTM install failed");
     } finally {
       setBusy(false);
@@ -601,6 +704,17 @@ export function FtmDesk() {
     }
   };
 
+  const retry = () => {
+    const action = retryAction;
+    setRetryAction(null);
+    if (action === "parse") void load();
+    if (action === "paint") void exportBlockedPaint();
+    if (action === "patch") void exportPatched();
+    if (action === "add") void addPlacement();
+    if (action === "remove") void removePlacement();
+    if (action === "install") setConfirmInstall(true);
+  };
+
   return (
     <div className="ftm-desk">
       <div className="field-grid">
@@ -608,7 +722,10 @@ export function FtmDesk() {
           Archive
           <input
             value={archive}
-            onChange={(e) => setArchive(e.target.value)}
+            onChange={(e) => {
+              setArchive(e.target.value);
+              invalidateSource();
+            }}
             spellCheck={false}
             aria-label="FTM archive path"
           />
@@ -617,7 +734,10 @@ export function FtmDesk() {
           Member (.ftm / .prj)
           <input
             value={member}
-            onChange={(e) => setMember(e.target.value)}
+            onChange={(e) => {
+              setMember(e.target.value);
+              invalidateSource();
+            }}
             spellCheck={false}
             aria-label="FTM member name"
           />
@@ -660,6 +780,26 @@ export function FtmDesk() {
           Export map paint
         </button>
       </div>
+      {kind === "prj" && prjChoices.length > 0 && (
+        <label>
+          Project child FTM
+          <select
+            aria-label="Project child FTM"
+            value={selectedPrjPath}
+            onChange={(event) => openPrjChoice(event.target.value)}
+          >
+            <option value="">Choose a child FTM…</option>
+            {prjChoices.map((choice) => (
+              <option key={choice.sourcePath} value={choice.sourcePath}>
+                {choice.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {kind === "prj" && prjChoices.length === 0 && (
+        <p className="empty">This PRJ has no child FTM paths to open.</p>
+      )}
       {ftm && paintTile && (
         <div className="field-grid">
           <label>
@@ -687,8 +827,13 @@ export function FtmDesk() {
       )}
       <div className="empty">{status}</div>
       {error && (
-        <div className="mono" style={{ color: "var(--danger)" }} role="alert">
-          {error}
+        <div style={{ color: "var(--danger)" }} role="alert">
+          <pre className="mono">{error}</pre>
+          {retryAction && (
+            <button className="btn" type="button" disabled={busy} onClick={retry}>
+              Retry {retryAction === "parse" ? "FTM parse" : "FTM author action"}
+            </button>
+          )}
         </div>
       )}
       {kind === "ftm" && ftm && (
@@ -809,7 +954,7 @@ export function FtmDesk() {
                 <button
                   className="btn primary"
                   type="button"
-                  disabled={busy}
+                  disabled={busy || !currentSource}
                   onClick={() => void exportPatched()}
                 >
                   {busy ? "Exporting…" : "Export patched FTM + MapSet RES"}
@@ -817,7 +962,7 @@ export function FtmDesk() {
                 <button
                   className="btn"
                   type="button"
-                  disabled={busy}
+                  disabled={busy || !currentSource}
                   onClick={() => void addPlacement()}
                 >
                   Add placement
@@ -825,7 +970,7 @@ export function FtmDesk() {
                 <button
                   className="btn"
                   type="button"
-                  disabled={busy || selected == null}
+                  disabled={busy || !currentSource || selected == null}
                   onClick={() => void removePlacement()}
                 >
                   Remove selected
@@ -833,8 +978,8 @@ export function FtmDesk() {
                 <button
                   className="btn primary"
                   type="button"
-                  disabled={busy || !exportPath}
-                  onClick={() => void installAuthored()}
+                  disabled={busy || !currentSource || !exportPath}
+                  onClick={() => setConfirmInstall(true)}
                 >
                   Install to local client
                 </button>
@@ -861,6 +1006,14 @@ export function FtmDesk() {
           )}
         </>
       )}
+      <ConfirmDialog
+        confirmLabel="Install authored MapSet archive"
+        description={`Copy ${archiveSource || "the authored MapSet archive"} to ${archive.trim()} in the configured local client. Stock files are refused.`}
+        onCancel={() => setConfirmInstall(false)}
+        onConfirm={() => void installAuthored()}
+        open={confirmInstall}
+        title="Install authored FTM to the local client?"
+      />
     </div>
   );
 }
