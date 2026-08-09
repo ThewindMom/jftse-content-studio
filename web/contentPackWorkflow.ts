@@ -46,6 +46,7 @@ export type ContentPackWorkflowEvent =
     }
   | {
       type: "actionFailed";
+      revision: number;
       action: ContentPackAction;
       message: string;
     }
@@ -140,6 +141,7 @@ export function reduceContentPackWorkflow(
         error: undefined,
       };
     case "actionFailed":
+      if (!current(state, event.revision)) return state;
       return {
         ...state,
         error: { action: event.action, message: event.message },

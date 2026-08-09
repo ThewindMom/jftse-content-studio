@@ -159,6 +159,7 @@ describe("content pack workflow", () => {
     });
     state = reduceContentPackWorkflow(state, {
       type: "actionFailed",
+      revision: 0,
       action: "install",
       message: "Install refused",
     });
@@ -185,6 +186,20 @@ describe("content pack workflow", () => {
         revision: 0,
         hasSql: true,
         receipt: buildReceipt,
+      }),
+    ).toBe(edited);
+  });
+
+  test("ignores stale failures from a previous draft revision", () => {
+    const edited = reduceContentPackWorkflow(createContentPackWorkflow(), {
+      type: "draftChanged",
+    });
+    expect(
+      reduceContentPackWorkflow(edited, {
+        type: "actionFailed",
+        revision: 0,
+        action: "preflight",
+        message: "Old pack failed",
       }),
     ).toBe(edited);
   });

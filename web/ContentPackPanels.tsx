@@ -80,6 +80,7 @@ export function ContentPackPanels({
     <label>
       {label}
       <input
+        disabled={Boolean(busy)}
         value={draft[field]}
         onChange={(event) => onDraftChange(field, event.target.value)}
       />
@@ -104,6 +105,7 @@ export function ContentPackPanels({
               <span>
                 <input
                   checked={draft.includeFtm}
+                  disabled={Boolean(busy)}
                   type="checkbox"
                   onChange={(event) =>
                     onDraftChange("includeFtm", event.target.checked)

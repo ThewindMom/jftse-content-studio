@@ -50,6 +50,7 @@ export function ContentPackDesk() {
   const edit = (field: DraftField, value: string | boolean) => {
     setDraft((current) => ({ ...current, [field]: value }));
     dispatch({ type: "draftChanged" });
+    setConfirm(null);
     setPreflight(null);
     setStatus("Draft changed — rebuild required.");
   };
@@ -59,9 +60,15 @@ export function ContentPackDesk() {
       next === action ||
       (action === "preflight" && next === "complete")
     );
-  const fail = (action: ContentPackAction, label: string, error: unknown) => {
+  const fail = (
+    action: ContentPackAction,
+    label: string,
+    error: unknown,
+    revision: number,
+  ) => {
+    if (revision !== revisionRef.current) return;
     const detail = error instanceof Error ? error.message : String(error);
-    dispatch({ type: "actionFailed", action, message: detail });
+    dispatch({ type: "actionFailed", revision, action, message: detail });
     setStatus(`${label} MISS — ${detail}`);
   };
 
@@ -98,7 +105,6 @@ export function ContentPackDesk() {
         body: JSON.stringify(body),
       });
       if (revision !== revisionRef.current) {
-        setStatus("Build result ignored — draft changed.");
         return;
       }
       dispatch({
@@ -110,7 +116,7 @@ export function ContentPackDesk() {
       setPreflight(null);
       setStatus(`Build PASS — ${result.installPlan?.length ?? 0} files.`);
     } catch (error) {
-      fail("build", "Build", error);
+      fail("build", "Build", error, revision);
     } finally {
       setBusy(null);
     }
@@ -129,10 +135,11 @@ export function ContentPackDesk() {
           installPlan: manifest.installPlan,
         }),
       });
+      if (revision !== revisionRef.current) return;
       dispatch({ type: "installSucceeded", revision, receipt: result });
       setStatus(`Install PASS — ${manifest.installPlan.length} verified files.`);
     } catch (error) {
-      fail("install", "Install", error);
+      fail("install", "Install", error, revision);
     } finally {
       setBusy(null);
     }
@@ -140,6 +147,7 @@ export function ContentPackDesk() {
 
   const runSql = async (dryRun: boolean) => {
     if (!sqlPath) return;
+    const revision = workflow.revision;
     const action = dryRun ? "sqlAudit" : "sqlApply";
     setBusy(action);
     setConfirm(null);
@@ -148,14 +156,15 @@ export function ContentPackDesk() {
         method: "POST",
         body: JSON.stringify({ path: sqlPath, dryRun }),
       });
+      if (revision !== revisionRef.current) return;
       dispatch({
         type: dryRun ? "sqlAuditSucceeded" : "sqlApplySucceeded",
-        revision: workflow.revision,
+        revision,
         receipt: result,
       });
       setStatus(dryRun ? "SQL audit PASS." : "SQL apply PASS.");
     } catch (error) {
-      fail(action, dryRun ? "SQL audit" : "SQL apply", error);
+      fail(action, dryRun ? "SQL audit" : "SQL apply", error, revision);
     } finally {
       setBusy(null);
     }
@@ -163,6 +172,7 @@ export function ContentPackDesk() {
 
   const runPreflight = async () => {
     if (!manifest?.installPlan) return;
+    const revision = workflow.revision;
     setBusy("preflight");
     try {
       const result = await api<PreflightResult>(
@@ -177,19 +187,25 @@ export function ContentPackDesk() {
           }),
         },
       );
+      if (revision !== revisionRef.current) return;
       setPreflight(result);
       if (!result.preflightPassed) {
-        fail("preflight", "Local client preflight", "Fix every MISS below.");
+        fail(
+          "preflight",
+          "Local client preflight",
+          "Fix every MISS below.",
+          revision,
+        );
         return;
       }
       dispatch({
         type: "preflightSucceeded",
-        revision: workflow.revision,
+        revision,
         receipt: result,
       });
       setStatus("Local client preflight PASS — manual DX9 check required.");
     } catch (error) {
-      fail("preflight", "Local client preflight", error);
+      fail("preflight", "Local client preflight", error, revision);
     } finally {
       setBusy(null);
     }
