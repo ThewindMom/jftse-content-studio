@@ -2252,8 +2252,16 @@ describe("content studio production API", () => {
     });
     const play = await playRes.json();
     expect(playRes.status).toBe(200);
-    expect(play.ready).toBe(true);
-    expect(play.passed).toBe(play.total);
+    expect(play.preflightPassed).toBe(true);
+    expect(play.checklist).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "client-exe", ok: true }),
+        expect.objectContaining({ id: "client-dll", ok: true }),
+        expect.objectContaining({ id: "launch-script", ok: true }),
+      ]),
+    );
+    expect(typeof play.manualHandoff).toBe("string");
+    expect(play.manualHandoff.length).toBeGreaterThan(0);
   });
 
   test("item mesh resolve exposes multi-material silhouette stems", async () => {

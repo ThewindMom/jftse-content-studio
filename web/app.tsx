@@ -1579,8 +1579,9 @@ function App() {
             {selectedItem?.mesh && (
               <EquipmentMeshPreview
                 active={workspace === "equipment"}
-                meshIndex={selectedItem.mesh}
                 char="NIKI"
+                localClient={localClient}
+                meshIndex={selectedItem.mesh}
               />
             )}
             {slotFields && (

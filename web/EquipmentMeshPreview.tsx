@@ -10,6 +10,7 @@ import {
   type DriveMode,
   type SkinParsePayload,
 } from "./skinnedBody";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 type ResolvedMesh = {
   ok?: boolean;
@@ -162,10 +163,12 @@ export function EquipmentMeshPreview({
   active,
   meshIndex,
   char = "NIKI",
+  localClient,
 }: {
   active: boolean;
   meshIndex: string;
   char?: string;
+  localClient: string;
 }) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const racketRef = useRef<THREE.Mesh | null>(null);
@@ -186,6 +189,7 @@ export function EquipmentMeshPreview({
   const [aniBusy, setAniBusy] = useState(false);
   const [motionName, setMotionName] = useState("");
   const [packBusy, setPackBusy] = useState(false);
+  const [confirmInstall, setConfirmInstall] = useState(false);
   const [packStatus, setPackStatus] = useState("");
   const [packError, setPackError] = useState("");
   const [packDesc, setPackDesc] = useState("Custom racket");
@@ -205,6 +209,36 @@ export function EquipmentMeshPreview({
     const t = duration * (frame / Math.max(frameCount - 1, 1));
     return `${t.toFixed(3)}s · frame ${frame}/${frameCount - 1}`;
   }, [ani, duration, frame, frameCount]);
+
+  const installPack = async () => {
+    setConfirmInstall(false);
+    setPackBusy(true);
+    setPackError("");
+    setPackStatus("Installing equipment pack to local client…");
+    try {
+      const res = await fetch("/api/client/install", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ files: lastInstallPlan }),
+      });
+      const body = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        installed?: Record<string, string>;
+      };
+      if (!res.ok || !body.ok) {
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      setPackStatus(
+        `Installed · ${Object.keys(body.installed ?? {}).join(", ")}`,
+      );
+    } catch (err) {
+      setPackError(err instanceof Error ? err.message : String(err));
+      setPackStatus("Install failed");
+    } finally {
+      setPackBusy(false);
+    }
+  };
 
   // Load racket mesh + bind attach + body skinned mesh
   useEffect(() => {
@@ -779,36 +813,7 @@ export function EquipmentMeshPreview({
           className="btn primary"
           type="button"
           disabled={packBusy || lastInstallPlan.length === 0}
-          onClick={() => {
-            void (async () => {
-              setPackBusy(true);
-              setPackError("");
-              setPackStatus("Installing equipment pack to local client…");
-              try {
-                const res = await fetch("/api/client/install", {
-                  method: "POST",
-                  headers: { "content-type": "application/json" },
-                  body: JSON.stringify({ files: lastInstallPlan }),
-                });
-                const body = (await res.json()) as {
-                  ok?: boolean;
-                  error?: string;
-                  installed?: Record<string, string>;
-                };
-                if (!res.ok || !body.ok) {
-                  throw new Error(body.error ?? `HTTP ${res.status}`);
-                }
-                setPackStatus(
-                  `Installed · ${Object.keys(body.installed ?? {}).join(", ")}`,
-                );
-              } catch (err) {
-                setPackError(err instanceof Error ? err.message : String(err));
-                setPackStatus("Install failed");
-              } finally {
-                setPackBusy(false);
-              }
-            })();
-          }}
+          onClick={() => setConfirmInstall(true)}
         >
           Install pack to local client
         </button>
@@ -828,6 +833,14 @@ export function EquipmentMeshPreview({
         stems when present. Authoring: pack + catalog + SQL; local install only. Pixel-true multi-submesh
         DX9 silhouette remains best-effort recovery, not a full FVF material graph.
       </div>
+      <ConfirmDialog
+        confirmLabel="Install equipment pack"
+        description={`Write ${lastInstallPlan.length} generated files to ${localClient || "the configured local client"}. Stock files are refused.`}
+        onCancel={() => setConfirmInstall(false)}
+        onConfirm={() => void installPack()}
+        open={confirmInstall}
+        title="Install equipment pack to the local client?"
+      />
     </div>
   );
 }

@@ -15,7 +15,7 @@ from equipment_author import (
     patch_item_mesh_catalog,
 )
 from content_pack import build_content_pack
-from playtest_preflight import run_local_preflight, verify_install_plan
+from playtest_preflight import run_local_preflight
 from sql_apply import apply_sql_file
 from ftm_codec import (
     FtmParseError,
@@ -285,20 +285,7 @@ def make_handlers(
             payload,
         )
 
-    def cmd_content_pack_playtest(args: Namespace) -> dict[str, Any]:
-        payload = json.loads(Path(args.payload).read_text(encoding="utf-8"))
-        plan = [
-            {
-                "source": str(entry.get("source", "")),
-                "destRelative": str(entry.get("destRelative", "")),
-            }
-            for entry in list(payload.get("installPlan") or [])
-            if isinstance(entry, dict)
-        ]
-        result = verify_install_plan(Path(args.target_client), plan)
-        return {"ok": True, "ready": result["ok"], **result}
-
-    def cmd_content_pack_playtest_full(args: Namespace) -> dict[str, Any]:
+    def _content_pack_preflight(args: Namespace) -> dict[str, Any]:
         payload = json.loads(Path(args.payload).read_text(encoding="utf-8"))
         target = Path(args.target_client).expanduser()
         plan = [
@@ -317,6 +304,12 @@ def make_handlers(
             sql_path=str(payload.get("sqlPath") or "") or None,
             sql_apply_receipt=receipt,
         )
+
+    def cmd_content_pack_playtest(args: Namespace) -> dict[str, Any]:
+        return _content_pack_preflight(args)
+
+    def cmd_content_pack_playtest_full(args: Namespace) -> dict[str, Any]:
+        return _content_pack_preflight(args)
 
     def cmd_sql_apply(args: Namespace) -> dict[str, Any]:
         payload = json.loads(Path(args.payload).read_text(encoding="utf-8"))

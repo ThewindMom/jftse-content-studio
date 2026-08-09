@@ -41,6 +41,7 @@ type Props = {
   reason: (action: ContentPackAction) => string | null;
   onDraftChange: (field: DraftField, value: string | boolean) => void;
   onAction: (action: ContentPackAction) => void;
+  onCopyLaunchCommand: () => void;
 };
 
 export function ContentPackPanels({
@@ -57,6 +58,7 @@ export function ContentPackPanels({
   reason,
   onDraftChange,
   onAction,
+  onCopyLaunchCommand,
 }: Props) {
   const button = (
     action: ContentPackAction,
@@ -164,7 +166,16 @@ export function ContentPackPanels({
           ))}
           {preflight?.manualHandoff && <p>{preflight.manualHandoff}</p>}
           {preflight?.launchCommand && (
-            <code className="mono">{preflight.launchCommand}</code>
+            <div className="path-row">
+              <code className="mono">{preflight.launchCommand}</code>
+              <button
+                className="btn"
+                onClick={onCopyLaunchCommand}
+                type="button"
+              >
+                Copy launch command
+              </button>
+            </div>
           )}
         </div>
       </section>

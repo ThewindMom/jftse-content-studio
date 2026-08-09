@@ -220,6 +220,18 @@ export function ContentPackDesk() {
     if (action === "preflight") void runPreflight();
   };
 
+  const copyLaunchCommand = async () => {
+    const command = preflight?.launchCommand;
+    if (!command) return;
+    try {
+      await navigator.clipboard.writeText(command);
+      setStatus("Launch command copied.");
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      setStatus(`Copy MISS — ${detail}`);
+    }
+  };
+
   return <>
     <ContentPackPanels
       busy={busy}
@@ -229,6 +241,7 @@ export function ContentPackDesk() {
       localClient={localClient}
       next={next}
       onAction={act}
+      onCopyLaunchCommand={() => void copyLaunchCommand()}
       onDraftChange={edit}
       preflight={preflight}
       reason={(action) => getContentPackActionReason(workflow, action)}
