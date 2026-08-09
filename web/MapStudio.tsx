@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FtmDesk } from "./FtmDesk.tsx";
 import { StageMeshPreview } from "./StageMeshPreview.tsx";
 
@@ -52,16 +52,45 @@ type ValidateResult = {
   }>;
 };
 
+type RetryAction = "catalog" | "validation";
+
+class StudioApiError extends Error {
+  constructor(
+    readonly code: string,
+    readonly detail?: unknown,
+  ) {
+    super(code);
+  }
+}
+
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     headers: { "content-type": "application/json" },
     ...init,
   });
-  const data = (await response.json()) as T & { error?: string };
+  const data = (await response.json()) as T & {
+    error?: string;
+    detail?: unknown;
+  };
   if (!response.ok) {
-    throw new Error(data.error ?? `HTTP ${response.status}`);
+    throw new StudioApiError(
+      data.error ?? `HTTP ${response.status}`,
+      data.detail,
+    );
   }
   return data;
+}
+
+function errorText(error: unknown): string {
+  if (error instanceof StudioApiError) {
+    const detail = typeof error.detail === "string"
+      ? error.detail
+      : error.detail == null
+      ? ""
+      : JSON.stringify(error.detail, null, 2);
+    return detail ? `${error.code}\n${detail}` : error.code;
+  }
+  return error instanceof Error ? error.message : String(error);
 }
 
 export function MapStudio({
@@ -70,7 +99,6 @@ export function MapStudio({
   onOpenMesh?: (archive: string, member: string) => void;
 } = {}) {
   const [maps, setMaps] = useState<MapStudioRow[]>([]);
-  const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [stageScript, setStageScript] = useState("");
@@ -78,6 +106,7 @@ export function MapStudio({
   const [includeGuardians, setIncludeGuardians] = useState(true);
   const [status, setStatus] = useState("Loading map catalog…");
   const [error, setError] = useState("");
+  const [retryAction, setRetryAction] = useState<RetryAction | null>(null);
   const [busy, setBusy] = useState(false);
   const [validation, setValidation] = useState<ValidateResult | null>(null);
   const [exportPath, setExportPath] = useState("");
@@ -91,6 +120,15 @@ export function MapStudio({
   const [draftScenarioIds, setDraftScenarioIds] = useState("");
   const [worldFileOverride, setWorldFileOverride] = useState("");
   const [createName, setCreateName] = useState("Custom Court");
+  const hasCurrentValidStage =
+    validation?.valid === true && validation.stageScript === stageScript;
+  const validationReason = !stageScript
+    ? "Choose a stage script first."
+    : validation?.stageScript !== stageScript
+    ? "Validate the current stage script before exporting."
+    : validation.valid
+    ? ""
+    : "Resolve the failed stage checks, then validate again.";
   const worldPath = useMemo(() => {
     const hit = validation?.assetChecks.find(
       (check) => check.field === "WorldFile" && check.exists && check.path,
@@ -98,16 +136,19 @@ export function MapStudio({
     return hit?.path ?? "";
   }, [validation]);
 
-  useEffect(() => {
-    void api<{
+  const loadCatalog = async () => {
+    setError("");
+    setRetryAction(null);
+    setStatus("Loading map catalog…");
+    try {
+      const data = await api<{
       ok: boolean;
       maps: MapStudioRow[];
       scenarios: Scenario[];
       relationCounts: Record<string, number>;
-    }>("/api/map-studio/catalog")
-      .then((data) => {
-        setMaps(data.maps);
-        setScenarios(data.scenarios);
+      }>("/api/map-studio/catalog");
+      setMaps(data.maps);
+      if (selectedId == null) {
         const first = data.maps[0] ?? null;
         setSelectedId(first?.id ?? null);
         setStageScript(first?.defaultStageScript ?? "");
@@ -123,14 +164,21 @@ export function MapStudio({
         setDraftBreath(String(first?.breathTime ?? 100));
         setDraftDescription(first?.description ?? "");
         setDraftScenarioIds((first?.scenarioIds ?? []).join(","));
-        setStatus(
-          `Loaded ${data.maps.length} maps · ${data.relationCounts.map2scenarios} scenario links · ${data.relationCounts.guardian2maps} guardian rows`,
-        );
-      })
-      .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : String(err));
-        setStatus("Failed to load map catalog");
-      });
+      }
+      setStatus(
+        `Loaded ${data.maps.length} maps · ${data.relationCounts.map2scenarios} scenario links · ${data.relationCounts.guardian2maps} guardian rows`,
+      );
+    } catch (err) {
+      setError(errorText(err));
+      setRetryAction("catalog");
+      setStatus("Failed to load map catalog");
+    }
+  };
+
+  useEffect(() => {
+    void loadCatalog();
+    // Initial catalog load only; Retry invokes the latest closure.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const selected = useMemo(
@@ -182,6 +230,8 @@ export function MapStudio({
     setDraftScenarioIds(row.scenarioIds.join(","));
     setValidation(null);
     setExportPath("");
+    setError("");
+    setRetryAction(null);
     setStatus(`Selected ${row.name} (map byte ${row.map})`);
   };
 
@@ -210,6 +260,7 @@ export function MapStudio({
     }
     setBusy(true);
     setError("");
+    setRetryAction(null);
     setStatus("Validating stage assets…");
     try {
       const result = await api<ValidateResult>("/api/map-studio/validate", {
@@ -224,7 +275,8 @@ export function MapStudio({
       );
     } catch (err) {
       setValidation(null);
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errorText(err));
+      setRetryAction("validation");
       setStatus("Stage validation failed");
     } finally {
       setBusy(false);
@@ -232,9 +284,10 @@ export function MapStudio({
   };
 
   const exportPack = async () => {
-    if (!selected) return;
+    if (!selected || !hasCurrentValidStage) return;
     setBusy(true);
     setError("");
+    setRetryAction(null);
     setStatus("Exporting relational map pack…");
     try {
       const result = await api<{
@@ -257,7 +310,7 @@ export function MapStudio({
         `Exported pack · maps ${result.mapCount} · scenarios ${result.scenarioLinkCount} · guardians ${result.guardianCount}`,
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errorText(err));
       setStatus("Map pack export failed");
     } finally {
       setBusy(false);
@@ -268,6 +321,7 @@ export function MapStudio({
     if (!selected) return;
     setBusy(true);
     setError("");
+    setRetryAction(null);
     try {
       const result = await api<{ path: string }>("/api/packs", {
         method: "POST",
@@ -286,15 +340,17 @@ export function MapStudio({
       });
       setStatus(`Saved map content pack: ${result.path}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errorText(err));
     } finally {
       setBusy(false);
     }
   };
 
   const createNewMap = async () => {
+    if (!hasCurrentValidStage) return;
     setBusy(true);
     setError("");
+    setRetryAction(null);
     setStatus("Creating greenfield map SQL…");
     try {
       const scenarioIds = draftScenarioIds
@@ -331,7 +387,7 @@ export function MapStudio({
         `Created map SQL · id ${result.map.id} map byte ${result.map.map} → ${result.path}`,
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errorText(err));
       setStatus("Map create failed");
     } finally {
       setBusy(false);
@@ -345,6 +401,7 @@ export function MapStudio({
     }
     setBusy(true);
     setError("");
+    setRetryAction(null);
     setStatus("Writing stage .set…");
     try {
       const fields: Record<string, string> = {};
@@ -363,7 +420,7 @@ export function MapStudio({
       );
       setStatus(`Stage set written · ${result.infoArchive}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errorText(err));
       setStatus("Stage set write failed");
     } finally {
       setBusy(false);
@@ -386,6 +443,14 @@ export function MapStudio({
             />
           </label>
           <div className="list">
+            {maps.length === 0 && !error && (
+              <p className="empty">No maps are available in the catalog.</p>
+            )}
+            {maps.length > 0 && filtered.length === 0 && (
+              <p className="empty">
+                No maps match “{query.trim()}”. Clear the search to browse all maps.
+              </p>
+            )}
             {filtered.map((row) => (
               <button
                 key={row.id}
@@ -443,7 +508,14 @@ export function MapStudio({
                   Stage script
                   <select
                     value={stageScript}
-                    onChange={(event) => setStageScript(event.target.value)}
+                    onChange={(event) => {
+                      setStageScript(event.target.value);
+                      setValidation(null);
+                      setExportPath("");
+                      setError("");
+                      setRetryAction(null);
+                      setStatus("Stage script changed — validation required.");
+                    }}
                   >
                     {(selected.stageCandidates.length
                       ? selected.stageCandidates
@@ -539,7 +611,7 @@ export function MapStudio({
                 </span>
               </label>
 
-              <div className="actions">
+          <div className="actions">
                 <button
                   className="btn primary"
                   type="button"
@@ -551,8 +623,9 @@ export function MapStudio({
                 <button
                   className="btn primary"
                   type="button"
-                  disabled={busy}
+                  disabled={busy || !hasCurrentValidStage}
                   onClick={() => void exportPack()}
+                  title={validationReason || undefined}
                 >
                   Export SQL map pack
                 </button>
@@ -567,8 +640,9 @@ export function MapStudio({
                 <button
                   className="btn primary"
                   type="button"
-                  disabled={busy}
+                  disabled={busy || !hasCurrentValidStage}
                   onClick={() => void createNewMap()}
+                  title={validationReason || undefined}
                 >
                   Create new map SQL
                 </button>
@@ -588,6 +662,9 @@ export function MapStudio({
                 placements. Court mesh topology: Mesh Studio transform/export; full Blender
                 authoring remains out of scope.
               </p>
+              {!hasCurrentValidStage && (
+                <p className="empty">{validationReason}</p>
+              )}
               {(stageScript || worldPath) && (
                 <>
                   <strong>Stage scene compositor</strong>
@@ -613,11 +690,25 @@ export function MapStudio({
             <div className="empty">{status}</div>
           </div>
           {error && (
-            <div>
+            <div role="alert">
               <strong>Error</strong>
-              <div className="mono" style={{ color: "var(--danger)" }}>
+              <pre className="mono" style={{ color: "var(--danger)" }}>
                 {error}
-              </div>
+              </pre>
+              {retryAction && (
+                <button
+                  className="btn"
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    void (retryAction === "catalog"
+                      ? loadCatalog()
+                      : validateStage())
+                  }
+                >
+                  Retry {retryAction === "catalog" ? "map catalog" : "stage validation"}
+                </button>
+              )}
             </div>
           )}
           {exportPath && (
