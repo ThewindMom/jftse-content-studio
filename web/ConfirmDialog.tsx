@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef } from "react";
+import { getFocusTrapTarget } from "./focusTrap";
 
 type ConfirmDialogProps = {
   open: boolean;
@@ -23,7 +24,10 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const titleId = useId();
   const descriptionId = useId();
+  const dialogRef = useRef<HTMLElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const cancelHandlerRef = useRef(onCancel);
+  cancelHandlerRef.current = onCancel;
 
   useEffect(() => {
     if (!open) return;
@@ -33,9 +37,28 @@ export function ConfirmDialog({
         : null;
     const frame = requestAnimationFrame(() => cancelRef.current?.focus());
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        cancelHandlerRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const controls = Array.from(
+        dialogRef.current?.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ) ?? [],
+      );
+      const currentIndex = controls.indexOf(
+        document.activeElement as HTMLElement,
+      );
+      const target = getFocusTrapTarget(
+        currentIndex,
+        controls.length,
+        event.shiftKey,
+      );
+      if (target === null) return;
       event.preventDefault();
-      onCancel();
+      controls[target]?.focus();
     };
     document.addEventListener("keydown", onKeyDown);
     return () => {
@@ -43,7 +66,7 @@ export function ConfirmDialog({
       document.removeEventListener("keydown", onKeyDown);
       previousFocus?.focus();
     };
-  }, [onCancel, open]);
+  }, [open]);
 
   if (!open) return null;
 
@@ -59,6 +82,7 @@ export function ConfirmDialog({
         aria-labelledby={titleId}
         aria-modal="true"
         className="confirm-dialog"
+        ref={dialogRef}
         role="dialog"
       >
         <div className="confirm-dialog-copy">
