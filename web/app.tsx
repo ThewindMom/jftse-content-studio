@@ -98,7 +98,11 @@ const STEPS: Array<{ id: StepId; title: string; detail: string }> = [
   { id: "effect", title: "2 · Effect", detail: "Preset + atlas + emitter" },
   { id: "export", title: "3 · Export", detail: "Build verified archives" },
   { id: "install", title: "4 · Install", detail: "Write local client only" },
-  { id: "playtest", title: "5 · Playtest", detail: "Launch Equipment check" },
+  {
+    id: "playtest",
+    title: "5 · Local Check",
+    detail: "Preflight and manual Equipment check",
+  },
 ];
 
 const defaultEffect = (): EffectDraft => ({
@@ -278,6 +282,8 @@ function App() {
   const [launchHint, setLaunchHint] = useState("");
   const [localClient, setLocalClient] = useState("");
   const [items, setItems] = useState<Item[]>([]);
+  const [itemsLoading, setItemsLoading] = useState(true);
+  const [itemsError, setItemsError] = useState("");
   const [atlases, setAtlases] = useState<Atlas[]>([]);
   const [maps, setMaps] = useState<MapRow[]>([]);
   const [stageScripts, setStageScripts] = useState<string[]>([]);
@@ -361,6 +367,29 @@ function App() {
     }
   };
 
+  const loadItems = async () => {
+    setItemsLoading(true);
+    setItemsError("");
+    try {
+      const data = await api<{ items: Item[] }>(
+        "/api/items?part=RACKET&limit=120",
+      );
+      setItems(data.items);
+      const preferred =
+        data.items.find((item) => item.index === "10728") ??
+        data.items.find((item) => /dragon slayer/i.test(item.name)) ??
+        data.items[0] ??
+        null;
+      setSelectedItem(preferred);
+    } catch (err) {
+      setItems([]);
+      setSelectedItem(null);
+      setItemsError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setItemsLoading(false);
+    }
+  };
+
   useEffect(() => {
     void (async () => {
       try {
@@ -408,17 +437,7 @@ function App() {
   }, [step, installedPath, lastExport.particleArchive]);
 
   useEffect(() => {
-    void api<{ items: Item[] }>(`/api/items?part=RACKET&limit=120`)
-      .then((data) => {
-        setItems(data.items);
-        const preferred =
-          data.items.find((item) => item.index === "10728") ??
-          data.items.find((item) => /dragon slayer/i.test(item.name)) ??
-          data.items[0] ??
-          null;
-        setSelectedItem(preferred);
-      })
-      .catch((err: unknown) => setError(String(err)));
+    void loadItems();
     void api<{ presets: Preset[] }>("/api/presets")
       .then((data) => setPresets(data.presets))
       .catch((err: unknown) => setError(String(err)));
@@ -693,7 +712,10 @@ function App() {
       <header className="topbar">
         <div className="brand">
           <strong>JFTSE Content Studio</strong>
-          <span>Equipment · Packs · Maps · Meshes · stock-safe export</span>
+          <span>
+            Equipment · Content Pack · Map Studio · Mesh Studio · stock-safe
+            export
+          </span>
         </div>
         <nav className="tabs" aria-label="Workspace modes" role="tablist">
           {WORKSPACE_ORDER.map((mode) => (
@@ -719,9 +741,9 @@ function App() {
             >
               {{
                 equipment: "Equipment",
-                packs: "Packs",
-                maps: "Maps",
-                meshes: "Meshes",
+                packs: "Content Pack",
+                maps: "Map Studio",
+                meshes: "Mesh Studio",
               }[mode]}
             </button>
           ))}
@@ -900,8 +922,18 @@ function App() {
               {step === "effect" && "Atlases & presets"}
               {step === "export" && "Export checklist"}
               {step === "install" && "Install target"}
-              {step === "playtest" && "Playtest kit"}
+              {step === "playtest" && "Local check kit"}
             </h2>
+            {step === "item" && (
+              <button
+                className="btn"
+                type="button"
+                disabled={itemsLoading}
+                onClick={() => void loadItems()}
+              >
+                Reload
+              </button>
+            )}
           </header>
           <div className="body">
             {step === "item" && (
@@ -914,24 +946,65 @@ function App() {
                     placeholder="dragon, 10728, mesh…"
                   />
                 </label>
-                <div className="list">
-                  {filteredItems.map((item) => (
+                {itemsLoading && (
+                  <div className="empty" role="status">
+                    Loading racket library…
+                  </div>
+                )}
+                {!itemsLoading && itemsError && (
+                  <div role="alert">
+                    <pre className="mono">{itemsError}</pre>
                     <button
-                      key={item.index}
+                      className="btn"
                       type="button"
-                      data-active={selectedItem?.index === item.index}
-                      onClick={() => {
-                        setSelectedItem(item);
-                        setStatus(`Selected ${item.name}. Continue to Effect.`);
-                      }}
+                      onClick={() => void loadItems()}
                     >
-                      {item.name}
-                      <small>
-                        #{item.index} · mesh {item.mesh} · effect {item.effect}
-                      </small>
+                      Retry racket library
                     </button>
-                  ))}
-                </div>
+                  </div>
+                )}
+                {!itemsLoading && !itemsError && items.length === 0 && (
+                  <div className="empty">
+                    No rackets are available from the configured JFTSE source.
+                  </div>
+                )}
+                {!itemsLoading &&
+                  !itemsError &&
+                  items.length > 0 &&
+                  filteredItems.length === 0 && (
+                    <div className="empty">
+                      No rackets match “{itemQuery}”.{" "}
+                      <button
+                        className="btn"
+                        type="button"
+                        onClick={() => setItemQuery("")}
+                      >
+                        Clear search
+                      </button>
+                    </div>
+                  )}
+                {!itemsLoading && !itemsError && filteredItems.length > 0 && (
+                  <div className="list">
+                    {filteredItems.map((item) => (
+                      <button
+                        key={item.index}
+                        type="button"
+                        data-active={selectedItem?.index === item.index}
+                        onClick={() => {
+                          setSelectedItem(item);
+                          setStatus(
+                            `Selected ${item.name}. Continue to Effect.`,
+                          );
+                        }}
+                      >
+                        {item.name}
+                        <small>
+                          #{item.index} · mesh {item.mesh} · effect {item.effect}
+                        </small>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </>
             )}
 
@@ -1027,7 +1100,7 @@ function App() {
               {step === "effect" && "Emitter"}
               {step === "export" && "Build export"}
               {step === "install" && "Install"}
-              {step === "playtest" && "Playtest"}
+              {step === "playtest" && "Local client verification"}
             </h2>
           </header>
           <div className="body">
@@ -1405,9 +1478,13 @@ function App() {
                   +9 racket and confirm silhouette + aura in the live client.
                 </p>
                 {playtestStatus && (
-                  <ul className="validation" aria-label="Playtest readiness">
+                  <ul
+                    className="validation"
+                    aria-label="Local client verification readiness"
+                  >
                     <li className={playtestStatus.ready ? "ok" : "bad"}>
-                      {playtestStatus.ready ? "PASS" : "TODO"} — Playtest ready
+                      {playtestStatus.ready ? "PASS" : "TODO"} — Ready for
+                      manual local-client verification
                     </li>
                     {playtestStatus.checklist.map((row) => (
                       <li key={row.id} className={row.ok ? "ok" : "bad"}>
@@ -1574,7 +1651,7 @@ PT_Life=${slotFields.PT_Life}`}
       <footer className="footer">
         <span>
           {workspace === "packs"
-            ? "Content Pack: build multi-asset → install local → SQL dry-run/apply → playtest checklist"
+            ? "Content Pack: build multi-asset → install local → SQL dry-run/apply → local client preflight"
             : workspace === "maps"
               ? "Map Studio: catalog → stage validate → relational SQL pack (geometry stays stock-bound)"
               : workspace === "meshes"

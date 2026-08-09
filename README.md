@@ -8,12 +8,12 @@ workspaces:
 
 - **Equipment** — start from a stock racket, author an effect, build verified
   archives, install to a local client, and prepare a manual Equipment check.
-- **Packs** — build one equipment + map + stage + optional FTM content pack,
+- **Content Pack** — build one equipment + map + stage + optional FTM content pack,
   install its files, audit/apply its aggregate SQL, and run local-client
   preflight.
-- **Maps** — edit map metadata, validate the selected stage asset graph, export
+- **Map Studio** — edit map metadata, validate the selected stage asset graph, export
   relational SQL, inspect PRJ/FTM placement data, and author bounded FTM edits.
-- **Meshes** — inspect decoded Stage/Sky/Collision DAT geometry, transform it,
+- **Mesh Studio** — inspect decoded Stage/Sky/Collision DAT geometry, transform it,
   export OBJ/glTF, and run experimental authored-DAT workflows.
 
 This is not a replacement for Blender, a terrain sculptor, or an automated game
@@ -101,7 +101,7 @@ stock target.
 5. In **Install**, choose **Install to local client**.
 6. Review the confirmation dialog's source and exact configured target, then
    confirm.
-7. In **Playtest**, copy the launch command.
+7. In **Local Check**, copy the launch command.
 8. Launch the game yourself, log in, open Equipment, equip the authored racket,
    and visually inspect the silhouette and aura.
 
@@ -109,7 +109,7 @@ The browser particle preview is approximate and does not prove DX9 appearance.
 
 ## Content Pack workflow
 
-1. Open **Packs** and configure equipment, map, stage script, and optional FTM
+1. Open **Content Pack** and configure equipment, map, stage script, and optional FTM
    input.
 2. **Build pack**. Any draft edit after this invalidates the build and all
    downstream receipts.
@@ -125,7 +125,7 @@ The browser particle preview is approximate and does not prove DX9 appearance.
 
 ## Map and FTM workflow
 
-1. Open **Maps** and select a catalog entry.
+1. Open **Map Studio** and select a catalog entry.
 2. Choose the exact stage script and run **Validate stage assets**.
 3. Export/create actions remain disabled until the currently selected script
    has a passing validation receipt. Changing the script invalidates that
@@ -148,7 +148,7 @@ draft.
 
 ## Mesh workflow
 
-1. Open **Meshes** or use **Open World in Mesh Studio** from a validated map.
+1. Open **Mesh Studio** or use **Open World in Mesh Studio** from a validated map.
 2. Select a Stage/Sky/Collision DAT member.
 3. Inspect decoder confidence, bounds, triangle counts, UV mode, and texture
    resolution.
@@ -210,12 +210,12 @@ Run this after setup or before handing the studio to a designer:
 5. Open the studio and confirm **Bridge online**.
 6. Confirm the setup checklist points to the intended stock and local clients.
 7. Equipment: select Dragon Slayer, apply **Soft full-racket wind**, build,
-   confirm install, and verify the playtest checklist.
-8. Packs: build once, confirm install, dry-run SQL, and verify preflight. Apply
+   confirm install, and verify the local-check checklist.
+8. Content Pack: build once, confirm install, dry-run SQL, and verify preflight. Apply
    SQL only when using a disposable configured database.
-9. Maps: validate a stage, change scripts to confirm validation is invalidated,
+9. Map Studio: validate a stage, change scripts to confirm validation is invalidated,
    then parse `FantaCastle.prj` and explicitly open each child FTM.
-10. Meshes: open a World DAT from Maps, confirm the 3D viewport, switch away and
+10. Mesh Studio: open a World DAT from Map Studio, confirm the 3D viewport, switch away and
     back, and verify the selected mesh and draft controls persist.
 11. At both 1440×900 and 1024×720, visit all four workspaces and confirm there
     is no horizontal page overflow or clipped primary action.
