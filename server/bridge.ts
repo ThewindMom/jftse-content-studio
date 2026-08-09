@@ -1,5 +1,6 @@
 import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { kill as signalProcess, platform } from "node:process";
 import { bridgeEnv, config } from "./config.ts";
 
 export type BridgeResult = Record<string, unknown>;
@@ -24,6 +25,7 @@ export class BridgeError extends Error {
 const DEFAULT_TIMEOUT_MS = 180_000;
 const DETAIL_LIMIT = 2_000;
 const OUTPUT_LIMIT = 1_000_000;
+const TERMINATION_GRACE_MS = 1_000;
 
 function sanitizeDetail(value: string): string {
   return value.replace(/[^\x09\x0a\x0d\x20-\x7e]/g, "?").slice(-DETAIL_LIMIT);
@@ -68,6 +70,7 @@ export async function runBridge(
     ],
     {
       cwd: config.jftseRoot,
+      detached: true,
       env: bridgeEnv(),
       stdout: "pipe",
       stderr: "pipe",
@@ -89,7 +92,32 @@ export async function runBridge(
   ]);
   if (timeout) clearTimeout(timeout);
   if (outcome.kind === "timeout") {
-    process.kill();
+    const terminate = (signal: "SIGTERM" | "SIGKILL") => {
+      if (platform !== "win32") {
+        try {
+          signalProcess(-process.pid, signal);
+          return;
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code;
+          if (code === "ESRCH") return;
+        }
+      }
+      try {
+        process.kill(signal);
+      } catch {
+        // The direct child already exited.
+      }
+    };
+    terminate("SIGTERM");
+    let grace: Timer | undefined;
+    const exitedDuringGrace = await Promise.race([
+      process.exited.then(() => true),
+      new Promise<boolean>((resolve) => {
+        grace = setTimeout(() => resolve(false), TERMINATION_GRACE_MS);
+      }),
+    ]);
+    if (grace) clearTimeout(grace);
+    if (!exitedDuringGrace) terminate("SIGKILL");
     await completion;
     throw new BridgeError(
       "BRIDGE_TIMEOUT",
