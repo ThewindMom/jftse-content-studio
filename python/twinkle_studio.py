@@ -7,6 +7,7 @@ import json
 import math
 import os
 import re
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from twinkle_mesh import parse_static_decoration, parse_twinkle_static
 from adu_pose import parse_bind_pose
 from oktoberfest_models import prepare_originals, PREFIX, NAMES
 from oktoberfest_native import native_resources, model_name, ATLAS
+from oktoberfest_costumes import ARCHIVE as COSTUME_ARCHIVE, VARIANTS, SOURCES, build_costumes
 
 STAGE = "2_Twinkle_Town.set"
 PROPS = ["P0_Barrel01_C01.dat", "P0_Log00_B.dat", "P0_Flower00a.dat",
@@ -54,6 +56,8 @@ def catalog() -> list[tuple[str, str, str, bool, str]]:
     result += [(f"Res/StageObj/{a}.res", n, n[:-4], False, "stock") for a, names in STOCK_PROPS.items() for n in names]
     if festival_root():
         result += [(f"Res/StageObj/{a}.res", n, label, False, "festival") for a, (n, label) in FESTIVAL.items()]
+    result += [(COSTUME_ARCHIVE, name+".dat", f"Costume · {role} · {style}", False, "festival")
+               for name,(role,style) in VARIANTS.items()]
     return result
 
 
@@ -114,6 +118,14 @@ def initial_document(text: str, map_id: str = "twinkle") -> dict:
 def prepare(client: Path, out: Path, map_id: str = "twinkle") -> dict:
     out.mkdir(parents=True, exist_ok=True)
     document = initial_document(source_text(client), map_id)
+    costume_names = [name for name,(role,_) in VARIANTS.items()
+                     if (client/f"Res/StageObj/{SOURCES[role][0]}.res").exists()]
+    costume_path = out / "OktoberNPC.res"
+    if costume_names:
+        packed = build_costumes(client,costume_names)[0]
+        with tempfile.NamedTemporaryFile(dir=out,delete=False) as temporary:
+            temporary.write(packed)
+        Path(temporary.name).replace(costume_path)
     texture_index = {}
     for path in [*sorted((client / "Res/Stage").glob("Tex*.res")),
                  *sorted((client / "Res/MapRes/DecoRes").glob("Tex*.res")),
@@ -152,7 +164,9 @@ def prepare(client: Path, out: Path, map_id: str = "twinkle") -> dict:
     assets = []
     warnings = []
     for archive_path, member, label, fixed, category in catalog():
-        path = resource_path(client, archive_path)
+        if archive_path == COSTUME_ARCHIVE and member[:-4] not in costume_names:
+            continue
+        path = costume_path if archive_path == COSTUME_ARCHIVE else resource_path(client, archive_path)
         if not path.exists():
             if fixed:
                 raise ValueError(f"Stock resource missing: {archive_path}")
@@ -267,14 +281,22 @@ def export_layout(client: Path, document: dict, out: Path) -> dict:
     if resources:
         if fields(text).get("Collision", "").strip('"') != "Res/Collision/ColMesh_TT.dat" or fields(text).get("Coll_Chat", "").strip('"') != "Res/Collision/ColMesh_TT_CR.dat":
             raise ValueError("Native collision export requires the original Twinkle collision references")
+    additions = {ATLAS+".tex": texture} if texture is not None else {}
+    costumes = [Path(obj["file"]).stem for obj in document["objects"] if obj["visible"]
+                and obj["file"].startswith(COSTUME_ARCHIVE[:-4]+"/")]
+    if costumes:
+        resources[COSTUME_ARCHIVE], costume_textures = build_costumes(client,costumes)
+        additions.update(costume_textures)
+    if additions:
         path = (festival_root() if document.get("mapId") == "oktoberfest" else client / "Res/Stage") / "Tex010.res"
         packed = io.BytesIO()
         with zipfile.ZipFile(path) as source, zipfile.ZipFile(packed, "w", compression=zipfile.ZIP_DEFLATED) as dest:
             for entry in source.infolist():
-                if entry.filename == ATLAS + ".tex":
-                    raise ValueError("Source texture archive already contains an Oktoberfest atlas")
+                if entry.filename in additions:
+                    raise ValueError("Source texture archive already contains a generated texture")
                 dest.writestr(entry, source.read(entry))
-            dest.writestr(ATLAS + ".tex", texture)
+            for name,data in additions.items():
+                dest.writestr(name,data)
         resources["Res/Stage/Tex010.res"] = packed.getvalue()
     encrypted = encrypt_set_file(compiled.encode())
     out.mkdir(parents=True, exist_ok=True)
@@ -307,7 +329,7 @@ def export_layout(client: Path, document: dict, out: Path) -> dict:
                 "format": "stock-template-static-adumesh", "nativeRuntimeVerified": False,
                 "collision": "coarse solid proxies appended to stock match and chat meshes",
                 "placements": [obj["id"] for obj in document["objects"] if obj["visible"] and model_name(obj["file"])],
-                "texture": "A8R8G8B8 DDS/TEX, same-archive plus Stage/Tex010 registration candidate",
+                "texture": "Opaque DXT1 DDS/TEX, complete mip chain, same-archive plus Stage/Tex010 registration candidate",
                 "limits": "Loader lookup order, opaque node semantics, native shading and collision response need native verification.",
             }, indent=2))
         archive.writestr("README.txt", "PRIVATE TEST-CLIENT INSTALLATION\n"

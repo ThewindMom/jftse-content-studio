@@ -1309,6 +1309,34 @@ def cmd_twinkle_export(args: argparse.Namespace) -> dict[str, Any]:
     return export_layout(_client_root(_jftse_root()), json.loads(Path(args.payload).read_text()), Path(args.out_dir))
 
 
+def cmd_twinkle_client(args: argparse.Namespace) -> dict[str, Any]:
+    import tempfile
+    from twinkle_install import install, restore, status, tree_hashes
+    from twinkle_studio import export_layout
+    store = os.environ.get("JFTSE_STUDIO_TEST_ROOT", "").strip()
+    if not store:
+        if args.action == "status":
+            return {"configured": False, "receipt": None}
+        raise ValueError("Set JFTSE_STUDIO_TEST_ROOT to a separate empty directory first")
+    client = _client_root(_jftse_root())
+    if args.action == "install":
+        if not args.payload:
+            raise ValueError("Layout is required")
+        before = tree_hashes(client, allow_file_links=True)
+        with tempfile.TemporaryDirectory(prefix="studio-test-export-") as temporary:
+            out = Path(temporary)
+            export_layout(client, json.loads(Path(args.payload).read_text()), out)
+            receipt = install(client, store, out / "twinkle-layout.zip", before)
+    elif args.action == "restore":
+        receipt = restore(client, store)
+    else:
+        receipt = status(client, store)
+    if receipt:
+        receipt = {key: value for key, value in receipt.items() if not key.endswith("Hashes")}
+        receipt["receiptPath"] = str(Path(store).resolve() / receipt["generation"] / "receipt.json")
+    return {"configured": True, "receipt": receipt}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="studio_bridge")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1320,6 +1348,9 @@ def main() -> None:
     p_twinkle_export = sub.add_parser("twinkle-export")
     p_twinkle_export.add_argument("--out-dir", required=True)
     p_twinkle_export.add_argument("--payload", required=True)
+    p_twinkle_client = sub.add_parser("twinkle-client")
+    p_twinkle_client.add_argument("--action", choices=["status", "install", "restore"], required=True)
+    p_twinkle_client.add_argument("--payload")
 
     p_atlases = sub.add_parser("list-atlases")
     p_atlases.add_argument("--limit", type=int, default=0)
@@ -1529,6 +1560,7 @@ def main() -> None:
         "stage-scene": cmd_stage_scene,
         "twinkle-prepare": cmd_twinkle_prepare,
         "twinkle-export": cmd_twinkle_export,
+        "twinkle-client": cmd_twinkle_client,
         "map-catalog": cmd_map_catalog,
         "ftm-parse": cmd_ftm_parse,
         "ftm-export": cmd_ftm_export,

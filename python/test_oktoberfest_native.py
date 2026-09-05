@@ -2,8 +2,9 @@ import io
 import math
 import struct
 import unittest
+from unittest.mock import patch
 
-from PIL import Image
+from PIL import Image, ImageChops, ImageStat
 
 from oktoberfest_models import Model, NAMES, PREFIX, atlas, collision_boxes
 from oktoberfest_native import (append_collision, collision_geometry, native_mesh,
@@ -94,16 +95,52 @@ class NativeTests(unittest.TestCase):
         self.assertAlmostEqual(min(p[1] for p in vertices),2)
         self.assertAlmostEqual(max(p[1] for p in vertices),82)
         self.assertEqual(collision_geometry([{**obj,"visible":False}]),([],[]))
-        for name in NAMES: self.assertTrue(collision_boxes(name))
+        for name in NAMES:
+            if name in ("Oktoberfest_HouseBanner", "Oktoberfest_FountainGarland", "Oktoberfest_FountainCrown", "Oktoberfest_CourtCrest", "Oktoberfest_NetDressing", "Oktoberfest_JudgeDressing"):
+                self.assertEqual(collision_boxes(name), [])
+                self.assertEqual(collision_geometry([{**obj,"file":PREFIX+name+".glb"}]), ([],[]))
+            else:
+                self.assertTrue(collision_boxes(name))
         # The entrance remains open at center, unlike a whole-model AABB.
         for center,size in collision_boxes("Oktoberfest_FestivalArch"):
             self.assertGreater(abs(center[0]),size[0]/2)
 
-    def test_native_tex_decodes_to_original_pixels(self):
-        decoded = Image.open(io.BytesIO(tex_to_dds(native_texture()))).convert("RGBA")
-        original = Image.open(io.BytesIO(atlas())).convert("RGBA")
-        self.assertEqual(decoded.size,(512,512))
-        self.assertEqual(decoded.tobytes(), original.tobytes())
+    def test_native_tex_matches_observed_stock_dxt1_headers_and_all_mips(self):
+        data = tex_to_dds(native_texture())
+        self.assertEqual(data[:4], b"DDS ")
+        # Scalar fields observed in stock 512-square SV_Tent00_A/SV_Tent01_A.
+        self.assertEqual(struct.unpack_from("<7I",data,4), (124,0xA1007,512,512,131072,0,10))
+        self.assertEqual(data[32:76], bytes(44))
+        self.assertEqual(struct.unpack_from("<II4s5I",data,76), (32,4,b"DXT1",0,0,0,0,0))
+        self.assertEqual(struct.unpack_from("<5I",data,108), (0x401008,0,0,0,0))
+        self.assertEqual(len(data),174904)
+        offset = 128
+        original = Image.open(io.BytesIO(atlas())).convert("RGB")
+        for level in range(10):
+            side = max(1,512 >> level)
+            size = max(1,(side+3)//4)**2 * 8
+            header = bytearray(data[:128])
+            struct.pack_into("<6I",header,8,0x81007,side,side,size,0,0)
+            struct.pack_into("<I",header,108,0x1000)
+            decoded = Image.open(io.BytesIO(header+data[offset:offset+size])).convert("RGBA")
+            self.assertEqual(decoded.size,(side,side))
+            self.assertEqual(decoded.getchannel("A").getextrema(), (255,255))
+            error = ImageStat.Stat(ImageChops.difference(decoded.convert("RGB"),original)).mean
+            # Below 16px, one DXT1 block spans multiple unrelated atlas swatches;
+            # its two endpoints cannot preserve all their colors. Check visual
+            # fidelity while swatches remain at least one block wide.
+            if side >= 16:
+                self.assertLess(max(error),5, f"Mip {level} compression error: {error}")
+            offset += size
+            original = original.resize((max(1,side//2),max(1,side//2)),Image.Resampling.LANCZOS)
+        self.assertEqual(offset,len(data))
+
+    def test_native_dxt1_rejects_transparency_instead_of_discarding_it(self):
+        source = io.BytesIO()
+        Image.new("RGBA",(4,4),(255,255,255,0)).save(source,format="PNG")
+        with patch("oktoberfest_native.atlas",return_value=source.getvalue()):
+            with self.assertRaisesRegex(ValueError,"must be opaque"):
+                native_texture()
 
 
 if __name__ == "__main__": unittest.main()

@@ -28,6 +28,20 @@ NAMES = {
     "Oktoberfest_Maypole": "Original · Wreath maypole",
     "Oktoberfest_BarrelWagon": "Original · Barrel wagon",
     "Oktoberfest_Bandstand": "Original · Brass bandstand",
+    "Oktoberfest_HouseBanner": "Original · Pretzel house banner",
+    "Oktoberfest_FlagLine": "Original · Lane pennants",
+    "Oktoberfest_FlagPost": "Original · Welcome flag",
+    "Oktoberfest_FountainGarland": "Original · Fountain rim garland",
+    "Oktoberfest_FountainCrown": "Original · Fountain wreath & ribbons",
+    "Oktoberfest_CourtCrest": "Original · Court-end pretzel crest",
+    "Oktoberfest_CourtRibbon": "Original · Court-side festival trim",
+    "Oktoberfest_NetDressing": "Original · Fitted net tape & post ribbons",
+    "Oktoberfest_JudgeDressing": "Original · Judge chair festival drapery",
+    "Oktoberfest_CourtCorner": "Original · Low court-corner flower box",
+    "Oktoberfest_Brewmaster": "Original · Brewmaster · raised stein pose",
+    "Oktoberfest_Accordionist": "Original · Accordionist · seated pose",
+    "Oktoberfest_PretzelBaker": "Original · Baker · serving pose",
+    "Oktoberfest_FestivalChick": "Original · Festival chick · dressed pose",
 }
 MATERIALS = ["oak", "darkwood", "blue", "ivory", "bread", "icing", "ginger", "metal",
              "plaster", "leaf", "terracotta", "amber", "foam", "stone", "red", "rope"]
@@ -88,6 +102,23 @@ class Model:
     def __init__(self, name):
         self.name = name
         self.positions, self.normals, self.uvs, self.colors, self.indices = [], [], [], [], []
+
+    def ellipsoid(self, center, radii, material):
+        start = len(self.positions)
+        rings = [[add(center,(radii[0]*math.sin(p)*math.cos(a),radii[1]*math.cos(p),radii[2]*math.sin(p)*math.sin(a)))
+                  for a in [j*math.tau/12 for j in range(12)]]
+                 for p in [i*math.pi/6 for i in range(1,6)]]
+        for j in range(12):
+            k = (j+1)%12
+            self.face([add(center,(0,radii[1],0)),rings[0][k],rings[0][j]],material)
+            for a,b in zip(rings,rings[1:]):
+                self.face([a[j],a[k],b[k],b[j]],material)
+            self.face([add(center,(0,-radii[1],0)),rings[-1][j],rings[-1][k]],material)
+        for i in range(start,len(self.positions),3):
+            normal = unit(tuple((self.positions[i+j]-center[j])/radii[j]**2 for j in range(3)))
+            self.normals[i:i+3] = normal
+            shade = .76+.22*max(0,sum(a*b for a,b in zip(normal,unit((-.5,1,.7)))))
+            self.colors[i:i+3] = (shade,)*3
 
     def face(self, points, material):
         normal = unit(cross(add(points[1], mul(points[0], -1)), add(points[2], mul(points[0], -1))))
@@ -235,7 +266,190 @@ class Model:
 
 def build_model(name):
     model = Model(name)
-    if name == "Oktoberfest_BrewersPavilion":
+    if name in ("Oktoberfest_Brewmaster", "Oktoberfest_Accordionist", "Oktoberfest_PretzelBaker"):
+        musician = name.endswith("Accordionist")
+        baker = name.endswith("PretzelBaker")
+        cloth = "red" if musician else "ivory" if baker else "leaf"
+        for side in (-1,1):
+            hip = (side*1.6,7.5,0)
+            knee = (side*2,4,2 if musician else .4)
+            foot = (side*2,1,3 if musician else 1)
+            model.beam(hip,knee,1.45,"darkwood",10)
+            model.beam(knee,foot,.8,"ivory",10)
+            model.ellipsoid(add(foot,(0,-.25,.65)),(1.1,.75,1.8),"darkwood")
+            model.box((side*1.6,6.5,1.2),(1.4,2,.3),"oak",bevel=.2)
+        model.ellipsoid((0,11,0),(4,4.5,2.5),cloth)
+        model.beam((-2.2,14.6,1.8),(-1.8,7.5,2),.3,"darkwood",6)
+        model.beam((2.2,14.6,1.8),(1.8,7.5,2),.3,"darkwood",6)
+        model.box((0,8.3,2.2),(4.4,.6,.35),"darkwood",bevel=.15)
+        for y in (10,11.5,13): model.ellipsoid((0,y,2.5),(.18,.18,.12),"amber")
+        model.ellipsoid((0,17,0),(2.9,3.1,2.4),"plaster")
+        for x in (-1,1):
+            model.ellipsoid((x,17.7,2.1),(.5,.55,.25),"ivory")
+            model.ellipsoid((x,17.7,2.34),(.21,.3,.12),"darkwood")
+            model.beam((x-.45,18.4,2),(x+.4,18.5,2),.13,"darkwood",6)
+            model.ellipsoid((x*2.8,17,.1),(.45,.7,.5),"plaster")
+        model.ellipsoid((0,16.7,2.45),(.6,.65,.6),"plaster")
+        model.ellipsoid((0,15.8,2.3),(1.6,.4,.55),"darkwood")
+        if not baker: model.ellipsoid((0,14.8,1.5),(1.7,1.5,.9),"darkwood")
+        model.beam((0,19.4,0),(0,19.8,0),3.35,"darkwood",16)
+        model.ellipsoid((0,20.3,0),(2.5,1.7,2),"leaf" if not musician else "red")
+        model.beam((0,19.8,0),(0,20.2,0),2.52,"rope",16)
+        model.tube([(-2.1,20,0),(-3,22,.2),(-3.5,24,.4)],.23,"ivory")
+        for y in (21,22,23): model.beam((-2.5-(y-21)*.35,y,0),(-3.7-(y-21)*.15,y+.5,.2),.15,"ivory",5)
+        hands = [(-4,10,3),(4,10,3)] if baker else [(-4,11,4),(4,11,4)] if musician else [(-4.7,9,1),(5.7,19.7,3)]
+        for side,hand in zip((-1,1),hands):
+            elbow = (side*5,12 if side<0 or musician or baker else 16,1.2)
+            model.beam((side*3.1,13.3,0),elbow,1.15,cloth,10)
+            model.beam(elbow,hand,.8,"plaster",10)
+            model.ellipsoid(hand,(.9,.85,.9),"plaster")
+        if musician:
+            model.box((0,11,4),(7,4.5,2.8),"darkwood",bevel=.3)
+            for x in range(-3,4): model.box((x,11,5.5),(.35,4,1),"red",bevel=.1)
+            for y in (9.5,10.2,10.9,11.6,12.3): model.box((3.5,y,5.5),(.8,.45,.3),"ivory")
+            model.beam((0,0,0),(0,7,0),.8,"oak",8)
+            model.beam((0,6.5,0),(0,7,0),3,"oak",12)
+        elif baker:
+            model.box((0,9.5,4.5),(9,.55,4),"oak",bevel=.2)
+            for x in (-2.7,0,2.7): model.pretzel((x,10.7,4.8),.75)
+            model.box((0,10,2.3),(4.5,5,.2),"ivory",bevel=.1)
+        else:
+            model.mug((5.7,19.8,3),1.2)
+    elif name == "Oktoberfest_FestivalChick":
+        model.ellipsoid((0,4,0),(2.5,3,2.2),"amber")
+        for x in (-.9,.9):
+            model.ellipsoid((x,5,1.95),(.45,.55,.3),"ivory")
+            model.ellipsoid((x,5,2.22),(.18,.26,.12),"darkwood")
+            model.ellipsoid((x,1,.4),(.6,.5,.9),"bread")
+        model.beam((0,4.3,2),(0,4.3,2.85),.45,"bread",3)
+        model.ellipsoid((0,2.1,0),(2.25,1.4,1.95),"darkwood")
+        for x in (-2.2,2.2): model.ellipsoid((x,3.8,.1),(.7,1.2,1),"amber")
+        model.box((0,3.4,2),(1.9,1.9,.25),"oak",bevel=.15)
+        for x in (-.8,.8):
+            model.beam((x,4.7,1.8),(x,2.8,2.1),.14,"rope",6)
+            model.ellipsoid((x,3.1,2.25),(.15,.15,.15),"amber")
+        model.beam((0,6.6,0),(0,6.9,0),2.1,"leaf",16)
+        model.ellipsoid((0,7.2,0),(1.5,1.1,1.35),"leaf")
+        model.beam((0,6.9,0),(0,7.1,0),1.52,"rope",16)
+        model.tube([(-1.4,7,0),(-2,8,.2),(-2.3,9,.3)],.18,"ivory")
+    elif name == "Oktoberfest_JudgeDressing":
+        # Measured chair footprint x72.49..102.03, z±15.9, height39.97.
+        # Side drapes avoid the owl and leave the front steps/seat accessible.
+        for side in (-1,1):
+            z=side*16.1
+            for i in range(6):
+                x0,x1=81+i*3,84+i*3
+                points=[(x0,28,z),(x1,28,z),(x1,11+abs(i-2.5)*.7,z),(x0,11+abs(i-2.5)*.7,z)]
+                model.face(points if side<0 else points[::-1],"blue" if i%2 else "ivory")
+            model.garland((80,28,z),(100,28,z),2.2)
+            model.pretzel((90,21,z+side*.2),1.1)
+            model.lantern((98,29,z),.8)
+        model.garland((101,34,-13),(101,34,13),3)
+        for z in (-10,10):
+            points=[(102.3,33,z-2),(102.3,33,z+2),(102.3,15,z+1),(102.3,16,z-2)]
+            model.face(points,"blue")
+            model.face(points[::-1],"blue")
+    elif name == "Oktoberfest_CourtCorner":
+        model.box((0,1.6,0),(18,3.2,5),"oak",bevel=.4)
+        model.box((0,3.15,0),(16,.2,3.8),"ginger",bevel=.08)
+        for x in (-7.5,7.5):model.box((x,1.5,0),(.5,3.2,5.2),"metal",bevel=.07)
+        model.garland((-8,3,2.6),(8,3,2.6),1)
+        for i in range(9):
+            x=-7+i*1.7;y=4.7+(i%3)*.35;z=.7*math.sin(i*2)
+            model.beam((x,3,z),(x,y,z),.07,"leaf",5)
+            for j in range(5):
+                a=j*math.tau/5
+                model.ellipsoid((x+.5*math.cos(a),y+.4*math.sin(a),z),(.38,.32,.16),"ivory" if i%3 else "blue")
+            model.ellipsoid((x,y,z+.15),(.2,.2,.13),"amber")
+        for x in (-5,5):
+            model.box((x,1.8,2.62),(2.5,2,.12),"blue",bevel=.05)
+    elif name == "Oktoberfest_NetDressing":
+        # Stock SV_Net00_A top edge: endpoints 9.70674, midpoint 8.33548.
+        for i in range(48):
+            x0,x1=-60+i*2.5,-60+(i+1)*2.5
+            y0,y1=[8.33548+abs(x)/60*(9.70674-8.33548) for x in (x0,x1)]
+            for z in (-.18,.18):
+                points=[(x0,y0,z),(x1,y1,z),(x1,y1-.9,z),(x0,y0-.9,z)]
+                model.face(points if z<0 else points[::-1],"ivory")
+                mid=(x0+x1)/2
+                ym=(y0+y1)/2
+                diamond=[(mid,ym,z*1.1),(x1,ym-.45,z*1.1),(mid,ym-.9,z*1.1),(x0,ym-.45,z*1.1)]
+                model.face(diamond if z<0 else diamond[::-1],"blue")
+        for x in (-67,67):
+            model.ellipsoid((x,12,1.4),(.65,.65,.3),"amber")
+            for side in (-1,1):
+                model.ellipsoid((x+side*1.2,12,1.35),(1.1,.55,.25),"blue" if side<0 else "ivory")
+                points=[(x+side*.2,11.7,1.35),(x+side*1.1,7.4,1.4),
+                        (x+side*.6,7.7,1.5),(x+side*.8,12,1.35)]
+                model.face(points,"blue" if side<0 else "ivory")
+                model.face(points[::-1],"blue" if side<0 else "ivory")
+    elif name == "Oktoberfest_CourtCrest":
+        model.pretzel((0,0,0),3.2)
+        for i in range(0,len(model.positions),3):
+            x,y,z = model.positions[i:i+3]
+            model.positions[i:i+3] = [x,z+.7,-y]
+            x,y,z = model.normals[i:i+3]
+            model.normals[i:i+3] = [x,z,-y]
+        model.beam((0,0,0),(0,.2,0),8.5,"ivory",32)
+        for i in range(16):
+            a,b = i*math.tau/16,(i+1)*math.tau/16
+            model.face([(r*math.cos(t),.25,r*math.sin(t)) for r,t in [(7,b),(8.4,b),(8.4,a),(7,a)]],"blue" if i%2 else "ivory")
+    elif name == "Oktoberfest_FountainCrown":
+        for i in range(12):
+            a,b = i*math.tau/12,(i+1)*math.tau/12
+            start,end = [(17*math.cos(t),0,17*math.sin(t)) for t in (a,b)]
+            model.garland(start,end,.6)
+            if i%3 == 0:
+                model.lantern(add(start,(0,-3,0)),1.2)
+                for delta,color in [(-1,"blue"),(1,"ivory")]:
+                    x,y,z=start
+                    points=[(x+delta,y,z),(x+delta-1,y-11,z+2),(x+delta+1,y-10,z+3),(x+delta+1,y,z)]
+                    model.face(points,color)
+                    model.face(points[::-1],color)
+    elif name == "Oktoberfest_CourtRibbon":
+        for x in (-15,15):
+            model.beam((x,0,0),(x,8,0),.45,"oak")
+            model.beam((x,7.5,0),(x,8.5,0),.7,"metal")
+        model.garland((-15,8,0),(15,8,0),1)
+        model.bunting((-15,7,0),(15,7,0),10)
+    elif name == "Oktoberfest_HouseBanner":
+        model.beam((-7, 0, 0), (7, 0, 0), .5, "metal")
+        for x in (-6, 6): model.beam((x, 0, -3), (x, 0, 0), .4, "metal")
+        for i in range(8):
+            x0, x1 = -6 + i * 1.5, -4.5 + i * 1.5
+            z0, z1 = math.sin(i * math.pi / 4) * .5, math.sin((i+1) * math.pi / 4) * .5
+            panel = [(x0,0,z0),(x0,-20+abs(x0)*.5,z0),(x1,-20+abs(x1)*.5,z1),(x1,0,z1)]
+            model.face(panel, "blue" if i in (0,1,6,7) else "ivory")
+            model.face(panel[::-1], "blue" if i in (0,1,6,7) else "ivory")
+        model.pretzel((0,-8,1), 2.1)
+        model.garland((-7,1,0),(7,1,0),1)
+    elif name == "Oktoberfest_FlagLine":
+        for x in (-30,30):
+            model.beam((x,0,0),(x,38,0),.55,"darkwood")
+            model.beam((x,36,0),(x,39,0),.8,"metal")
+            model.lantern((x,30,0),.9)
+        model.bunting((-30,36,0),(30,36,0),14)
+        model.garland((-30,37,0),(30,37,0),3)
+    elif name == "Oktoberfest_FlagPost":
+        model.beam((0,0,0),(0,47,0),.7,"darkwood")
+        model.beam((0,45,0),(0,49,0),1,"metal")
+        model.beam((0,44,0),(12,44,0),.4,"metal")
+        for i in range(6):
+            x0,x1 = i*2,(i+1)*2
+            z0,z1 = math.sin(i*.8),math.sin((i+1)*.8)
+            panel = [(x0,44,z0),(x0,24+abs(x0-6)*.4,z0),(x1,24+abs(x1-6)*.4,z1),(x1,44,z1)]
+            for points in (panel,panel[::-1]): model.face(points,"blue" if i%2 else "ivory")
+        model.pretzel((6,35,1.5),1.5)
+        model.garland((0,43,0),(12,43,0),1)
+    elif name == "Oktoberfest_FountainGarland":
+        # Rim radius measured from the stock basin; local origin is its center.
+        for i in range(16):
+            a,b = i*math.tau/16,(i+1)*math.tau/16
+            start,end = [(54*math.cos(t),0,54*math.sin(t)) for t in (a,b)]
+            model.garland(start,end,1.5)
+            model.bunting(add(start,(0,-1,0)),add(end,(0,-1,0)),4)
+            if i%4 == 0: model.lantern(add(start,(0,-3,0)),.9)
+    elif name == "Oktoberfest_BrewersPavilion":
         model.box((0, 1, 0), (36, 2, 28), "darkwood", bevel=.35)
         for x in range(-15, 17, 4):
             model.box((x, 2.1, 0), (3.8, .7, 25), "oak")
@@ -412,6 +626,20 @@ def build_model(name):
 
 def collision_boxes(name):
     """Coarse solid proxies; doorways stay open, hanging decor is nonblocking."""
+    if name in ("Oktoberfest_Brewmaster", "Oktoberfest_Accordionist", "Oktoberfest_PretzelBaker"):
+        return [((0,8,0),(7,16,6))]
+    if name == "Oktoberfest_FestivalChick":
+        return [((0,3,0),(4,6,4))]
+    if name in ("Oktoberfest_HouseBanner", "Oktoberfest_FountainGarland", "Oktoberfest_FountainCrown", "Oktoberfest_CourtCrest", "Oktoberfest_NetDressing", "Oktoberfest_JudgeDressing"):
+        return []
+    if name == "Oktoberfest_CourtCorner":
+        return [((0,1.6,0),(18,3.2,5))]
+    if name == "Oktoberfest_CourtRibbon":
+        return [((x,4,0),(.9,8,.9)) for x in (-15,15)]
+    if name == "Oktoberfest_FlagLine":
+        return [((x,19,0),(1.1,38,1.1)) for x in (-30,30)]
+    if name == "Oktoberfest_FlagPost":
+        return [((0,24,0),(1.4,48,1.4))]
     if name == "Oktoberfest_BrewersPavilion":
         return [((x,15,z),(3.8,30,3.8)) for x in (-15,15) for z in (-11,11)] + [((0,6,-7),(27,12,7))]
     if name in ("Oktoberfest_PretzelStand","Oktoberfest_GingerbreadStand","Oktoberfest_FoodStand"):
@@ -496,7 +724,7 @@ def prepare_originals(out: Path) -> list[dict]:
                            "collisionBoxes": [{"center": center, "size": size} for center, size in collision_boxes(name)],
                            "submeshes": 1, "thumbnail": texture_name})
         archive.writestr("README.txt", "ORIGINAL OKTOBERFEST MODELS\n"
-                         "Ten newly constructed meshes and an original procedural painted-style texture atlas.\n"
+                         f"{len(NAMES)} newly constructed meshes and an original procedural painted-style texture atlas.\n"
                          "No stock mesh or texture bytes are used. Y-up; coordinates use Studio-sized units.\n"
                          "GLB includes UVs, normals, face shading and embedded texture. OBJ/MTL uses the shared PNG.\n"
                          "Import GLB in Blender or another glTF editor to refine the models.\n"

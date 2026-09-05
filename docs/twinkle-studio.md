@@ -45,6 +45,32 @@ Restart the server with that environment variable, then choose **Oktoberfest** f
 
 Keep generated archives and screenshots private: they contain or depict official-client content.
 
+## Install directly into a test copy
+
+The Linux Studio server can prepare a test copy without manual archive copying. Set `JFTSE_STUDIO_TEST_ROOT` to a separate empty directory, outside `JFTSE_STOCK_CLIENT`. The installer refuses to adopt an existing nonempty directory or an alias of the source. This setting is server-controlled; the browser cannot choose an arbitrary destination.
+
+```sh
+JFTSE_ROOT=/path/to/workspace \
+JFTSE_STOCK_CLIENT=/path/to/pristine-client \
+JFTSE_FESTIVAL_RESOURCES=/path/to/private/festival \
+JFTSE_STUDIO_TEST_ROOT=/path/to/studio-test-copies \
+bun run start
+```
+
+1. Open **Install in a test client** in the left sidebar.
+2. Click **Install in fresh test copy**. Studio exports the current layout, copies the pristine source, installs every exported `Res/` archive, and verifies source, backup and installed file hashes.
+3. Read the resulting client folder and download the hash receipt. No executable or launcher is started. A resources-only fixture is labeled as such.
+4. In the native lab, close any previous client and run `FantaTennis.exe` directly with the displayed folder as its working directory. Local auth, game, chat, relay and AC services must already be configured. Inspect actual sockets and test the map; installation success is not native acceptance.
+5. To undo, close the client and click **Restore pristine test copy**. Use the newly displayed `/backup` folder. This selects a verified baseline snapshot with local endpoints, not the original source or the previous edited layout.
+
+Each installation has a unique directory containing `client/`, `backup/`, and `receipt.json`. The store's `active.json` selects the directory and copy. Only this small pointer is replaced atomically, after the complete copy passes validation. Failed writes or interrupted preparation cannot expose a partially installed client through the pointer. A process lock rejects simultaneous operations. Existing generations remain untouched, so a process using an older directory is not modified in place.
+
+Each install needs approximately twice the pristine client's disk space. Older generations are retained for review rather than deleted automatically. Close clients before manually removing obsolete, inactive generations. Do not change `active.json` by hand. A crash before publication can leave an unselected generation; the previous pointer remains authoritative. This is a process-failure guarantee, not a power-loss durability claim for every client file.
+
+The installer requires the observed single-area `ServerInfo.ini` schema, including `[Default].AreaCount=1`, `[Area0].Name=Ini3`, `Count=1`, `IP_1`, and `Port_1`. It rejects missing or additional sections/keys and writes CRLF with `IP_1=127.0.0.1` and `Port_1=5894` in both copies. The source remains byte-identical. No updater is run; if one is run outside Studio, reapply and verify these settings before launch. ServerInfo.ini is the only endpoint text input observed for this direct-executable fixture, not a guarantee about all client builds. Downstream routing comes from the local services; outbound guards and socket inspection remain required.
+
+Automation uses `GET /api/twinkle/client` for status, `POST /api/twinkle/client?action=install` with the current layout JSON, and `POST /api/twinkle/client?action=restore`. `GET /api/twinkle/client?receipt=1` downloads full source/before/after SHA-256 maps. On a lost HTTP response, read status before retrying. The equivalent Python bridge command is `twinkle-client --action status|install|restore`; install also takes `--payload layout.json` and the same server environment variables. The desktop/native lab remains responsible for launch and in-game checks.
+
 ## Load an export into a test client
 
 1. Close the game. Create a separate pristine client copy and back up its `Res` folder. Do not use your pristine source or working client.
@@ -80,16 +106,28 @@ Choose **New Oktoberfest models** in the prop library. These are newly construct
 - `Oktoberfest_Maypole.glb`
 - `Oktoberfest_BarrelWagon.glb`
 - `Oktoberfest_Bandstand.glb`
+- `Oktoberfest_HouseBanner.glb`
+- `Oktoberfest_FlagLine.glb`
+- `Oktoberfest_FlagPost.glb`
+- `Oktoberfest_FountainGarland.glb`
 
 The deterministic source is `python/oktoberfest_models.py`. It builds beveled timber, cloth roofs, sculpted pretzels and biscuits, mugs, furniture and bunting, with an original procedural surface atlas. No client model or texture bytes are used by this generator. The style is a low-poly interpretation, not a claim of exact original art-direction fidelity.
 
 Click a library model to place it. **Isolate selection** and **Frame object** let you inspect it. Move, rotate, scale, duplicate and save work as for other props. On the Oktoberfest map, **Use original festival props** replaces the four stock-based festival anchors in the current document; positions and scales are retained, animation metadata is removed. This action is undoable and does not automatically overwrite your saved layout.
 
-**Download GLB / OBJ pack** includes all ten meshes, embedded GLB textures, shared OBJ material/PNG files and a README. Import GLB into Blender or another glTF editor for vertex-level work. Generate the pack without any private fixtures:
+**Download GLB / OBJ pack** includes all generated meshes, embedded GLB textures, shared OBJ material/PNG files and a README. Import GLB into Blender or another glTF editor for vertex-level work. Generate the pack without any private fixtures:
 
 ```sh
 PYTHONPATH=python uv run --with pillow python -c 'from pathlib import Path; from oktoberfest_models import prepare_originals; prepare_originals(Path(".tmp/original-models"))'
 ```
+
+Native atlas export requires Pillow 11.2.1 or newer for DXT1 compression. The
+opaque 512×512 atlas has all ten mip levels through 1×1 and the same DDS header
+fields as observed stock tent textures. The earlier uncompressed A8R8G8B8 atlas
+caused a splash-screen hang in the parent's isolated native control; standard
+DX9 format support does not imply support by this client's loader. Compressed
+output still needs independent native validation. Existing archive members are
+preserved byte-for-byte; only the new atlas member is added.
 
 Stage export now converts active original placements to newly generated static AduMesh DATs in `Res/StageObj/Oktoberfest.res`, writes the original atlas as DDS/TEX, and appends transformed solid proxies to both stock Twinkle match/chat collision meshes in `Res/Collision.res`. The stock geometry and unrelated archive payloads are preserved. The exported SET uses native DAT references while the editable layout retains GLB identities. Excluded originals contribute neither geometry nor collision.
 
@@ -97,7 +135,7 @@ This is **experimental native-format authoring, not verified client support**. E
 
 ### Visual references
 
-The improved timber framing, greenery, warm lamps, communal seating and larger tent use official photographic references: [Augustiner Festhalle](https://www.oktoberfest.de/en/beer-tents/big-tents/augustiner-festhalle) and [Festhalle Schottenhamel](https://www.oktoberfest.de/en/tents/big-tents/festhalle-schottenhamel), inspected September 2026. These informed original low-poly forms; no photograph, brewery logo or client texture was copied into the generated atlas. The ten assets remain stylized scenery rather than architectural replicas.
+The improved timber framing, greenery, warm lamps, communal seating and larger tent use official photographic references: [Augustiner Festhalle](https://www.oktoberfest.de/en/beer-tents/big-tents/augustiner-festhalle) and [Festhalle Schottenhamel](https://www.oktoberfest.de/en/tents/big-tents/festhalle-schottenhamel), inspected September 2026. These informed original low-poly forms; no photograph, brewery logo or client texture was copied into the generated atlas. The assets remain stylized scenery rather than architectural replicas.
 
 ## Check the implementation
 

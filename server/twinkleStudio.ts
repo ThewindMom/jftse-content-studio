@@ -1,7 +1,7 @@
 import { mkdirSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "./config.ts";
-import { runBridge, runBridgeWithPayload } from "./bridge.ts";
+import { BridgeError, runBridge, runBridgeWithPayload } from "./bridge.ts";
 import { readJsonObject } from "./requestPolicy.ts";
 import { parseMapDesign, parseTwinkleDocument, type MapDesign } from "../web/twinkleDocument.ts";
 
@@ -85,5 +85,27 @@ export async function twinkleExport(req: Request): Promise<Response> {
     return Response.json({ error: String(error) }, { status: 400 });
   } finally {
     rmSync(out, { recursive: true, force: true });
+  }
+}
+
+export async function twinkleClient(req: Request): Promise<Response> {
+  try {
+    const action = req.method === "GET" ? "status" : new URL(req.url).searchParams.get("action");
+    if (action !== "status" && action !== "install" && action !== "restore") throw new Error("Invalid test-client action");
+    const result = action === "install"
+      ? await runBridgeWithPayload("twinkle-test-client", parseTwinkleDocument(await readJsonObject(req, 256_000)),
+          (payload) => ["twinkle-client", "--action", "install", "--payload", payload])
+      : await runBridge(["twinkle-client", "--action", action]);
+    if (req.method === "GET" && new URL(req.url).searchParams.has("receipt")) {
+      const receipt = result.receipt as { receiptPath?: string } | null;
+      if (!receipt?.receiptPath) return new Response("No installation receipt", { status: 404 });
+      return new Response(Bun.file(receipt.receiptPath), { headers: {
+        "content-type": "application/json", "cache-control": "private, no-store",
+        "content-disposition": 'attachment; filename="test-client-receipt.json"',
+      } });
+    }
+    return Response.json(result, { headers: { "cache-control": "private, no-store" } });
+  } catch (error) {
+    return Response.json({ error: error instanceof BridgeError ? error.detail : String(error) }, { status: 400 });
   }
 }

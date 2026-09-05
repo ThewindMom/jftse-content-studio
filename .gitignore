@@ -9,3 +9,6 @@ content-packs/*
 __pycache__/
 *.pyc
 python/__pycache__/
+.amp/in/
+.amp/tmp/
+.amp/portals/

@@ -83,7 +83,7 @@ async function executeBridge(
       "uv",
       "run",
       "--with",
-      "pillow",
+      "pillow>=11.2.1",
       "--with",
       "cryptography",
       "python",

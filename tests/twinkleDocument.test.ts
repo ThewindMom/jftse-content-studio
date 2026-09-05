@@ -14,8 +14,10 @@ describe("Twinkle layout boundary", () => {
   });
   test("accepts named original GLB models, not arbitrary portable paths", () => {
     const doc = layout();
-    doc.objects[0]!.file = "Studio/Oktoberfest/Oktoberfest_FestivalArch.glb";
-    expect(parseTwinkleDocument(doc)).toEqual(doc);
+    for (const name of ["FestivalArch", "HouseBanner", "FlagLine", "FlagPost", "FountainGarland"]) {
+      doc.objects[0]!.file = `Studio/Oktoberfest/Oktoberfest_${name}.glb`;
+      expect(parseTwinkleDocument(doc)).toEqual(doc);
+    }
     for (const file of ["Studio/Oktoberfest/../../secret.glb", "Studio/Oktoberfest/Unknown.glb", "Studio/Oktoberfest/Oktoberfest_FestivalArch.dat"]) {
       expect(() => parseTwinkleDocument({ ...doc, objects: [{ ...doc.objects[0], file }] })).toThrow();
     }

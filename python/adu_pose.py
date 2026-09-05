@@ -76,12 +76,14 @@ def _parse(data: bytes) -> dict:
                         uvs.append(list(record[6:8]))
                     part = {"materialSlot": slot, "materialChild": child,
                             "vertexOffset": offset, "vertexStride": stride, "vertexCount": vc,
+                            "bonePalette": list(bones),
                             "sourcePrimitiveCount": ic, "positions": positions,
                             "normals": normals, "uvs": uvs, "uv1": [], "bounds": bounds(positions)}
                     parts.append(part)
                     primitives.append(part)
             material["children"].append(parts)
         materials.append(material)
+    geometry_end = r.pos
     for _ in range(nodes):
         raw = r.take(304)
         name = raw[:32].split(b"\0", 1)[0]
@@ -121,6 +123,7 @@ def _parse(data: bytes) -> dict:
                         triangles.extend((b, a, c) if i & 1 else (a, b, c))
                 part["indices"] = triangles
                 part["indexCount"] = len(triangles)
+    indices_end = r.pos
     r.take(-r.pos % 4)
     if r.pos != r.end:
         raise _InvalidLayout("skin index boundary")
@@ -138,14 +141,16 @@ def _parse(data: bytes) -> dict:
             if flags not in (b"\0\0\0\0", b"\0\1\0\0"):
                 raise _InvalidLayout("skin child flags")
             r.expect(b"\1")
+            texture_offset = r.pos
             texture = r.name(64)
             r.expect(b"\0\0\0")
             for part in parts:
                 part["materialName"] = name
-                part["textures"] = [{"name": texture, "uvSet": 0}]
+                part["textures"] = [{"name": texture, "uvSet": 0, "offset": texture_offset}]
     # Animation labels/exporter descriptors follow materials. They are opaque:
     # sampled track boundaries above, not these labels, delimit the geometry.
     if r.end - r.pos < animations * 128:
         raise _InvalidLayout("animation descriptors")
     return {"primitives": primitives, "materials": materials, "pose": "bind",
-            "animationCount": animations, "nodeCount": nodes}
+            "animationCount": animations, "nodeCount": nodes,
+            "geometryEnd": geometry_end, "indicesEnd": indices_end, "materialsEnd": r.pos}

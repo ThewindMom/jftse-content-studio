@@ -98,7 +98,7 @@ export function courtClearance(placement: Placement): boolean {
 }
 
 export function isOriginalModel(file: string): boolean {
-  return /^Studio\/Oktoberfest\/Oktoberfest_(BrewersPavilion|PretzelStand|GingerbreadStand|FoodStand|BeerGarden|FestivalArch|Festzelt|Maypole|BarrelWagon|Bandstand)\.glb$/.test(file);
+  return /^Studio\/Oktoberfest\/Oktoberfest_(BrewersPavilion|PretzelStand|GingerbreadStand|FoodStand|BeerGarden|FestivalArch|Festzelt|Maypole|BarrelWagon|Bandstand|HouseBanner|FlagLine|FlagPost|FountainGarland|FountainCrown|CourtCrest|CourtRibbon|CourtCorner|JudgeDressing|NetDressing|Brewmaster|Accordionist|PretzelBaker|FestivalChick)\.glb$/.test(file);
 }
 
 export function assetLabel(file: string): string {

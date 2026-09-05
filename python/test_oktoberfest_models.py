@@ -39,13 +39,21 @@ class OriginalModelTests(unittest.TestCase):
         model.heart((0, 0, 0))
         self.assertGreater(model.normals[2], 0)
 
+    def test_character_surface_normals_and_crest_ring_face_outward(self):
+        model = Model("skin")
+        model.ellipsoid((0,0,0),(2,3,4),"plaster")
+        for i in range(0,len(model.positions),3):
+            self.assertGreater(sum(a*b for a,b in zip(model.positions[i:i+3],model.normals[i:i+3])),0)
+        crest = build_model("Oktoberfest_CourtCrest")
+        self.assertTrue(all(crest.normals[i] > 0 for i in range(len(crest.normals)-16*12+1,len(crest.normals),3)))
+
     def test_portable_pack_has_embedded_textures_and_matching_glb_geometry(self):
         with tempfile.TemporaryDirectory() as folder:
             out = Path(folder)
             assets = prepare_originals(out)
-            self.assertEqual(len(assets), 10)
+            self.assertEqual(len(assets), len(NAMES))
             with zipfile.ZipFile(out / "oktoberfest-original-models.zip") as archive:
-                self.assertEqual(len(archive.namelist()), 23)
+                self.assertEqual(len(archive.namelist()), 2 * len(NAMES) + 3)
                 self.assertFalse(any(name.endswith((".dat", ".res")) for name in archive.namelist()))
                 png = archive.read("Oktoberfest_Atlas.png")
                 for asset, name in zip(assets, NAMES):

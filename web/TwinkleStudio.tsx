@@ -32,6 +32,9 @@ function NumberField({ label, value, onCommit, min = -10000, max = 10000, step =
 }
 
 type History = { past: TwinkleDocument[]; current: TwinkleDocument; future: TwinkleDocument[] };
+type TestClient = { configured: boolean; receipt: null | {
+  clientPath: string; installed: string[]; restored: boolean; executablePresent: boolean;
+} };
 export function TwinkleStudio({ mapId = "twinkle" }: { mapId?: MapDesign }) {
   const [manifest, setManifest] = useState<TwinkleManifest | null>(null);
   const [history, setHistory] = useState<History | null>(null);
@@ -51,6 +54,7 @@ export function TwinkleStudio({ mapId = "twinkle" }: { mapId?: MapDesign }) {
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState("");
   const [retry, setRetry] = useState(0);
+  const [testClient, setTestClient] = useState<TestClient | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const doc = history?.current;
   const hasOriginals = doc?.objects.some((obj) => obj.visible && isOriginalModel(obj.file));
@@ -112,6 +116,30 @@ export function TwinkleStudio({ mapId = "twinkle" }: { mapId?: MapDesign }) {
     } catch (error) { setError(String(error)); }
     finally { setBusy(false); }
   }
+  async function updateTestClient(action: "install" | "restore") {
+    if (!doc) return;
+    setBusy(true); setError(""); setStatus("Preparing and verifying a separate test copy…");
+    try {
+      const response = await request(`/api/twinkle/client?action=${action}`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify(action === "install" ? doc : {}),
+      });
+      setTestClient(await response.json());
+      setStatus(action === "install" ? "Test copy installed and hash-checked. No client launched; native acceptance remains unverified."
+        : "Pristine test backup selected. Close the old client and use the displayed folder. Source files unchanged.");
+    } catch (error) {
+      setError(String(error));
+      // A lost response does not prove the operation failed. Read its durable receipt.
+      try { setTestClient(await (await request("/api/twinkle/client")).json()); } catch { /* Keep the last known receipt. */ }
+    } finally { setBusy(false); }
+  }
+  useEffect(() => {
+    const controller = new AbortController();
+    void request("/api/twinkle/client", { signal: controller.signal })
+      .then((response) => response.json()).then(setTestClient)
+      .catch((error) => { if (!controller.signal.aborted) setError(`Test-client setup: ${String(error)}`); });
+    return () => controller.abort();
+  }, []);
   useEffect(() => {
     const controller = new AbortController();
     void (async () => {
@@ -187,7 +215,21 @@ export function TwinkleStudio({ mapId = "twinkle" }: { mapId?: MapDesign }) {
                 <button className="tw-object" aria-pressed={selected === obj.id} key={obj.id} onClick={() => setSelected(obj.id)}>{obj.name}<small>{supported.has(obj.file) ? "rest pose" : "unavailable"}</small></button>)}
             </details>
           </div>
-          <div className="tw-sidebar-foot"><strong>Stock stays intact</strong><p>Layout edits are separate from the original client. Export creates a new archive, never an installation.</p>
+          <div className="tw-sidebar-foot"><strong>Stock stays intact</strong><p>Export downloads an archive. Test installation creates a separate copy, never changes the source client.</p>
+            <details><summary>Install in a test client</summary>
+              {!testClient?.configured ? <p>One-time setup: set JFTSE_STUDIO_TEST_ROOT to a separate empty directory on the Studio server. JFTSE_STOCK_CLIENT must contain ServerInfo.ini and Res.</p> : <>
+                <p>Build the current layout into a fresh local-server test copy, with a pristine backup. Nothing is launched. Close any test client before switching copies.</p>
+                <button disabled={busy || !doc} onClick={() => void updateTestClient("install")}>Install in fresh test copy</button>
+                <button disabled={busy || !testClient.receipt || testClient.receipt.restored} onClick={() => void updateTestClient("restore")}>Restore pristine test copy</button>
+                {testClient.receipt && <div className="tw-test-receipt" role="status">
+                  <p>{testClient.receipt.restored ? "Pristine test backup selected." : `${testClient.receipt.installed.length} resource archives installed.`}</p>
+                  <code>{testClient.receipt.clientPath}</code>
+                  <p>{testClient.receipt.executablePresent ? "Run FantaTennis.exe directly from this folder. Do not run the updater." : "Resources-only fixture: no executable available. No native test has run."} Endpoint: 127.0.0.1:5894. Requires the local JFTSE services.</p>
+                  <a href="/api/twinkle/client?receipt=1">Download hash receipt</a>
+                </div>}
+                <p>Native rendering and collision still need an in-game test. Both designs replace Twinkle Town, map 2.</p>
+              </>}
+            </details>
             {hasOriginals && <p className="tw-notice">Export builds native DAT/TEX files and coarse collision additions for original props. Requires pristine Collision.res. Use a separate test client: loading, shading and collision response are not yet verified in-game.</p>}
             <button onClick={() => download(new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" }), "twinkle-layout.json")}>Download layout JSON</button>
             <button onClick={() => input.current?.click()}>Import layout JSON</button>
@@ -217,7 +259,7 @@ export function TwinkleStudio({ mapId = "twinkle" }: { mapId?: MapDesign }) {
             <label><input type="checkbox" checked={lightmaps} onChange={(e) => setLightmaps(e.target.checked)} /> Baked lightmaps</label>
             <label><input type="checkbox" checked={isolate} onChange={(e) => { setIsolate(e.target.checked); if (e.target.checked) frame("selection"); }} /> Isolate selection</label><span>Match camera is approximate</span></div>
           <section className="tw-library" aria-label="Prop library"><div className="tw-section-title">Prop library <span>Actual geometry · animation paused</span></div>
-            {category === "original" && <div className="tw-original-actions"><span>10 original models · DAT/TEX + collision export · native test required</span>{mapId === "oktoberfest" && <button onClick={() => {
+            {category === "original" && <div className="tw-original-actions"><span>{manifest.assets.filter((asset) => asset.category === "original").length} original models · DAT/TEX + collision export · native test required</span>{mapId === "oktoberfest" && <button onClick={() => {
               const replacements: Record<string, string> = {
                 "Res/StageObj/FestivalHall/BlackSmith_Shop.dat": "BrewersPavilion",
                 "Res/StageObj/FestivalPretzel/Carriage00.dat": "PretzelStand",

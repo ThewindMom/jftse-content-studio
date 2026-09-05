@@ -115,13 +115,32 @@ def native_mesh(model, template):
 
 
 def native_texture():
-    # Standard DDS A8R8G8B8, supported by DX9; TEX XOR is the existing codec.
+    # The native control hangs on uncompressed DDS. Match observed opaque stock
+    # DXT1 headers and the complete mip chain; DX9 support alone is not evidence.
     image = Image.open(io.BytesIO(atlas())).convert("RGBA")
+    if image.getchannel("A").getextrema() != (255, 255):
+        raise ValueError("Native DXT1 atlas must be opaque")
+    image = image.convert("RGB")
     width, height = image.size
-    header = struct.pack("<7I", 124, 0x100F, height, width, width*4, 0, 0) + b"\0"*44
-    header += struct.pack("<8I", 32, 0x41, 0, 32, 0xFF0000, 0xFF00, 0xFF, 0xFF000000)
-    header += struct.pack("<5I", 0x1000, 0, 0, 0, 0)
-    return dds_to_tex(b"DDS " + header + image.tobytes("raw", "BGRA"))
+    payload = bytearray()
+    levels = 0
+    while True:
+        encoded = io.BytesIO()
+        image.save(encoded, format="DDS", pixel_format="DXT1")
+        data = encoded.getvalue()
+        size = max(1, (image.width+3)//4) * max(1, (image.height+3)//4) * 8
+        if data[84:88] != b"DXT1" or len(data) != 128 + size:
+            raise ValueError("Pillow must support DXT1 DDS encoding (11.2.1 or newer)")
+        payload.extend(data[128:])
+        levels += 1
+        if image.size == (1, 1):
+            break
+        image = image.resize((max(1,image.width//2), max(1,image.height//2)), Image.Resampling.LANCZOS)
+    linear_size = max(1,(width+3)//4) * max(1,(height+3)//4) * 8
+    header = struct.pack("<7I", 124, 0xA1007, height, width, linear_size, 0, levels) + b"\0"*44
+    header += struct.pack("<II4s5I", 32, 4, b"DXT1", 0, 0, 0, 0, 0)
+    header += struct.pack("<5I", 0x401008, 0, 0, 0, 0)
+    return dds_to_tex(b"DDS " + header + payload)
 
 
 def parse_collision(data):
