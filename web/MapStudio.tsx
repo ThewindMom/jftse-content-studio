@@ -483,6 +483,13 @@ export function MapStudio({
           <h2>Map design desk</h2>
         </header>
         <div className="body">
+          <section aria-label="3D map designs">
+            <h3>Choose a 3D map design</h3>
+            <p className="muted">Open stock Twinkle Town or the authored Oktoberfest variation.
+              Place scenery and character rest poses, keep separate layouts, and export a test-client pack.</p>
+            <a className="btn primary" href="/map-studio">Browse map designs</a>
+          </section>
+          <hr className="soft-rule" />
           <MapCreatorPanel
             value={projectScene}
             onChange={onProjectSceneChange}

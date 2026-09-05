@@ -32,7 +32,19 @@ _SOCKET_HINTS = ("Racket", "ball", "bag", "Hand", "Attach", "Weapon", "Ball")
 
 
 def extract_material_names(data: bytes) -> list[dict[str, Any]]:
-    """Return ordered unique material/texture basenames found in a DAT."""
+    """Return Twinkle texture bindings, or unique heuristic names for other DATs."""
+    from twinkle_mesh import parse_twinkle_static
+
+    static = parse_twinkle_static(data)
+    if static is not None:
+        # Unlike the regex fallback, retain each positional texture binding.
+        return [
+            {**texture, "materialSlot": primitive["materialSlot"],
+             "materialChild": primitive["materialChild"],
+             "materialName": primitive["materialName"]}
+            for primitive in static["primitives"]
+            for texture in primitive["textures"]
+        ]
     found: list[dict[str, Any]] = []
     seen: set[str] = set()
     for pattern in (_TEX_NAME, _TEX_NAME_LOOSE):

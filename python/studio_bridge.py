@@ -1299,11 +1299,27 @@ def cmd_playtest_status(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def cmd_twinkle_prepare(args: argparse.Namespace) -> dict[str, Any]:
+    from twinkle_studio import prepare
+    return prepare(_client_root(_jftse_root()), Path(args.out_dir), args.map)
+
+
+def cmd_twinkle_export(args: argparse.Namespace) -> dict[str, Any]:
+    from twinkle_studio import export_layout
+    return export_layout(_client_root(_jftse_root()), json.loads(Path(args.payload).read_text()), Path(args.out_dir))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="studio_bridge")
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("health")
+    p_twinkle = sub.add_parser("twinkle-prepare")
+    p_twinkle.add_argument("--out-dir", required=True)
+    p_twinkle.add_argument("--map", choices=["twinkle", "oktoberfest"], default="twinkle")
+    p_twinkle_export = sub.add_parser("twinkle-export")
+    p_twinkle_export.add_argument("--out-dir", required=True)
+    p_twinkle_export.add_argument("--payload", required=True)
 
     p_atlases = sub.add_parser("list-atlases")
     p_atlases.add_argument("--limit", type=int, default=0)
@@ -1511,6 +1527,8 @@ def main() -> None:
         "item-mesh-resolve": cmd_item_mesh_resolve,
         "stage-set-decrypt": cmd_stage_set_decrypt,
         "stage-scene": cmd_stage_scene,
+        "twinkle-prepare": cmd_twinkle_prepare,
+        "twinkle-export": cmd_twinkle_export,
         "map-catalog": cmd_map_catalog,
         "ftm-parse": cmd_ftm_parse,
         "ftm-export": cmd_ftm_export,

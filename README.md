@@ -16,6 +16,11 @@ workspaces:
 - **Mesh Studio** — inspect decoded Stage/Sky/Collision DAT geometry, transform it,
   export OBJ/glTF, and run experimental authored-DAT workflows.
 
+The [3D map-design workspace](docs/twinkle-studio.md) at `/map-studio` offers
+Twinkle Town and an authored Oktoberfest variation with separate saved layouts,
+textured scenery, character/cart rest-pose previews, and dependency-inclusive
+stage archive export. Both designs target Twinkle Town in a separate test client.
+
 This is not a replacement for Blender, a terrain sculptor, or an automated game
 client. Browser previews are inspection aids; the DX9 client is the visual
 authority.

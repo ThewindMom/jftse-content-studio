@@ -60,6 +60,9 @@ class DecodedMesh:
     uvs: list[list[float]] | None = None
     uvMode: str = "none"
     texture: dict[str, str] | None = None
+    normals: list[list[float]] | None = None
+    primitives: list[dict[str, Any]] | None = None
+    materialSlots: list[dict[str, Any]] | None = None
 
 
 def parse_header(data: bytes) -> MeshHeader:
@@ -343,6 +346,32 @@ def decode_mesh_bytes(
     max_vertices: int = 40_000,
 ) -> DecodedMesh:
     header = parse_header(data) if len(data) >= 48 else MeshHeader(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+    identity = (member or name).replace("\\", "/").rsplit("/", 1)[-1].lower()
+    if identity in ("sv_court.dat", "sv_all.dat"):
+        from twinkle_mesh import bounds, parse_twinkle_static
+
+        static = parse_twinkle_static(data)
+        if static is not None:
+            positions, normals, uvs, indices = [], [], [], []
+            for primitive in static["primitives"]:
+                base = len(positions)
+                primitive["vertexStart"] = base
+                primitive["indexStart"] = len(indices)
+                positions.extend(primitive["positions"])
+                normals.extend(primitive["normals"])
+                uvs.extend(primitive["uvs"])
+                indices.extend(base + i for i in primitive["indices"])
+            # max_vertices limits heuristic previews only. Never truncate a
+            # validated static asset or splice triangles across its children.
+            return DecodedMesh(
+                name=name, archive=archive, member=member, byteLength=len(data),
+                header=header, vertexOffset=static["primitives"][0]["vertexOffset"],
+                vertexCount=len(positions), indexCount=len(indices),
+                positions=positions, indices=indices, bounds=bounds(positions),
+                decodeMode="indexed-twinkle-static", vertexStride=0,
+                normals=normals, uvs=uvs, uvMode="adu-uv0",
+                primitives=static["primitives"], materialSlots=static["materials"],
+            )
     offset, run, stride = find_vertex_run(data)
     if not run:
         raise ValueError("NO_VERTEX_RUN")
@@ -463,7 +492,7 @@ def decode_confidence(mesh: DecodedMesh) -> dict[str, Any]:
 
 
 def mesh_to_obj(mesh: DecodedMesh) -> str:
-    normals = compute_vertex_normals(mesh.positions, mesh.indices)
+    normals = mesh.normals or compute_vertex_normals(mesh.positions, mesh.indices)
     lines = [
         f"# JFTSE Content Studio mesh export: {mesh.name}",
         f"# mode={mesh.decodeMode}",
@@ -489,9 +518,12 @@ def mesh_to_gltf(mesh: DecodedMesh) -> dict[str, Any]:
     for x, y, z in mesh.positions:
         positions.extend([x, y, z])
     normals = array.array("f")
-    for nx, ny, nz in compute_vertex_normals(mesh.positions, mesh.indices):
+    for nx, ny, nz in (mesh.normals or compute_vertex_normals(mesh.positions, mesh.indices)):
         normals.extend([nx, ny, nz])
-    indices = array.array("H", [i for i in mesh.indices if i < 65535])
+    wide_indices = bool(mesh.primitives) and mesh.vertexCount > 65535
+    indices = array.array("I" if wide_indices else "H", [
+        i for i in mesh.indices if wide_indices or i < 65535
+    ])
     if len(indices) >= 3 and len(indices) % 3:
         indices = indices[: len(indices) // 3 * 3]
     pos_bytes = positions.tobytes()
@@ -524,7 +556,7 @@ def mesh_to_gltf(mesh: DecodedMesh) -> dict[str, Any]:
         "accessors": [
             {
                 "bufferView": 0,
-                "componentType": 5123,
+                "componentType": 5125 if wide_indices else 5123,
                 "count": len(indices),
                 "type": "SCALAR",
             },
@@ -641,6 +673,10 @@ def decoded_to_dict(mesh: DecodedMesh, *, include_geometry: bool = True) -> dict
         payload.pop("positions", None)
         payload.pop("indices", None)
         payload.pop("uvs", None)
+        payload.pop("normals", None)
+        for primitive in payload.get("primitives") or []:
+            for field in ("positions", "indices", "uvs", "uv1", "normals"):
+                primitive.pop(field, None)
     return payload
 
 
@@ -718,6 +754,10 @@ def decode_member(client_root: Path, archive_rel: str, member: str) -> DecodedMe
     with zipfile.ZipFile(archive_path) as archive:
         data = archive.read(member)
     mesh = decode_mesh_bytes(data, name=member, archive=archive_rel, member=member)
+    if mesh.primitives is not None:
+        # Per-child UV0 and texture bindings are already decoded. A single
+        # guessed texture or contiguous UV scan would overwrite valid data.
+        return mesh
     # Late import avoids circular import: mesh_texture depends on decrypt_tex_to_dds.
     from mesh_texture import attach_uvs_and_texture_meta
 
