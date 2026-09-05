@@ -14,7 +14,7 @@ describe("Twinkle layout boundary", () => {
   });
   test("accepts named original GLB models, not arbitrary portable paths", () => {
     const doc = layout();
-    for (const name of ["FestivalArch", "HouseBanner", "FlagLine", "FlagPost", "FountainGarland"]) {
+    for (const name of ["FestivalArch", "HouseBanner", "FlagLine", "FlagPost", "FountainGarland", "CornerInlay", "WelcomeMaypole", "BarrelDisplay", "PretzelDisplay"]) {
       doc.objects[0]!.file = `Studio/Oktoberfest/Oktoberfest_${name}.glb`;
       expect(parseTwinkleDocument(doc)).toEqual(doc);
     }

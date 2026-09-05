@@ -15,6 +15,35 @@ import zipfile
 from pathlib import Path
 
 from PIL import Image, ImageDraw
+from oktoberfest_assets import (barrel_display, beer_garden, festival_arch,
+                                food_stand, gingerbread_stand, maypole,
+                                pretzel_display, pretzel_stand)
+from oktoberfest_assets import festzelt
+
+
+ASSET_BUILDERS = {
+    "Oktoberfest_Festzelt": festzelt.build,
+    "Oktoberfest_PretzelStand": pretzel_stand.build,
+    "Oktoberfest_FoodStand": food_stand.build,
+    "Oktoberfest_GingerbreadStand": gingerbread_stand.build,
+    "Oktoberfest_BeerGarden": beer_garden.build,
+    "Oktoberfest_Maypole": maypole.build,
+    "Oktoberfest_FestivalArch": festival_arch.build,
+    "Oktoberfest_BarrelDisplay": barrel_display.build,
+    "Oktoberfest_PretzelDisplay": pretzel_display.build,
+}
+
+ASSET_COLLISIONS = {
+    "Oktoberfest_Festzelt": festzelt.collision_boxes,
+    "Oktoberfest_PretzelStand": pretzel_stand.collision_boxes,
+    "Oktoberfest_FoodStand": food_stand.collision_boxes,
+    "Oktoberfest_GingerbreadStand": gingerbread_stand.collision_boxes,
+    "Oktoberfest_BeerGarden": beer_garden.collision_boxes,
+    "Oktoberfest_Maypole": maypole.collision_boxes,
+    "Oktoberfest_FestivalArch": festival_arch.collision_boxes,
+    "Oktoberfest_BarrelDisplay": barrel_display.collision_boxes,
+    "Oktoberfest_PretzelDisplay": pretzel_display.collision_boxes,
+}
 
 PREFIX = "Studio/Oktoberfest/"
 NAMES = {
@@ -26,6 +55,9 @@ NAMES = {
     "Oktoberfest_FestivalArch": "Original · Festival arch",
     "Oktoberfest_Festzelt": "Original · Grand festzelt",
     "Oktoberfest_Maypole": "Original · Wreath maypole",
+    "Oktoberfest_WelcomeMaypole": "Original · Small welcome maypole",
+    "Oktoberfest_BarrelDisplay": "Original · Barrel display",
+    "Oktoberfest_PretzelDisplay": "Original · Pretzel display",
     "Oktoberfest_BarrelWagon": "Original · Barrel wagon",
     "Oktoberfest_Bandstand": "Original · Brass bandstand",
     "Oktoberfest_HouseBanner": "Original · Pretzel house banner",
@@ -34,6 +66,7 @@ NAMES = {
     "Oktoberfest_FountainGarland": "Original · Fountain rim garland",
     "Oktoberfest_FountainCrown": "Original · Fountain wreath & ribbons",
     "Oktoberfest_CourtCrest": "Original · Court-end pretzel crest",
+    "Oktoberfest_CornerInlay": "Original · Blue-white corner inlay",
     "Oktoberfest_CourtRibbon": "Original · Court-side festival trim",
     "Oktoberfest_NetDressing": "Original · Fitted net tape & post ribbons",
     "Oktoberfest_JudgeDressing": "Original · Judge chair festival drapery",
@@ -45,7 +78,7 @@ NAMES = {
 }
 MATERIALS = ["oak", "darkwood", "blue", "ivory", "bread", "icing", "ginger", "metal",
              "plaster", "leaf", "terracotta", "amber", "foam", "stone", "red", "rope"]
-PALETTE = [(164, 109, 56), (90, 56, 32), (72, 133, 168), (232, 221, 177),
+PALETTE = [(181, 118, 59), (90, 56, 32), (54, 111, 165), (232, 221, 177),
            (199, 124, 44), (248, 227, 184), (124, 61, 31), (86, 99, 97),
            (214, 181, 120), (97, 131, 58), (158, 85, 46), (225, 154, 42),
            (246, 229, 178), (128, 126, 110), (166, 65, 44), (167, 143, 93)]
@@ -59,18 +92,17 @@ def atlas() -> bytes:
     for slot, color in enumerate(PALETTE):
         for y in range(128):
             for x in range(128):
-                brush = math.sin(x * .22 + math.sin(y * .05) * 2) * 5 if slot in (0, 1) else math.sin(x * .06 + y * .08) * 3
+                brush = math.sin(x * .055 + math.sin(y * .022) * .7) * 9 if slot in (0, 1) else math.sin(x * .04 + y * .012) * 6
                 edge = min(x, y, 127 - x, 127 - y)
-                value = brush + randomizer.uniform(-2, 2) + min(edge, 14) * .5 - 5
+                value = brush + randomizer.uniform(-1, 1) + min(edge, 18) * .7 - 9
                 pixels[slot % 4 * 128 + x, slot // 4 * 128 + y] = tuple(max(0, min(255, int(v + value))) for v in color)
     draw = ImageDraw.Draw(image)
     for slot in (0, 1):
         ox, oy = slot % 4 * 128, slot // 4 * 128
-        for x in range(12, 128, 23):
-            path = [(ox + x + math.sin(y * .055 + x) * 2, oy + y) for y in range(5, 124, 4)]
-            draw.line(path, fill=tuple(int(c * .78) for c in PALETTE[slot]), width=2)
-            draw.line([(px + 2, py) for px, py in path], fill=tuple(min(255, int(c * 1.14)) for c in PALETTE[slot]), width=1)
-        draw.ellipse((ox + 48, oy + 37, ox + 62, oy + 62), outline=tuple(int(c * .7) for c in PALETTE[slot]), width=2)
+        for x in (20, 63, 106):
+            path = [(ox + x + math.sin(y * .025 + x) * 2, oy + y) for y in range(5, 124, 4)]
+            draw.line(path, fill=tuple(int(c * .85) for c in PALETTE[slot]), width=1)
+            draw.line([(px + 2, py) for px, py in path], fill=tuple(min(255, int(c * 1.12)) for c in PALETTE[slot]), width=1)
     for slot in (2, 3):
         ox, oy = slot % 4 * 128, slot // 4 * 128
         for y in range(4, 128, 6):
@@ -199,13 +231,16 @@ class Model:
         path = []
         for i in range(len(knots)):
             a, b, c, d = [knots[(i + delta) % len(knots)] for delta in (-1, 0, 1, 2)]
-            for j in range(3):
-                t = j / 3
+            for j in range(2):
+                t = j / 2
                 xy = [.5 * ((2 * b[k]) + (-a[k] + c[k]) * t + (2 * a[k] - 5 * b[k] + 4 * c[k] - d[k]) * t*t + (-a[k] + 3*b[k] - 3*c[k] + d[k]) * t*t*t) for k in range(2)]
                 path.append(add(center, (xy[0] * scale, xy[1] * scale, math.sin(i * .6) * scale * .1)))
         self.tube(path, scale * .19, "bread", closed=True)
         for i in range(0, len(path), 5):
-            self.box(add(path[i], (0, 0, scale * .17)), (scale * .09, scale * .15, scale * .05), "icing", bevel=.01)
+            center = add(path[i], (0, 0, scale * .2))
+            self.face([add(center,(-scale*.05,-scale*.05,0)),
+                       add(center,(scale*.05,-scale*.03,0)),
+                       add(center,(0,scale*.08,0))], "icing")
 
     def heart(self, center, scale=1):
         points = []
@@ -266,6 +301,10 @@ class Model:
 
 def build_model(name):
     model = Model(name)
+    builder = ASSET_BUILDERS.get(name)
+    if builder is not None:
+        builder(model)
+        return model
     if name in ("Oktoberfest_Brewmaster", "Oktoberfest_Accordionist", "Oktoberfest_PretzelBaker"):
         musician = name.endswith("Accordionist")
         baker = name.endswith("PretzelBaker")
@@ -334,21 +373,21 @@ def build_model(name):
         model.tube([(-1.4,7,0),(-2,8,.2),(-2.3,9,.3)],.18,"ivory")
     elif name == "Oktoberfest_JudgeDressing":
         # Measured chair footprint x72.49..102.03, z±15.9, height39.97.
-        # Side drapes avoid the owl and leave the front steps/seat accessible.
+        # Short valances expose the chair frame, steps and original canopy.
         for side in (-1,1):
             z=side*16.1
             for i in range(6):
                 x0,x1=81+i*3,84+i*3
-                points=[(x0,28,z),(x1,28,z),(x1,11+abs(i-2.5)*.7,z),(x0,11+abs(i-2.5)*.7,z)]
-                model.face(points if side<0 else points[::-1],"blue" if i%2 else "ivory")
-            model.garland((80,28,z),(100,28,z),2.2)
-            model.pretzel((90,21,z+side*.2),1.1)
-            model.lantern((98,29,z),.8)
-        model.garland((101,34,-13),(101,34,13),3)
-        for z in (-10,10):
-            points=[(102.3,33,z-2),(102.3,33,z+2),(102.3,15,z+1),(102.3,16,z-2)]
-            model.face(points,"blue")
-            model.face(points[::-1],"blue")
+                bottom=22+abs(i-2.5)*.5
+                points=[(x0,28,z),(x1,28,z),(x1,bottom,z),(x0,bottom,z)]
+                model.face(points if side<0 else points[::-1],"ivory")
+                model.box(((x0+x1)/2,27.2,z),(2.6,1.3,.12),"blue",bevel=.03)
+            model.garland((81,28,z),(99,28,z),.7)
+        model.box((102.3,27,0),(.18,10,12),"blue",bevel=.06)
+        wreath=[(102.6,33+3.5*math.cos(i*math.tau/24),3.5*math.sin(i*math.tau/24)) for i in range(24)]
+        model.tube(wreath,.65,"leaf",closed=True)
+        for z in (-2,2):
+            model.beam((102.6,30,z),(102.6,25,z*1.3),.3,"ivory",6)
     elif name == "Oktoberfest_CourtCorner":
         model.box((0,1.6,0),(18,3.2,5),"oak",bevel=.4)
         model.box((0,3.15,0),(16,.2,3.8),"ginger",bevel=.08)
@@ -365,17 +404,20 @@ def build_model(name):
             model.box((x,1.8,2.62),(2.5,2,.12),"blue",bevel=.05)
     elif name == "Oktoberfest_NetDressing":
         # Stock SV_Net00_A top edge: endpoints 9.70674, midpoint 8.33548.
-        for i in range(48):
-            x0,x1=-60+i*2.5,-60+(i+1)*2.5
+        for i in range(30):
+            x0,x1=-60+i*4,-60+(i+1)*4
             y0,y1=[8.33548+abs(x)/60*(9.70674-8.33548) for x in (x0,x1)]
             for z in (-.18,.18):
-                points=[(x0,y0,z),(x1,y1,z),(x1,y1-.9,z),(x0,y0-.9,z)]
+                points=[(x0,y0+.12,z),(x1,y1+.12,z),(x1,y1-1.4,z),(x0,y0-1.4,z)]
                 model.face(points if z<0 else points[::-1],"ivory")
                 mid=(x0+x1)/2
                 ym=(y0+y1)/2
-                diamond=[(mid,ym,z*1.1),(x1,ym-.45,z*1.1),(mid,ym-.9,z*1.1),(x0,ym-.45,z*1.1)]
+                diamond=[(mid,ym+.05,z*1.1),(x1-.2,ym-.64,z*1.1),(mid,ym-1.32,z*1.1),(x0+.2,ym-.64,z*1.1)]
                 model.face(diamond if z<0 else diamond[::-1],"blue")
         for x in (-67,67):
+            wreath=[(x+1.6*math.cos(i*math.tau/24),11+1.9*math.sin(i*math.tau/24),1.1) for i in range(24)]
+            model.tube(wreath,.4,"leaf",closed=True)
+            model.pretzel((x,10.5,1.65),.65)
             model.ellipsoid((x,12,1.4),(.65,.65,.3),"amber")
             for side in (-1,1):
                 model.ellipsoid((x+side*1.2,12,1.35),(1.1,.55,.25),"blue" if side<0 else "ivory")
@@ -383,6 +425,16 @@ def build_model(name):
                         (x+side*.6,7.7,1.5),(x+side*.8,12,1.35)]
                 model.face(points,"blue" if side<0 else "ivory")
                 model.face(points[::-1],"blue" if side<0 else "ivory")
+    elif name == "Oktoberfest_CornerInlay":
+        # Flat L-shaped ornament outside the playing lines, not a raised decal.
+        for yaw in (0,math.pi/2):
+            for i in range(8):
+                x=2+i*2.8
+                def turn(px,pz,y=.08):
+                    return (px*math.cos(yaw)-pz*math.sin(yaw),y,px*math.sin(yaw)+pz*math.cos(yaw))
+                model.face([turn(x-1.35,-1.4),turn(x-1.35,1.4),turn(x+1.35,1.4),turn(x+1.35,-1.4)],"ivory")
+                model.face([turn(x-1.15,0,.1),turn(x,1.05,.1),turn(x+1.15,0,.1),turn(x,-1.05,.1)],"blue")
+        model.beam((0,0,0),(0,.1,0),1.5,"bread",12)
     elif name == "Oktoberfest_CourtCrest":
         model.pretzel((0,0,0),3.2)
         for i in range(0,len(model.positions),3):
@@ -471,106 +523,28 @@ def build_model(name):
         model.bunting((-14, 25, 12), (14, 25, 12), 10)
         model.box((0, 31, 16), (9, 6.4, .9), "darkwood", bevel=.3)
         model.mug((0, 29, 17), 1.4)
-    elif name in ("Oktoberfest_PretzelStand", "Oktoberfest_GingerbreadStand", "Oktoberfest_FoodStand"):
-        model.box((0, 1, 0), (24, 2, 15), "darkwood", bevel=.35)
-        for x in range(-10, 12, 4):
-            model.box((x, 5.5, 6), (3.7, 7, 1), "oak", bevel=.18)
-        model.box((0, 9.5, 5), (25.5, 1.5, 5), "oak", bevel=.3)
-        for x in (-10, 10):
-            model.box((x, 13.5, -5), (1.8, 24, 1.8), "darkwood", bevel=.2)
-            model.box((x, 12.5, 5), (1.6, 23, 1.6), "darkwood", bevel=.2)
-            model.beam((x, 19, 5), (x * .55, 23, 5), .55)
-        model.roof(25, 19, 23, 29, "red" if name.endswith("GingerbreadStand") else "darkwood" if name.endswith("FoodStand") else "blue")
-        model.box((0, 20, -5), (20, 1, 1), "oak")
-        if name.endswith("PretzelStand"):
-            for x in (-7, 0, 7):
-                model.beam((x, 23, 10), (x, 20, 10), .12, "rope")
-                model.pretzel((x, 17.7, 10), 1.6)
-            for x in (-7, -2, 4): model.pretzel((x, 11, 5.5), .8)
-        elif name.endswith("GingerbreadStand"):
-            for x in (-6, 0, 6):
-                model.beam((x, 24, 10), (x, 21, 10), .12, "rope")
-                model.heart((x, 18, 10), 1.2)
-            for x in (-5, 4): model.heart((x, 12, 5.8), .7)
-        else:
-            model.box((0, 11, 4.5), (12, 1, 4), "metal")
-            for x in (-4,-2,0,2,4): model.beam((x, 12, 3), (x+.5,12,6), .65, "bread", 7)
-            model.box((-7, 14, -2), (4, 5, 4), "terracotta", bevel=.5)
-            model.box((6, 12, 5), (4, 2.5, 4), "oak", bevel=.2)
-            model.mug((6, 13.5, 5), .8)
-        model.bunting((-10, 7.5, 7), (10, 7.5, 7), 7)
-    elif name == "Oktoberfest_BeerGarden":
-        for x in (-10, 10):
-            model.beam((x, 0, -3.5), (x, 9, -1.4), .8)
-            model.beam((x, 0, 3.5), (x, 9, 1.4), .8)
-        model.beam((-11, 3, 0), (11, 3, 0), .7)
-        for z in (-2.7, 0, 2.7): model.box((0, 9, z), (28, 1.3, 2.55), "oak", bevel=.25)
-        for z in (-8, 8):
-            for x in (-10, 10): model.box((x, 2.7, z), (2.2, 5.4, 3.2), "darkwood", bevel=.2)
-            model.box((0, 5.6, z), (29, 1.2, 4.2), "oak", bevel=.3)
-        for x, z in [(-7,-1), (6,1), (0,2)]: model.mug((x, 9.7, z), .7)
-        model.pretzel((0, 11, 0), .7)
-    elif name == "Oktoberfest_FestivalArch":
-        for x in (-15, 15):
-            model.box((x, 1.5, 0), (6, 3, 6), "stone", bevel=.6)
-            model.box((x, 16, 0), (3, 29, 3), "darkwood", bevel=.3)
-            for y in (6, 15, 25): model.box((x, y, 0), (3.6, 1, 3.6), "metal", bevel=.1)
-        model.box((0, 30, 0), (37, 3, 3), "oak", bevel=.3)
-        model.beam((-15, 23, 0), (-8, 30, 0), .85)
-        model.beam((15, 23, 0), (8, 30, 0), .85)
-        model.box((0, 29.5, 2.2), (11, 8, 1), "darkwood", bevel=.4)
-        model.pretzel((0, 29, 3.1), 2.4)
-        model.bunting((-14, 26, 0), (14, 26, 0), 12)
-        for x in (-18, 18):
-            model.box((x, 4, 0), (5, 5, 5), "terracotta", bevel=.7)
-            for dx, dz in [(-1,-1),(1,1),(-1,1),(1,-1)]:
-                model.beam((x+dx,5,dz), (x+dx*1.8,9,dz*1.8), .9, "leaf", 5)
-    elif name == "Oktoberfest_Festzelt":
-        model.box((0, 1, 0), (68, 2, 78), "darkwood", bevel=.5)
-        for x in (-30,30):
-            for z in (-34,-17,0,17,34):
-                model.box((x,17,z),(2.6,32,2.6),"darkwood",bevel=.3)
-                model.beam((x,26,z),(x*.7,33,z),.7)
-            model.box((x,12,-5),(1.2,20,66),"ivory")
-        model.roof(66,84,32,48,"ivory")
-        for z in (-35,-17,0,17,35):
-            model.beam((-31,29,z),(0,43,z),.65)
-            model.beam((31,29,z),(0,43,z),.65)
-        for x in (-24,24):
-            model.box((x,16,39),(17,29,1.5),"plaster")
-            model.box((x,10,40),(18,1.5,2),"darkwood")
-            model.garland((x-8,29,41),(x+8,29,41),3)
-        # A clock-tower-inspired entrance, with an original pretzel crest.
-        for x in (-9,9): model.box((x,22,41),(2.6,42,2.6),"darkwood",bevel=.3)
-        model.box((0,38,41),(21,10,3),"blue",bevel=.4)
-        model.pretzel((0,37,43),2.7)
-        model.box((0,45,41),(25,2,8),"oak",bevel=.3)
-        model.beam((-12,46,38),(0,57,41),1)
-        model.beam((12,46,38),(0,57,41),1)
-        model.face([(-13,46,36),(0,58,40),(0,58,46),(-13,46,46)],"blue")
-        model.face([(0,58,40),(13,46,36),(13,46,46),(0,58,46)],"blue")
-        model.garland((-8,32,43),(8,32,43),3)
-        for x in (-15,15):
-            for z in (-25,-5,15):
-                model.box((x,8,z),(10,1.2,15),"oak")
-                for dx in (-7,7):
-                    model.box((x+dx,4.5,z),(3,1,16),"oak")
-                    for dz in (-5,5): model.box((x+dx,2,z+dz),(2,4,2),"darkwood")
-                for dz in (-5,5): model.box((x,4,z+dz),(2,8,2),"darkwood")
-        for x in (-6,6): model.lantern((x,26,43),1.2)
-        model.bunting((-30,31,43),(-10,31,43),6)
-        model.bunting((10,31,43),(30,31,43),6)
-    elif name == "Oktoberfest_Maypole":
+    elif name == "Oktoberfest_WelcomeMaypole":
         model.box((0,1,0),(7,2,7),"stone",bevel=.6)
-        for y in range(2,39,3): model.beam((0,y,0),(0,y+3,0),.85,"blue" if y % 2 else "ivory",8)
-        for y,radius in [(28,6),(36,4)]:
-            points = [(math.cos(i*math.tau/32)*radius,y+math.sin(i*math.tau/32)*radius,0) for i in range(32)]
-            model.tube(points,.8,"leaf",closed=True)
-            for x in (-radius, radius): model.beam((x,y,0),(x,y-8,0),.18,"red",4)
-        for y in (13,20):
+        model.beam((0,2,0),(0,30,0),.85,"ivory",12)
+        for i in range(108):
+            a,b=i*math.tau/32,(i+1)*math.tau/32
+            y=2+i*.24
+            model.face([(.87*math.cos(a),y,.87*math.sin(a)),(.87*math.cos(b),y+.24,.87*math.sin(b)),
+                        (.87*math.cos(b),y+2.64,.87*math.sin(b)),(.87*math.cos(a),y+2.4,.87*math.sin(a))],"blue")
+        for y,radius in [(26,4.5)]:
+            points = [(math.cos(i*math.tau/32)*radius,y,math.sin(i*math.tau/32)*radius) for i in range(32)]
+            model.tube(points,1.05,"leaf",closed=True)
+            for i in range(6):
+                a=i*math.tau/6
+                x,z=radius*math.cos(a),radius*math.sin(a)
+                model.beam((0,y+3,0),(x,y,z),.1,"rope",5)
+                ribbon=[(x-.8,y,z),(x+.8,y,z),(x+1.3,y-8,z+1.1),(x-.3,y-9,z+1.2)]
+                model.face(ribbon,"blue" if i%2 else "ivory")
+                model.face(ribbon[::-1],"blue" if i%2 else "ivory")
+        for y in (13,):
             model.beam((-7,y,0),(7,y,0),.35)
             for x in (-6,6): model.heart((x,y-2,0),.7)
-        model.pretzel((0,38,1),1.2)
+        model.pretzel((0,29,1),1.2)
     elif name == "Oktoberfest_BarrelWagon":
         model.box((0,5,0),(21,2,12),"darkwood",bevel=.3)
         for x in (-8,8):
@@ -580,9 +554,14 @@ def build_model(name):
                 model.tube(rim,.4,"darkwood",closed=True)
                 for i in range(8): model.beam((x,3,z),rim[i*3],.2,"oak",4)
         for x in (-6,0,6): model.keg((x,6,0),2.6,6)
+        for x in (-6,6):
+            model.tube([(x,6,-5),(x,12,-2.5),(x,12,2.5),(x,6,5)],.18,"rope")
         model.beam((10,5,0),(19,2,0),.4)
         for z in (-5,5): model.box((0,8,z),(22,1,1),"oak")
         model.garland((-9,9,6),(9,9,6),2)
+        model.box((-7,12.15,0),(5,.25,4),"ivory",bevel=.05)
+        for x in (-8.5,-6.5): model.box((x,12.3,0),(.6,.08,4),"blue",bevel=.02)
+        model.pretzel((0,7.6,6.6),1)
     elif name == "Oktoberfest_Bandstand":
         model.box((0,2,0),(31,4,23),"darkwood",bevel=.5)
         for z,y in [(14,.7),(12,2)]: model.box((0,y,z),(17,1.4,3),"oak")
@@ -601,36 +580,24 @@ def build_model(name):
         model.beam((-7,4,-2),(-7,8,-2),.4,"metal")
     else:
         raise ValueError("Unknown original model")
-    if name in ("Oktoberfest_PretzelStand", "Oktoberfest_GingerbreadStand", "Oktoberfest_FoodStand"):
-        model.garland((-10,23,10),(10,23,10),1.2)
-        for x in (-11,11): model.lantern((x,19,8),.7)
-        for x in range(-8,9,4): model.box((x,3.3,6.7),(2.6,2,.25),"blue" if name.endswith("PretzelStand") else "red",bevel=.1)
-        if name.endswith("FoodStand"):
-            model.box((7,27,-3),(3.5,11,3.5),"stone",bevel=.3)
-            model.box((7,32,-3),(5,1,5),"metal")
-        elif name.endswith("GingerbreadStand"):
-            model.heart((0,29,10),1.8)
-    elif name == "Oktoberfest_BrewersPavilion":
+    if name == "Oktoberfest_BrewersPavilion":
         model.garland((-14,27,13),(14,27,13),2)
         for x in (-12,12): model.lantern((x,21,13),1.1)
         for x in (-9,9): model.keg((x,2.5,-8),2.3,5)
         model.box((0,1,16),(19,2,5),"oak",bevel=.3)
-    elif name == "Oktoberfest_FestivalArch":
-        model.garland((-15,29,2),(15,29,2),3)
-        for x in (-12,12): model.lantern((x,21,2))
-    elif name == "Oktoberfest_BeerGarden":
-        model.box((0,10.1,0),(5,.15,7),"ivory",bevel=.01)
-        model.lantern((8,11,0),.6)
     return model
 
 
 def collision_boxes(name):
     """Coarse solid proxies; doorways stay open, hanging decor is nonblocking."""
+    collision_builder = ASSET_COLLISIONS.get(name)
+    if collision_builder is not None:
+        return collision_builder()
     if name in ("Oktoberfest_Brewmaster", "Oktoberfest_Accordionist", "Oktoberfest_PretzelBaker"):
         return [((0,8,0),(7,16,6))]
     if name == "Oktoberfest_FestivalChick":
         return [((0,3,0),(4,6,4))]
-    if name in ("Oktoberfest_HouseBanner", "Oktoberfest_FountainGarland", "Oktoberfest_FountainCrown", "Oktoberfest_CourtCrest", "Oktoberfest_NetDressing", "Oktoberfest_JudgeDressing"):
+    if name in ("Oktoberfest_HouseBanner", "Oktoberfest_FountainGarland", "Oktoberfest_FountainCrown", "Oktoberfest_CourtCrest", "Oktoberfest_CornerInlay", "Oktoberfest_NetDressing", "Oktoberfest_JudgeDressing"):
         return []
     if name == "Oktoberfest_CourtCorner":
         return [((0,1.6,0),(18,3.2,5))]
@@ -642,15 +609,7 @@ def collision_boxes(name):
         return [((0,24,0),(1.4,48,1.4))]
     if name == "Oktoberfest_BrewersPavilion":
         return [((x,15,z),(3.8,30,3.8)) for x in (-15,15) for z in (-11,11)] + [((0,6,-7),(27,12,7))]
-    if name in ("Oktoberfest_PretzelStand","Oktoberfest_GingerbreadStand","Oktoberfest_FoodStand"):
-        return [((0,5,4),(24,10,6))] + [((x,13,-5),(2,26,2)) for x in (-10,10)]
-    if name == "Oktoberfest_BeerGarden":
-        return [((0,5,0),(28,10,8))] + [((0,3,z),(29,6,4.2)) for z in (-8,8)]
-    if name == "Oktoberfest_FestivalArch":
-        return [((x,16,0),(6,32,6)) for x in (-15,15)] + [((x,4,0),(5,8,5)) for x in (-18,18)]
-    if name == "Oktoberfest_Festzelt":
-        return [((x,16,-5),(3,32,70)) for x in (-30,30)] + [((x,16,39),(18,32,4)) for x in (-24,24)] + [((x,4,z),(24,8,16)) for x in (-15,15) for z in (-25,-5,15)]
-    if name == "Oktoberfest_Maypole": return [((0,20,0),(2,40,2))]
+    if name == "Oktoberfest_WelcomeMaypole": return [((0,15,0),(2,30,2))]
     if name == "Oktoberfest_BarrelWagon": return [((0,6,0),(22,12,15))]
     if name == "Oktoberfest_Bandstand": return [((0,2,0),(31,4,23))] + [((x,15,z),(2,30,2)) for x in (-13,13) for z in (-9,9)]
     raise ValueError("No collision proxy for model")

@@ -84,19 +84,19 @@ class NativeTests(unittest.TestCase):
         with self.assertRaises(ValueError): append_collision(raw, [(math.nan,)*8]*3, [0,1,2])
 
     def test_collision_transforms_and_exclusion(self):
-        obj = {"file": PREFIX+"Oktoberfest_Maypole.glb", "visible":True, "position":[10,2,30], "rotation":90, "scale":2}
+        obj = {"file": PREFIX+"Oktoberfest_WelcomeMaypole.glb", "visible":True, "position":[10,2,30], "rotation":90, "scale":2}
         vertices, triangles = collision_geometry([obj])
         self.assertEqual(len(vertices),24)
         self.assertEqual(len(triangles),36)
         for vertex in vertices:
-            self.assertGreater(sum((vertex[i]-[10,42,30][i])*vertex[i+3] for i in range(3)),0)
+            self.assertGreater(sum((vertex[i]-[10,32,30][i])*vertex[i+3] for i in range(3)),0)
         self.assertAlmostEqual(min(p[0] for p in vertices),8)
         self.assertAlmostEqual(max(p[0] for p in vertices),12)
         self.assertAlmostEqual(min(p[1] for p in vertices),2)
-        self.assertAlmostEqual(max(p[1] for p in vertices),82)
+        self.assertAlmostEqual(max(p[1] for p in vertices),62)
         self.assertEqual(collision_geometry([{**obj,"visible":False}]),([],[]))
         for name in NAMES:
-            if name in ("Oktoberfest_HouseBanner", "Oktoberfest_FountainGarland", "Oktoberfest_FountainCrown", "Oktoberfest_CourtCrest", "Oktoberfest_NetDressing", "Oktoberfest_JudgeDressing"):
+            if name in ("Oktoberfest_HouseBanner", "Oktoberfest_FountainGarland", "Oktoberfest_FountainCrown", "Oktoberfest_CourtCrest", "Oktoberfest_CornerInlay", "Oktoberfest_NetDressing", "Oktoberfest_JudgeDressing"):
                 self.assertEqual(collision_boxes(name), [])
                 self.assertEqual(collision_geometry([{**obj,"file":PREFIX+name+".glb"}]), ([],[]))
             else:

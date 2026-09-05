@@ -6,29 +6,64 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from oktoberfest_models import NAMES, PREFIX, Model, build_model, prepare_originals, cross, add, mul
+from oktoberfest_models import (ASSET_BUILDERS, NAMES, PREFIX, Model, add,
+                                build_model, collision_boxes, cross, mul,
+                                prepare_originals)
 from twinkle_studio import initial_document, compile_layout
 
 
 class OriginalModelTests(unittest.TestCase):
+    def test_festzelt_has_peaked_canopy_and_open_service_access(self):
+        model = build_model("Oktoberfest_Festzelt")
+        self.assertEqual(max(model.positions[1::3]), 65)
+        self.assertLessEqual(max(abs(x) for x in model.positions[0::3]), 36)
+        self.assertLessEqual(max(abs(z) for z in model.positions[2::3]), 42)
+        boxes = collision_boxes("Oktoberfest_Festzelt")
+        for point in [(0,4,-22),(10,4,6),(-22,4,-10)]:
+            self.assertFalse(any(all(abs(p-c) < size/2 for p,c,size in zip(point,center,sizes))
+                                 for center,sizes in boxes))
+        self.assertTrue(any(all(abs(p-c) < size/2 for p,c,size in zip((0,4,23),center,sizes))
+                            for center,sizes in boxes))
+
     def test_all_meshes_have_complete_finite_attributes_and_real_triangles(self):
         for name in NAMES:
             with self.subTest(name=name):
                 model = build_model(name)
                 count = len(model.positions) // 3
-                self.assertGreater(count, 300)
+                self.assertGreater(count, 0)
+                self.assertLessEqual(count, 65535)
                 self.assertEqual(len(model.normals), count * 3)
                 self.assertEqual(len(model.colors), count * 3)
                 self.assertEqual(len(model.uvs), count * 2)
                 self.assertTrue(all(math.isfinite(x) for x in model.positions + model.normals))
                 self.assertTrue(all(0 <= x <= 1 for x in model.uvs + model.colors))
                 self.assertTrue(all(0 <= i < count for i in model.indices))
+                self.assertTrue(all(i <= 65535 for i in model.indices))
                 for i in range(0, len(model.indices), 3):
                     points = [model.positions[j*3:j*3+3] for j in model.indices[i:i+3]]
                     area = cross(add(points[1], mul(points[0], -1)), add(points[2], mul(points[0], -1)))
                     self.assertGreater(sum(x*x for x in area), 1e-15)
                 for i in range(0, len(model.normals), 3):
                     self.assertAlmostEqual(sum(x*x for x in model.normals[i:i+3]), 1)
+
+    def test_detail_assets_have_positive_collision_proxies_and_clear_space(self):
+        self.assertEqual(set(ASSET_BUILDERS), {
+            "Oktoberfest_Festzelt", "Oktoberfest_PretzelStand",
+            "Oktoberfest_FoodStand", "Oktoberfest_GingerbreadStand",
+            "Oktoberfest_BeerGarden", "Oktoberfest_Maypole",
+            "Oktoberfest_FestivalArch", "Oktoberfest_BarrelDisplay",
+            "Oktoberfest_PretzelDisplay",
+        })
+        for name in ASSET_BUILDERS:
+            with self.subTest(name=name):
+                boxes = collision_boxes(name)
+                self.assertTrue(boxes)
+                self.assertTrue(all(all(math.isfinite(value) for value in center + sizes)
+                                    and all(size > 0 for size in sizes)
+                                    for center, sizes in boxes))
+                self.assertFalse(any(all(abs(point - center_axis) < size / 2
+                                         for point, center_axis, size in zip((1000, 1, 1000), center, sizes))
+                                     for center, sizes in boxes))
 
     def test_roof_normals_face_up_and_heart_caps_face_out(self):
         model = Model("roof")

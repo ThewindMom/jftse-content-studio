@@ -96,3 +96,45 @@ as final art and have not yet been rebuilt to match those character references.
 Native testing has been stopped by the user. The confirmed 45-placement control
 reached login, lobby and two-client waiting-room loading, not gameplay/material/
 collision acceptance. This study makes no stronger native claim.
+
+## Court perimeter revision
+
+Run the perimeter composer on the saved court study, not on a new starting map:
+
+```sh
+curl --fail "$STUDIO_URL/api/twinkle/scene?map=twinkle" -o /private/stock-scene.json
+python python/compose_festplatz_perimeter.py /private/saved-layout.json /private/stock-scene.json /private/perimeter-layout.json
+```
+
+Import `perimeter-layout.json` in the Oktoberfest Studio view. The composer is
+idempotent and retains the festival source fingerprint. The latest design keeps
+only the original cast: all stock NPCs and both original carriages are restored
+from the pristine scene, including their exact transforms and animation metadata.
+Existing costume choices on those original actors are retained: the chickens,
+judge and Forest greeter keep their Oktoberfest variants. Added guests, helpers
+and duplicate stock carriages are removed from the layout, not from the library.
+Three festival vendor carts remain: pretzels by the tent, gingerbread at the
+entrance, and food by the eastern tables, without an added crowd. The stock
+court texture is unchanged. Further placement editing is left to the designer.
+
+The private Codex/OpenAI composition study guides the arrangement, not the
+coordinates or asset identities. The main maypole marks the tent approach. A
+smaller single-crown welcome pole marks the entrance. The delivery wagon uses
+the tent-side service space. This arrangement retains the original Soldier and
+both stock carts in place alongside the three festival vendors. It follows the
+concept's service-area grouping without recreating its populated scene.
+
+The net keeps its original mesh beneath a narrow diamond-pattern binding.
+Small wreaths and pretzel knots attach to the posts. Short chair valances expose
+the original frame and steps. Four flat blue-white corner inlays replace the
+detached ground crests; the original playing lines remain unchanged. None of
+these trim meshes adds collision. The two maypole models have narrow pole
+collision proxies. Ribbons remain static.
+
+Terrain inspection rejected trial placements on the plaza steps. New scenery
+heights include model-space foot offsets on the outer paving; original carriages
+retain their authoritative stock transforms. Studio previews and exported archive round trips are not native
+gameplay tests. Restored carriage and NPC animation, material resolution and
+in-game collision response remain unverified. The generated image also invents
+different carts and a replacement judge chair; those inventions are not part
+of this revision.
