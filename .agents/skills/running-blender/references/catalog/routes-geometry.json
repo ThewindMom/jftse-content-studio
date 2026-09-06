@@ -1,0 +1,1545 @@
+{
+  "schema_version": 1,
+  "routes": [
+    {
+      "id": "scene-object-assembly",
+      "domain": "scene",
+      "label_vi": "Tạo object và đưa vào collection",
+      "label_en": "Create objects and link collections",
+      "intent_aliases": [
+        "dựng cảnh",
+        "thêm vật thể",
+        "tạo object",
+        "tổ chức collection",
+        "scene assembly",
+        "create object",
+        "link collection",
+        "empty object"
+      ],
+      "summary": "Create an object in the database using a data-block, or None for an empty; linking it to a collection is a separate API operation.",
+      "choose_when": "Assemble objects or empties and specify the collection that contains them.",
+      "do_not_assume": [
+        "BlendDataObjects.new only creates the database object; use CollectionObjects.link to add it to a collection."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.BlendDataObjects.html#bpy.types.BlendDataObjects.new",
+          "supports": "Create a database object; object_data can be None for an empty."
+        },
+        {
+          "ref": "bpy.types.CollectionObjects.html#bpy.types.CollectionObjects.link",
+          "supports": "Add an object to a collection."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.BlendDataObjects.html#bpy.types.BlendDataObjects.new",
+        "bpy.types.CollectionObjects.html#bpy.types.CollectionObjects.link"
+      ],
+      "next_queries": [
+        "bpy.types.BlendDataObjects.html#bpy.types.BlendDataObjects.new",
+        "bpy.types.CollectionObjects.html#bpy.types.CollectionObjects.link",
+        "bpy.types.Scene.html"
+      ]
+    },
+    {
+      "id": "scene-transforms-parenting",
+      "domain": "scene",
+      "label_vi": "Biến đổi không gian và quan hệ cha con",
+      "label_en": "Object transforms and parenting",
+      "intent_aliases": [
+        "di chuyển vật thể",
+        "xoay vật thể",
+        "đặt vị trí",
+        "cha con",
+        "phân cấp object",
+        "world transform",
+        "parent object",
+        "matrix_world"
+      ],
+      "summary": "Object exposes a world-space transformation matrix and a reference to its parent object.",
+      "choose_when": "Set spatial transforms or establish object parenting.",
+      "do_not_assume": [
+        "The parent description identifies the parent object; it does not establish how to preserve the world transform when changing parents."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.Object.html#bpy.types.Object.matrix_world",
+          "supports": "matrix_world is the world-space transformation matrix."
+        },
+        {
+          "ref": "bpy.types.Object.html#bpy.types.Object.parent",
+          "supports": "parent references the parent object."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.Object.html#bpy.types.Object.matrix_world",
+        "bpy.types.Object.html#bpy.types.Object.parent"
+      ],
+      "next_queries": [
+        "bpy.types.Object.html#bpy.types.Object.matrix_world",
+        "bpy.types.Object.html#bpy.types.Object.parent",
+        "bpy.types.Object.html#bpy.types.Object.matrix_parent_inverse",
+        "mathutils.html"
+      ]
+    },
+    {
+      "id": "scene-collection-instancing",
+      "domain": "scene",
+      "label_vi": "Instance collection hoặc object con",
+      "label_en": "Collection and child object instancing",
+      "intent_aliases": [
+        "lặp collection",
+        "instance bộ vật thể",
+        "nhân vật thể trên đỉnh",
+        "collection instance",
+        "vertex instancing",
+        "face instancing"
+      ],
+      "summary": "An Object can instance an existing collection or instance child objects on vertices or faces.",
+      "choose_when": "Use Object instancing with an existing collection or parent-child object relationship.",
+      "do_not_assume": [],
+      "evidence": [
+        {
+          "ref": "bpy.types.Object.html#bpy.types.Object.instance_collection",
+          "supports": "instance_collection uses an existing collection."
+        },
+        {
+          "ref": "bpy.types.Object.html#bpy.types.Object.instance_type",
+          "supports": "VERTS and FACES instance child objects on vertices or faces; COLLECTION enables collection instancing."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.Object.html#bpy.types.Object.instance_collection",
+        "bpy.types.Object.html#bpy.types.Object.instance_type"
+      ],
+      "next_queries": [
+        "bpy.types.Object.html#bpy.types.Object.instance_type",
+        "bpy.types.Object.html#bpy.types.Object.instance_collection",
+        "bpy.types.Depsgraph.html#bpy.types.Depsgraph.object_instances"
+      ]
+    },
+    {
+      "id": "scene-evaluated-geometry",
+      "domain": "scene",
+      "label_vi": "Đọc hình học đã tính animation, constraint và modifier",
+      "label_en": "Evaluated geometry and instances",
+      "intent_aliases": [
+        "mesh sau modifier",
+        "đo kết quả biến dạng",
+        "hình học đã đánh giá",
+        "đọc instances",
+        "evaluated geometry",
+        "evaluated mesh",
+        "dependency graph",
+        "geometry after modifiers"
+      ],
+      "summary": "The dependency graph exposes evaluated animation, constraints and modifiers; to_mesh creates a temporary mesh owned by the object.",
+      "choose_when": "Measure, inspect or retrieve evaluated geometry rather than only the original data.",
+      "do_not_assume": [
+        "ID.evaluated_get returns the last evaluation result; it does not guarantee that the graph has been evaluated.",
+        "Object.to_mesh creates temporary data that requires to_mesh_clear; do not link it directly to an object in the main database."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.Depsgraph.html",
+          "supports": "The Evaluated ID example describes animation, constraints and modifiers in evaluated state."
+        },
+        {
+          "ref": "bpy.types.ID.html#bpy.types.ID.evaluated_get",
+          "supports": "Return the ID from the last evaluation without guaranteeing graph re-evaluation."
+        },
+        {
+          "ref": "bpy.types.Object.html#bpy.types.Object.to_mesh",
+          "supports": "Create a temporary mesh owned by the object and release it with to_mesh_clear."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.Context.html#bpy.types.Context.evaluated_depsgraph_get",
+        "bpy.types.ID.html#bpy.types.ID.evaluated_get",
+        "bpy.types.Object.html#bpy.types.Object.to_mesh"
+      ],
+      "next_queries": [
+        "bpy.types.Depsgraph.html",
+        "bpy.types.Context.html#bpy.types.Context.evaluated_depsgraph_get",
+        "bpy.types.Object.html#bpy.types.Object.to_mesh",
+        "bpy.types.Depsgraph.html#bpy.types.Depsgraph.object_instances"
+      ]
+    },
+    {
+      "id": "mesh-from-explicit-data",
+      "domain": "geometry",
+      "label_vi": "Tạo mesh từ danh sách đỉnh, cạnh và mặt",
+      "label_en": "Mesh from explicit vertices edges and faces",
+      "intent_aliases": [
+        "tạo mesh bằng tọa độ",
+        "dựng đa giác",
+        "mesh từ mảng",
+        "vertices edges faces",
+        "from_pydata",
+        "procedural mesh arrays"
+      ],
+      "summary": "Mesh.from_pydata accepts vertex coordinates and edge/face indices; an empty edge list causes edges to be inferred from polygons.",
+      "choose_when": "The output can be specified as coordinates and geometry connections.",
+      "do_not_assume": [
+        "from_pydata does not prevent invalid mesh data; the source calls for validation when input validity is not guaranteed."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.Mesh.html#bpy.types.Mesh.from_pydata",
+          "supports": "Create a mesh from vertices, edges and faces; infer missing edges from polygons; warn about invalid data."
+        },
+        {
+          "ref": "bpy.types.Mesh.html#bpy.types.Mesh.validate",
+          "supports": "validate returns True if invalid data was corrected or removed."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.Mesh.html#bpy.types.Mesh.from_pydata",
+        "bpy.types.Mesh.html#bpy.types.Mesh.validate"
+      ],
+      "next_queries": [
+        "bpy.types.Mesh.html#bpy.types.Mesh.from_pydata",
+        "bpy.types.Mesh.html#bpy.types.Mesh.validate",
+        "info_gotchas_meshes.html"
+      ]
+    },
+    {
+      "id": "mesh-connected-topology-editing",
+      "domain": "geometry",
+      "label_vi": "Sửa topology qua BMesh",
+      "label_en": "Connected topology editing with BMesh",
+      "intent_aliases": [
+        "sửa topology",
+        "chỉnh liên kết đỉnh cạnh mặt",
+        "tách cạnh",
+        "dissolve",
+        "collapse",
+        "connected mesh editing",
+        "BMesh"
+      ],
+      "summary": "BMesh exposes geometry connectivity and mesh editing operations such as split, separate, collapse and dissolve.",
+      "choose_when": "Edit connectivity flexibly rather than only construct mesh storage arrays.",
+      "do_not_assume": [
+        "bmesh.from_edit_mesh requires a mesh already in Edit Mode; obj.data may not be synchronized with Edit Mode.",
+        "The BMesh page states that Disk/Radial data is not exposed to Python."
+      ],
+      "evidence": [
+        {
+          "ref": "bmesh.html",
+          "supports": "The introduction describes connectivity and split/separate/collapse/dissolve editing; Disk/Radial data is not exposed."
+        },
+        {
+          "ref": "bmesh.html#bmesh.from_edit_mesh",
+          "supports": "Retrieve the BMesh of a mesh in Edit Mode."
+        },
+        {
+          "ref": "info_gotchas_meshes.html",
+          "supports": "Edit Mode has separate data and obj.data may be out of sync."
+        }
+      ],
+      "api_refs": [
+        "bmesh.html",
+        "bmesh.types.html",
+        "bmesh.ops.html"
+      ],
+      "next_queries": [
+        "bmesh.html",
+        "bmesh.types.html",
+        "bmesh.ops.html",
+        "info_gotchas_meshes.html"
+      ]
+    },
+    {
+      "id": "mesh-extrude-region",
+      "domain": "geometry",
+      "label_vi": "Extrude một vùng mặt",
+      "label_en": "Extrude a face region",
+      "intent_aliases": [
+        "đùn mặt",
+        "extrude mặt",
+        "kéo dài vùng mesh",
+        "extrude faces",
+        "face region extrusion"
+      ],
+      "summary": "BMesh extrude_face_region creates extruded geometry from input edges/faces and returns geometry; it does not transform positions itself.",
+      "choose_when": "Create extruded geometry from a selected BMesh region.",
+      "do_not_assume": [
+        "The source explicitly states that extrude_face_region does not transform; displacement requires a separately documented transformation operation."
+      ],
+      "evidence": [
+        {
+          "ref": "bmesh.ops.html#bmesh.ops.extrude_face_region",
+          "supports": "Extrude faces without transformation; accept edges/faces and return geom."
+        }
+      ],
+      "api_refs": [
+        "bmesh.ops.html#bmesh.ops.extrude_face_region"
+      ],
+      "next_queries": [
+        "bmesh.ops.html#bmesh.ops.extrude_face_region",
+        "bmesh.ops.html#bmesh.ops.translate",
+        "bmesh.html"
+      ]
+    },
+    {
+      "id": "mesh-plane-cut",
+      "domain": "geometry",
+      "label_vi": "Cắt mesh bằng mặt phẳng",
+      "label_en": "Bisect mesh with a plane",
+      "intent_aliases": [
+        "cắt đôi mesh",
+        "cắt theo mặt phẳng",
+        "plane cut",
+        "bisect mesh",
+        "trim geometry"
+      ],
+      "summary": "BMesh bisect_plane cuts a mesh using a plane point and normal, with options to remove either side.",
+      "choose_when": "Specify a cutting plane and the side to keep or remove.",
+      "do_not_assume": [
+        "The bisect_plane description does not promise to cap the cut automatically."
+      ],
+      "evidence": [
+        {
+          "ref": "bmesh.ops.html#bmesh.ops.bisect_plane",
+          "supports": "Cut a mesh with a plane; document plane_co, plane_no and clear_outer/clear_inner."
+        }
+      ],
+      "api_refs": [
+        "bmesh.ops.html#bmesh.ops.bisect_plane"
+      ],
+      "next_queries": [
+        "bmesh.ops.html#bmesh.ops.bisect_plane",
+        "bmesh.html"
+      ]
+    },
+    {
+      "id": "mesh-weld-and-triangulate",
+      "domain": "geometry",
+      "label_vi": "Gộp đỉnh gần nhau và tam giác hóa",
+      "label_en": "Weld nearby vertices and triangulate faces",
+      "intent_aliases": [
+        "gộp đỉnh trùng",
+        "hàn đỉnh",
+        "tam giác hóa",
+        "remove doubles",
+        "merge by distance",
+        "triangulate faces"
+      ],
+      "summary": "remove_doubles merges groups of vertices within a distance threshold; triangulate splits quads and n-gons into triangles.",
+      "choose_when": "Merge nearby vertices or convert faces into triangles using the documented topology operations.",
+      "do_not_assume": [
+        "Mesh.calc_loop_triangles computes tessellation; this is not the same as changing topology with bmesh.ops.triangulate."
+      ],
+      "evidence": [
+        {
+          "ref": "bmesh.ops.html#bmesh.ops.remove_doubles",
+          "supports": "Find and merge vertex groups closer than dist."
+        },
+        {
+          "ref": "bmesh.ops.html#bmesh.ops.triangulate",
+          "supports": "Split quads and n-gons into triangles."
+        },
+        {
+          "ref": "bpy.types.Mesh.html#bpy.types.Mesh.calc_loop_triangles",
+          "supports": "Compute loop triangle tessellation."
+        }
+      ],
+      "api_refs": [
+        "bmesh.ops.html#bmesh.ops.remove_doubles",
+        "bmesh.ops.html#bmesh.ops.triangulate"
+      ],
+      "next_queries": [
+        "bmesh.ops.html#bmesh.ops.remove_doubles",
+        "bmesh.ops.html#bmesh.ops.triangulate",
+        "bmesh.html"
+      ]
+    },
+    {
+      "id": "mesh-geometry-attributes",
+      "domain": "geometry",
+      "label_vi": "Lưu thuộc tính trên phần tử hình học",
+      "label_en": "Geometry attributes by name type and domain",
+      "intent_aliases": [
+        "thuộc tính hình học",
+        "dữ liệu trên đỉnh",
+        "thuộc tính trên mặt",
+        "geometry attribute",
+        "named data",
+        "point face domain"
+      ],
+      "summary": "An Attribute stores data attached to geometry elements, with a name, data type and domain such as points, curves or faces.",
+      "choose_when": "Store typed data on a geometry domain for later reading or processing.",
+      "do_not_assume": [
+        "Name, type and domain are separate properties; do not infer a domain solely from vertex count."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.Attribute.html",
+          "supports": "Explain geometry attributes, unique names, types and domains."
+        },
+        {
+          "ref": "bpy.types.AttributeGroupMesh.html#bpy.types.AttributeGroupMesh.new",
+          "supports": "Add an attribute with name, type and domain."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.Attribute.html",
+        "bpy.types.AttributeGroupMesh.html#bpy.types.AttributeGroupMesh.new"
+      ],
+      "next_queries": [
+        "bpy.types.Attribute.html",
+        "bpy.types.AttributeGroupMesh.html#bpy.types.AttributeGroupMesh.new",
+        "bpy_types_enum_items/attribute_domain_items.html",
+        "bpy_types_enum_items/attribute_type_items.html"
+      ]
+    },
+    {
+      "id": "modifier-boolean",
+      "domain": "geometry",
+      "label_vi": "Giao, hợp và trừ mesh bằng Boolean modifier",
+      "label_en": "Boolean intersection union and difference",
+      "intent_aliases": [
+        "khoét lỗ bằng vật thể",
+        "trừ khối",
+        "giao khối",
+        "hợp khối",
+        "boolean modifier",
+        "mesh union",
+        "mesh difference",
+        "mesh intersection"
+      ],
+      "summary": "The Boolean modifier supports intersection, union and difference of meshes; a collection can supply operand meshes.",
+      "choose_when": "Represent mesh intersection, union or subtraction as a modifier.",
+      "do_not_assume": [],
+      "evidence": [
+        {
+          "ref": "bpy.types.BooleanModifier.html#bpy.types.BooleanModifier.operation",
+          "supports": "INTERSECT keeps common geometry; UNION combines additively; DIFFERENCE subtracts."
+        },
+        {
+          "ref": "bpy.types.BooleanModifier.html",
+          "supports": "collection supplies mesh objects for the Boolean operation."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.BooleanModifier.html",
+        "bpy.types.ObjectModifiers.html#bpy.types.ObjectModifiers.new"
+      ],
+      "next_queries": [
+        "bpy.types.BooleanModifier.html",
+        "bpy.types.ObjectModifiers.html#bpy.types.ObjectModifiers.new",
+        "bpy_types_enum_items/object_modifier_type_items.html"
+      ]
+    },
+    {
+      "id": "geometry-bevel",
+      "domain": "geometry",
+      "label_vi": "Bo tròn cạnh hoặc đỉnh",
+      "label_en": "Bevel edges and vertices",
+      "intent_aliases": [
+        "bo cạnh",
+        "bo góc",
+        "vát cạnh",
+        "làm tròn cạnh",
+        "bevel",
+        "round edges",
+        "chamfer"
+      ],
+      "summary": "BevelModifier rounds edges/vertices; bmesh.ops.bevel operates on geometry with offset, segments and profile.",
+      "choose_when": "Round edges/vertices; select the modifier route to retain a modifier, or BMesh when editing topology directly.",
+      "do_not_assume": [],
+      "evidence": [
+        {
+          "ref": "bpy.types.BevelModifier.html",
+          "supports": "The modifier rounds edges and vertices."
+        },
+        {
+          "ref": "bmesh.ops.html#bmesh.ops.bevel",
+          "supports": "Bevel edges/vertices with offset, segments and profile; profile 0.5 is described as round."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.BevelModifier.html",
+        "bmesh.ops.html#bmesh.ops.bevel"
+      ],
+      "next_queries": [
+        "bpy.types.BevelModifier.html",
+        "bmesh.ops.html#bmesh.ops.bevel",
+        "bpy.types.ObjectModifiers.html#bpy.types.ObjectModifiers.new"
+      ]
+    },
+    {
+      "id": "modifier-array",
+      "domain": "geometry",
+      "label_vi": "Nhân hình học thành dãy",
+      "label_en": "Array duplication modifier",
+      "intent_aliases": [
+        "tạo dãy vật thể",
+        "lặp hình học",
+        "nhân theo khoảng cách",
+        "array modifier",
+        "repeated geometry",
+        "duplicate array"
+      ],
+      "summary": "ArrayModifier duplicates geometry with a copy count, constant offset and a curve for fitting array length.",
+      "choose_when": "Create an array controlled by modifier count and spacing.",
+      "do_not_assume": [],
+      "evidence": [
+        {
+          "ref": "bpy.types.ArrayModifier.html",
+          "supports": "Describe array duplication, count, constant_offset_displace and a curve for fitting length."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.ArrayModifier.html",
+        "bpy.types.ObjectModifiers.html#bpy.types.ObjectModifiers.new"
+      ],
+      "next_queries": [
+        "bpy.types.ArrayModifier.html",
+        "bpy.types.ObjectModifiers.html#bpy.types.ObjectModifiers.new"
+      ]
+    },
+    {
+      "id": "modifier-mirror",
+      "domain": "geometry",
+      "label_vi": "Đối xứng hình học",
+      "label_en": "Mirror modifier",
+      "intent_aliases": [
+        "đối xứng mesh",
+        "phản chiếu hình học",
+        "mirror mesh",
+        "symmetrical model",
+        "mirror modifier"
+      ],
+      "summary": "MirrorModifier exposes mirroring axes, a reference object and a merge distance for mirrored vertices.",
+      "choose_when": "Mirror geometry across axes or relative to a reference object using a modifier.",
+      "do_not_assume": [],
+      "evidence": [
+        {
+          "ref": "bpy.types.MirrorModifier.html",
+          "supports": "Describe mirroring, mirror_object and the vertex merge threshold."
+        },
+        {
+          "ref": "bpy.types.MirrorModifier.html#bpy.types.MirrorModifier.use_axis",
+          "supports": "An array of three flags enables mirroring by axis."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.MirrorModifier.html",
+        "bpy.types.ObjectModifiers.html#bpy.types.ObjectModifiers.new"
+      ],
+      "next_queries": [
+        "bpy.types.MirrorModifier.html",
+        "bpy.types.ObjectModifiers.html#bpy.types.ObjectModifiers.new"
+      ]
+    },
+    {
+      "id": "modifier-solidify",
+      "domain": "geometry",
+      "label_vi": "Tạo vỏ có độ dày",
+      "label_en": "Solidify shell thickness",
+      "intent_aliases": [
+        "tạo độ dày",
+        "làm vỏ dày",
+        "solidify",
+        "shell thickness",
+        "thicken surface"
+      ],
+      "summary": "SolidifyModifier creates a solid skin; thickness controls its shell thickness.",
+      "choose_when": "Create a shell with thickness from input geometry.",
+      "do_not_assume": [],
+      "evidence": [
+        {
+          "ref": "bpy.types.SolidifyModifier.html",
+          "supports": "Create a solid skin and compensate for sharp angles."
+        },
+        {
+          "ref": "bpy.types.SolidifyModifier.html#bpy.types.SolidifyModifier.thickness",
+          "supports": "thickness sets shell thickness."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.SolidifyModifier.html",
+        "bpy.types.ObjectModifiers.html#bpy.types.ObjectModifiers.new"
+      ],
+      "next_queries": [
+        "bpy.types.SolidifyModifier.html",
+        "bpy.types.ObjectModifiers.html#bpy.types.ObjectModifiers.new"
+      ]
+    },
+    {
+      "id": "modifier-subdivision",
+      "domain": "geometry",
+      "label_vi": "Chia nhỏ bề mặt, có hoặc không làm cong",
+      "label_en": "Subdivision surface",
+      "intent_aliases": [
+        "chia nhỏ bề mặt",
+        "làm mịn bằng subdivision",
+        "subdivision surface",
+        "Catmull-Clark",
+        "simple subdivision"
+      ],
+      "summary": "SubsurfModifier provides Catmull-Clark for smooth curved surfaces and Simple for subdividing faces without changing shape.",
+      "choose_when": "Increase surface subdivisions and explicitly choose whether to curve the surface.",
+      "do_not_assume": [],
+      "evidence": [
+        {
+          "ref": "bpy.types.SubsurfModifier.html#bpy.types.SubsurfModifier.subdivision_type",
+          "supports": "CATMULL_CLARK creates a smooth curved surface; SIMPLE subdivides without changing shape."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.SubsurfModifier.html",
+        "bpy.types.ObjectModifiers.html#bpy.types.ObjectModifiers.new"
+      ],
+      "next_queries": [
+        "bpy.types.SubsurfModifier.html",
+        "bpy.types.ObjectModifiers.html#bpy.types.ObjectModifiers.new"
+      ]
+    },
+    {
+      "id": "modifier-remesh",
+      "domain": "geometry",
+      "label_vi": "Tái tạo bề mặt với topology đều",
+      "label_en": "Remesh regular topology",
+      "intent_aliases": [
+        "remesh",
+        "tạo lại lưới",
+        "topology đều",
+        "voxel remesh modifier",
+        "rebuild mesh surface"
+      ],
+      "summary": "RemeshModifier generates a new surface with regular topology following the input mesh; adaptivity reduces detail where less is needed and creates triangles.",
+      "choose_when": "Replace surface topology with a new mesh following the input shape.",
+      "do_not_assume": [
+        "The source says adaptivity can create triangles; it does not promise all-quad output."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.RemeshModifier.html",
+          "supports": "Generate regular surface topology from an input mesh; adaptivity creates triangles when simplifying."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.RemeshModifier.html",
+        "bpy.types.ObjectModifiers.html#bpy.types.ObjectModifiers.new"
+      ],
+      "next_queries": [
+        "bpy.types.RemeshModifier.html",
+        "bpy.types.ObjectModifiers.html#bpy.types.ObjectModifiers.new"
+      ]
+    },
+    {
+      "id": "modifier-decimate",
+      "domain": "geometry",
+      "label_vi": "Giảm số mặt hình học",
+      "label_en": "Decimate geometry",
+      "intent_aliases": [
+        "giảm polygon",
+        "giảm số mặt",
+        "mesh nhẹ hơn",
+        "decimate",
+        "polygon reduction",
+        "low poly reduction"
+      ],
+      "summary": "DecimateModifier offers edge collapse, un-subdivision and planar dissolve; ratio controls the target triangle ratio for collapse.",
+      "choose_when": "Reduce geometry with a documented decimation method.",
+      "do_not_assume": [
+        "The source limits ratio to collapse; do not use it as a common control for every decimate_type."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.DecimateModifier.html",
+          "supports": "Describe COLLAPSE, UNSUBDIV and DISSOLVE."
+        },
+        {
+          "ref": "bpy.types.DecimateModifier.html#bpy.types.DecimateModifier.ratio",
+          "supports": "Target triangle ratio applies only to collapse."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.DecimateModifier.html",
+        "bpy.types.ObjectModifiers.html#bpy.types.ObjectModifiers.new"
+      ],
+      "next_queries": [
+        "bpy.types.DecimateModifier.html",
+        "bpy.types.ObjectModifiers.html#bpy.types.ObjectModifiers.new"
+      ]
+    },
+    {
+      "id": "modifier-shrinkwrap",
+      "domain": "geometry",
+      "label_vi": "Áp hình học vào object mục tiêu",
+      "label_en": "Shrinkwrap to a target",
+      "intent_aliases": [
+        "áp lưới lên bề mặt",
+        "bám mesh mục tiêu",
+        "shrinkwrap",
+        "wrap mesh to target",
+        "project vertices onto mesh"
+      ],
+      "summary": "ShrinkwrapModifier wraps an object onto a target, with an auxiliary target and cull_face controls for projection based on face orientation.",
+      "choose_when": "Make geometry follow a target mesh through shrink wrapping.",
+      "do_not_assume": [
+        "The shrinkwrap description does not establish a complete automatic retopology workflow."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.ShrinkwrapModifier.html",
+          "supports": "Describe wrapping to a target, auxiliary_target and cull_face."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.ShrinkwrapModifier.html",
+        "bpy.types.ObjectModifiers.html#bpy.types.ObjectModifiers.new"
+      ],
+      "next_queries": [
+        "bpy.types.ShrinkwrapModifier.html",
+        "bpy.types.ObjectModifiers.html#bpy.types.ObjectModifiers.new"
+      ]
+    },
+    {
+      "id": "geometry-nodes-graph",
+      "domain": "geometry-nodes",
+      "label_vi": "Dựng graph Geometry Nodes",
+      "label_en": "Geometry Nodes graph and modifier",
+      "intent_aliases": [
+        "dựng Geometry Nodes",
+        "hình học procedural",
+        "node graph hình học",
+        "geometry node group",
+        "nodes modifier",
+        "procedural geometry graph"
+      ],
+      "summary": "GeometryNodeTree holds linked geometry nodes; NodesModifier.node_group references the graph driving the modifier.",
+      "choose_when": "Create a geometry graph or a modifier driven by a node group; select specific node routes for processing operations.",
+      "do_not_assume": [
+        "Nodes.new requires node.bl_idname, not node.type.",
+        "NodeTreeInterface.new_socket lists only DEFAULT for socket_type; this page does not establish all runtime socket types."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.GeometryNodeTree.html",
+          "supports": "A node tree contains linked nodes for geometry."
+        },
+        {
+          "ref": "bpy.types.NodesModifier.html#bpy.types.NodesModifier.node_group",
+          "supports": "A node group controls the modifier."
+        },
+        {
+          "ref": "bpy.types.Nodes.html#bpy.types.Nodes.new",
+          "supports": "Create a node using bl_idname; the source warns against node.type."
+        },
+        {
+          "ref": "bpy.types.NodeTreeInterface.html#bpy.types.NodeTreeInterface.new_socket",
+          "supports": "Create an interface socket; socket_type is listed as DEFAULT."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.GeometryNodeTree.html",
+        "bpy.types.NodesModifier.html",
+        "bpy.types.Nodes.html#bpy.types.Nodes.new",
+        "bpy.types.NodeLinks.html#bpy.types.NodeLinks.new"
+      ],
+      "next_queries": [
+        "bpy.types.GeometryNodeTree.html",
+        "bpy.types.NodesModifier.html#bpy.types.NodesModifier.node_group",
+        "bpy.types.Nodes.html#bpy.types.Nodes.new",
+        "bpy.types.NodeLinks.html#bpy.types.NodeLinks.new",
+        "bpy.types.NodeTreeInterface.html#bpy.types.NodeTreeInterface.new_socket"
+      ]
+    },
+    {
+      "id": "geometry-nodes-surface-scatter",
+      "domain": "geometry-nodes",
+      "label_vi": "Rải điểm trên bề mặt và instance hình học",
+      "label_en": "Surface point distribution and instancing",
+      "intent_aliases": [
+        "rải cây",
+        "rải đá",
+        "phân bố vật thể trên mặt",
+        "scatter objects",
+        "surface scattering",
+        "distribute points on faces",
+        "instance on points"
+      ],
+      "summary": "DistributePointsOnFaces generates points on mesh surfaces; InstanceOnPoints creates geometry references at points without duplicating underlying data.",
+      "choose_when": "Distribute geometry instances over a surface; trees or rocks describe user-supplied content, not assets generated by these nodes.",
+      "do_not_assume": [
+        "These nodes do not supply tree or rock models; they describe point distribution and geometry references."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.GeometryNodeDistributePointsOnFaces.html",
+          "supports": "Generate points scattered on a mesh surface with RANDOM or POISSON distribution."
+        },
+        {
+          "ref": "bpy.types.GeometryNodeInstanceOnPoints.html",
+          "supports": "Generate geometry references at each point without duplicating underlying data."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.GeometryNodeDistributePointsOnFaces.html",
+        "bpy.types.GeometryNodeInstanceOnPoints.html"
+      ],
+      "next_queries": [
+        "bpy.types.GeometryNodeDistributePointsOnFaces.html",
+        "bpy.types.GeometryNodeInstanceOnPoints.html",
+        "bpy.types.GeometryNodeTree.html"
+      ]
+    },
+    {
+      "id": "geometry-nodes-realize",
+      "domain": "geometry-nodes",
+      "label_vi": "Chuyển instance thành dữ liệu hình học",
+      "label_en": "Realize instances",
+      "intent_aliases": [
+        "chuyển instance thành hình học thật",
+        "hiện thực instance",
+        "realize instances",
+        "instances to geometry",
+        "real geometry data"
+      ],
+      "summary": "RealizeInstances converts instances into real geometry data.",
+      "choose_when": "The input contains instances and a later step requires geometry data instead of instance references.",
+      "do_not_assume": [
+        "The source says geometry data; it does not claim every input type becomes a mesh.",
+        "realize_to_point_domain is documented as compatibility behavior for version 5.0 and earlier."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.GeometryNodeRealizeInstances.html",
+          "supports": "Convert instances to real geometry data; describe realize_to_point_domain as legacy compatibility."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.GeometryNodeRealizeInstances.html"
+      ],
+      "next_queries": [
+        "bpy.types.GeometryNodeRealizeInstances.html",
+        "bpy.types.GeometryNodeInstanceOnPoints.html"
+      ]
+    },
+    {
+      "id": "geometry-nodes-attribute-fields",
+      "domain": "geometry-nodes",
+      "label_vi": "Đọc/ghi thuộc tính có tên trong graph",
+      "label_en": "Named attribute field storage and retrieval",
+      "intent_aliases": [
+        "ghi named attribute",
+        "đọc thuộc tính node",
+        "lưu field",
+        "store named attribute",
+        "named attribute",
+        "field to attribute"
+      ],
+      "summary": "StoreNamedAttribute stores a field result on geometry under a name; InputNamedAttribute reads the specified attribute.",
+      "choose_when": "Exchange geometry data through named attributes in a node graph, with source-supported types and domains.",
+      "do_not_assume": [],
+      "evidence": [
+        {
+          "ref": "bpy.types.GeometryNodeStoreNamedAttribute.html",
+          "supports": "Store a field result under a name with data_type and domain."
+        },
+        {
+          "ref": "bpy.types.GeometryNodeInputNamedAttribute.html",
+          "supports": "Retrieve a specified attribute with data_type."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.GeometryNodeStoreNamedAttribute.html",
+        "bpy.types.GeometryNodeInputNamedAttribute.html"
+      ],
+      "next_queries": [
+        "bpy.types.GeometryNodeStoreNamedAttribute.html",
+        "bpy.types.GeometryNodeInputNamedAttribute.html",
+        "bpy.types.Attribute.html"
+      ]
+    },
+    {
+      "id": "geometry-nodes-raycast",
+      "domain": "geometry-nodes",
+      "label_vi": "Bắn tia lấy thông tin điểm chạm hình học",
+      "label_en": "Geometry raycast hit information",
+      "intent_aliases": [
+        "raycast trong node",
+        "bắn tia vào mesh",
+        "lấy điểm chạm bề mặt",
+        "geometry raycast",
+        "hit point data",
+        "ray target geometry"
+      ],
+      "summary": "GeometryNodeRaycast casts rays from context geometry toward target geometry and retrieves hit information.",
+      "choose_when": "Compute ray/geometry hit information in a Geometry Nodes graph.",
+      "do_not_assume": [
+        "This describes a geometry query, not renderer shadow configuration."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.GeometryNodeRaycast.html",
+          "supports": "Cast rays from context geometry to target geometry and retrieve hit-point information."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.GeometryNodeRaycast.html"
+      ],
+      "next_queries": [
+        "bpy.types.GeometryNodeRaycast.html",
+        "bpy.types.GeometryNodeTree.html"
+      ]
+    },
+    {
+      "id": "geometry-nodes-simulation-zone",
+      "domain": "geometry-nodes",
+      "label_vi": "Dữ liệu và cặp node simulation zone",
+      "label_en": "Simulation zone input output pairing",
+      "intent_aliases": [
+        "simulation zone",
+        "vùng mô phỏng Geometry Nodes",
+        "ghép simulation input output",
+        "node simulation state"
+      ],
+      "summary": "SimulationInput/Output pass data into and out of a simulation zone; pair_with_output pairs the nodes and reports success.",
+      "choose_when": "A simulation zone is required and the task needs the node pairing and state-data APIs.",
+      "do_not_assume": [
+        "These pages describe node pairing and state items; they do not provide simulation equations or a complete evaluation/baking workflow for a particular effect."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.GeometryNodeSimulationInput.html",
+          "supports": "Describe simulation zone input and paired_output."
+        },
+        {
+          "ref": "bpy.types.GeometryNodeSimulationOutput.html",
+          "supports": "Describe simulation zone output and state_items."
+        },
+        {
+          "ref": "bpy.types.GeometryNodeSimulationInput.html#bpy.types.GeometryNodeSimulationInput.pair_with_output",
+          "supports": "Pair a zone input with an output and return a success boolean."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.GeometryNodeSimulationInput.html",
+        "bpy.types.GeometryNodeSimulationOutput.html"
+      ],
+      "next_queries": [
+        "bpy.types.GeometryNodeSimulationInput.html",
+        "bpy.types.GeometryNodeSimulationOutput.html",
+        "bpy.types.NodesModifier.html"
+      ]
+    },
+    {
+      "id": "curves-splines-and-thickness",
+      "domain": "curves-volumes",
+      "label_vi": "Đường cong, spline và hình học có tiết diện",
+      "label_en": "Curves splines bevel and extrusion",
+      "intent_aliases": [
+        "đường cong Bézier",
+        "đường NURBS",
+        "tạo dây theo đường",
+        "curve spline",
+        "bezier path",
+        "curve bevel",
+        "curve extrusion"
+      ],
+      "summary": "Curve stores curves, splines and NURBS; create POLY, BEZIER or NURBS splines and set bevel radius and extrusion along local Z.",
+      "choose_when": "Describe geometry as splines and use Curve bevel/extrusion properties.",
+      "do_not_assume": [
+        "bevel_depth excludes extrusion; the source defines extrude along local Z, along the curve and perpendicular to its normals."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.Curve.html",
+          "supports": "A Curve data-block stores curves, splines and NURBS."
+        },
+        {
+          "ref": "bpy.types.CurveSplines.html#bpy.types.CurveSplines.new",
+          "supports": "Add a POLY, BEZIER or NURBS spline."
+        },
+        {
+          "ref": "bpy.types.Curve.html#bpy.types.Curve.bevel_depth",
+          "supports": "Bevel radius excludes extrusion."
+        },
+        {
+          "ref": "bpy.types.Curve.html#bpy.types.Curve.extrude",
+          "supports": "Add depth along local Z, along the curve and perpendicular to normals."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.Curve.html",
+        "bpy.types.CurveSplines.html#bpy.types.CurveSplines.new",
+        "bpy.types.Spline.html"
+      ],
+      "next_queries": [
+        "bpy.types.Curve.html",
+        "bpy.types.CurveSplines.html#bpy.types.CurveSplines.new",
+        "bpy.types.Spline.html",
+        "bpy.types.BezierSplinePoint.html"
+      ]
+    },
+    {
+      "id": "curves-text-geometry",
+      "domain": "curves-volumes",
+      "label_vi": "Chữ dưới dạng hình học curve",
+      "label_en": "Text curve geometry",
+      "intent_aliases": [
+        "chữ 3D",
+        "hình học chữ",
+        "text object",
+        "text curve",
+        "string to curves",
+        "font geometry"
+      ],
+      "summary": "TextCurve stores text in a curve data-block, with body holding the text; StringToCurves generates a paragraph with a font and stores each character as a curve instance.",
+      "choose_when": "Create text geometry or curve instances in Geometry Nodes.",
+      "do_not_assume": [
+        "These sources describe text geometry; they do not establish sequencer titles or screen font drawing."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.TextCurve.html",
+          "supports": "A curve data-block stores text."
+        },
+        {
+          "ref": "bpy.types.TextCurve.html#bpy.types.TextCurve.body",
+          "supports": "body holds the text object's content."
+        },
+        {
+          "ref": "bpy.types.GeometryNodeStringToCurves.html",
+          "supports": "Generate a paragraph with a font, storing each character as a curve instance."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.TextCurve.html",
+        "bpy.types.GeometryNodeStringToCurves.html"
+      ],
+      "next_queries": [
+        "bpy.types.TextCurve.html",
+        "bpy.types.Curve.html",
+        "bpy.types.GeometryNodeStringToCurves.html"
+      ]
+    },
+    {
+      "id": "curves-hair-data",
+      "domain": "curves-volumes",
+      "label_vi": "Dữ liệu hair curves",
+      "label_en": "Hair curves data",
+      "intent_aliases": [
+        "dữ liệu tóc",
+        "hair curves",
+        "thêm sợi tóc",
+        "curves strands",
+        "hair geometry attributes"
+      ],
+      "summary": "Curves is a hair-curves data-block with geometry attributes; add_curves accepts a point count for each curve.",
+      "choose_when": "Create hair-curves data with specified point counts per curve.",
+      "do_not_assume": [
+        "add_curves only describes curve sizes; it does not establish a complete grooming or hairstyle workflow."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.Curves.html",
+          "supports": "A hair-curves data-block exposes geometry attributes."
+        },
+        {
+          "ref": "bpy.types.Curves.html#bpy.types.Curves.add_curves",
+          "supports": "sizes specifies the number of points in each curve."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.Curves.html",
+        "bpy.types.Curves.html#bpy.types.Curves.add_curves"
+      ],
+      "next_queries": [
+        "bpy.types.Curves.html",
+        "bpy.types.Curves.html#bpy.types.Curves.add_curves",
+        "bpy.types.Attribute.html",
+        "bpy.ops.sculpt_curves.html"
+      ]
+    },
+    {
+      "id": "volume-grids-and-conversion",
+      "domain": "curves-volumes",
+      "label_vi": "Volume grids và chuyển đổi mesh/volume",
+      "label_en": "Volume grids mesh to volume and volume to mesh",
+      "intent_aliases": [
+        "tạo volume từ mesh",
+        "chuyển volume thành mesh",
+        "đọc volume file",
+        "fog volume",
+        "volume grids",
+        "mesh to volume",
+        "volume to mesh"
+      ],
+      "summary": "Volume stores 3D grids; MeshToVolume creates fog volume from a mesh surface and VolumeToMesh creates a surface mesh from volume. VolumeGrids.load reads grid lists and metadata from a file.",
+      "choose_when": "Use volume grids or a documented mesh/volume conversion.",
+      "do_not_assume": [
+        "VolumeGrids.load only promises grid lists and metadata; success does not prove all voxels are loaded or the volume renders correctly."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.Volume.html",
+          "supports": "A Volume data-block stores 3D volume grids."
+        },
+        {
+          "ref": "bpy.types.VolumeGrids.html#bpy.types.VolumeGrids.load",
+          "supports": "Load grid lists and metadata from a file and return a success boolean."
+        },
+        {
+          "ref": "bpy.types.GeometryNodeMeshToVolume.html",
+          "supports": "Create fog volume following an input mesh surface."
+        },
+        {
+          "ref": "bpy.types.GeometryNodeVolumeToMesh.html",
+          "supports": "Create a mesh on a volume surface."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.Volume.html",
+        "bpy.types.VolumeGrids.html",
+        "bpy.types.GeometryNodeMeshToVolume.html",
+        "bpy.types.GeometryNodeVolumeToMesh.html"
+      ],
+      "next_queries": [
+        "bpy.types.Volume.html",
+        "bpy.types.VolumeGrids.html",
+        "bpy.types.GeometryNodeMeshToVolume.html",
+        "bpy.types.GeometryNodeVolumeToMesh.html"
+      ]
+    },
+    {
+      "id": "point-cloud-fields",
+      "domain": "curves-volumes",
+      "label_vi": "Point cloud có vị trí và bán kính",
+      "label_en": "Point cloud positions and radii",
+      "intent_aliases": [
+        "đám mây điểm",
+        "tập điểm 3D",
+        "point cloud",
+        "points radii",
+        "generate points from fields"
+      ],
+      "summary": "PointCloud is a point-cloud data-block; GeometryNodePoints generates points with positions and radii defined by fields.",
+      "choose_when": "Create points with position/radius data rather than mesh faces.",
+      "do_not_assume": [
+        "PointCloud.points is documented as a read-only collection; do not infer an add_points method on the data-block."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.PointCloud.html",
+          "supports": "A point-cloud data-block exposes geometry attributes."
+        },
+        {
+          "ref": "bpy.types.GeometryNodePoints.html",
+          "supports": "Generate a point cloud with positions and radii defined by fields."
+        },
+        {
+          "ref": "bpy.types.PointCloud.html#bpy.types.PointCloud.points",
+          "supports": "points is a read-only collection in this snapshot."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.PointCloud.html",
+        "bpy.types.GeometryNodePoints.html"
+      ],
+      "next_queries": [
+        "bpy.types.PointCloud.html",
+        "bpy.types.GeometryNodePoints.html",
+        "bpy.types.Attribute.html"
+      ]
+    },
+    {
+      "id": "metaball-blobby-surfaces",
+      "domain": "curves-volumes",
+      "label_vi": "Bề mặt dạng khối mềm bằng Metaball",
+      "label_en": "Metaball blobby surfaces",
+      "intent_aliases": [
+        "metaball",
+        "bề mặt blob",
+        "khối mềm dạng blob",
+        "blobby surfaces",
+        "metaball elements"
+      ],
+      "summary": "MetaBall defines blobby surfaces and contains MetaElement items.",
+      "choose_when": "Use the documented blobby surface type and continue selecting its elements through the API.",
+      "do_not_assume": [
+        "A blobby surface description does not establish fluid or soft-body simulation."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.MetaBall.html",
+          "supports": "A metaball data-block defines blobby surfaces."
+        },
+        {
+          "ref": "bpy.types.MetaBall.html#bpy.types.MetaBall.elements",
+          "supports": "A collection contains metaball elements."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.MetaBall.html",
+        "bpy.types.MetaBallElements.html",
+        "bpy.types.MetaElement.html"
+      ],
+      "next_queries": [
+        "bpy.types.MetaBall.html",
+        "bpy.types.MetaBallElements.html",
+        "bpy.types.MetaElement.html"
+      ]
+    },
+    {
+      "id": "uv-explicit-coordinates",
+      "domain": "uv",
+      "label_vi": "Tạo UV layer và đọc/ghi tọa độ góc mặt",
+      "label_en": "UV layers and face corner coordinates",
+      "intent_aliases": [
+        "tạo UV map",
+        "tọa độ UV",
+        "gán UV thủ công",
+        "UV layer",
+        "face corner UV",
+        "explicit UV coordinates"
+      ],
+      "summary": "UVLoopLayers.new adds a UV map; MeshUVLoopLayer.uv holds face-corner UV coordinates associated with mesh loops.",
+      "choose_when": "Assign known UV coordinates by face corner, or create/inspect a UV layer directly.",
+      "do_not_assume": [
+        "UVs belong to face corners; do not assume one UV per vertex without supporting evidence.",
+        "A read-only uv collection does not mean every contained Float2AttributeValue is immutable; read the value type."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.UVLoopLayers.html#bpy.types.UVLoopLayers.new",
+          "supports": "Add a UV map layer to a Mesh."
+        },
+        {
+          "ref": "bpy.types.MeshUVLoopLayer.html#bpy.types.MeshUVLoopLayer.uv",
+          "supports": "Face-corner UV coordinates form a Float2AttributeValue collection."
+        },
+        {
+          "ref": "bpy.types.Mesh.html",
+          "supports": "Polygons reference loops; corner data such as UVs is attached to loops."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.UVLoopLayers.html#bpy.types.UVLoopLayers.new",
+        "bpy.types.MeshUVLoopLayer.html#bpy.types.MeshUVLoopLayer.uv",
+        "bpy.types.Float2AttributeValue.html"
+      ],
+      "next_queries": [
+        "bpy.types.UVLoopLayers.html#bpy.types.UVLoopLayers.new",
+        "bpy.types.MeshUVLoopLayer.html#bpy.types.MeshUVLoopLayer.uv",
+        "bpy.types.Float2AttributeValue.html",
+        "bpy.types.Mesh.html"
+      ]
+    },
+    {
+      "id": "uv-unwrap-projection",
+      "domain": "uv",
+      "label_vi": "Unwrap mesh hoặc chiếu UV các mặt đã chọn",
+      "label_en": "UV unwrap and smart projection",
+      "intent_aliases": [
+        "trải UV",
+        "mở UV",
+        "unwrap mesh",
+        "smart UV project",
+        "projection unwrap",
+        "giảm méo UV"
+      ],
+      "summary": "uv.unwrap unwraps the mesh being edited; smart_project projection-unwraps selected faces with angle_limit and island spacing.",
+      "choose_when": "Have Blender compute UVs from a mesh or selected faces instead of supplying coordinates.",
+      "do_not_assume": [
+        "unwrap refers to an object being edited and smart_project to selected faces; these operators depend on context and can fail poll."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.ops.uv.html#bpy.ops.uv.unwrap",
+          "supports": "Unwrap the mesh object being edited with the listed methods."
+        },
+        {
+          "ref": "bpy.ops.uv.html#bpy.ops.uv.smart_project",
+          "supports": "Projection-unwrap selected mesh faces; angle_limit controls projection grouping/distortion."
+        },
+        {
+          "ref": "info_gotchas_operators.html",
+          "supports": "Operators use context and can fail poll."
+        }
+      ],
+      "api_refs": [
+        "bpy.ops.uv.html#bpy.ops.uv.unwrap",
+        "bpy.ops.uv.html#bpy.ops.uv.smart_project"
+      ],
+      "next_queries": [
+        "bpy.ops.uv.html#bpy.ops.uv.unwrap",
+        "bpy.ops.uv.html#bpy.ops.uv.smart_project",
+        "info_gotchas_operators.html"
+      ]
+    },
+    {
+      "id": "uv-pack-islands",
+      "domain": "uv",
+      "label_vi": "Xếp UV islands trong UV/UDIM space",
+      "label_en": "Pack UV islands into UV or UDIM space",
+      "intent_aliases": [
+        "xếp UV",
+        "đóng gói UV islands",
+        "pack UV",
+        "UV packing",
+        "UDIM islands",
+        "tối ưu diện tích UV"
+      ],
+      "summary": "pack_islands transforms UV islands to fill UV/UDIM space, with rotation, scale, margin and packing-target options.",
+      "choose_when": "Existing UV islands need arrangement in UV or UDIM space.",
+      "do_not_assume": [
+        "pack_islands transforms islands; it does not prove that the mesh has been unwrapped.",
+        "This operator depends on context as described in the operator guide."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.ops.uv.html#bpy.ops.uv.pack_islands",
+          "supports": "Transform islands to fill UV/UDIM space; describe rotate, scale, margin and udim_source."
+        },
+        {
+          "ref": "info_gotchas_operators.html",
+          "supports": "Operators obtain their targets from context."
+        }
+      ],
+      "api_refs": [
+        "bpy.ops.uv.html#bpy.ops.uv.pack_islands"
+      ],
+      "next_queries": [
+        "bpy.ops.uv.html#bpy.ops.uv.pack_islands",
+        "info_gotchas_operators.html"
+      ]
+    },
+    {
+      "id": "sculpt-mesh-filters",
+      "domain": "sculpt-paint",
+      "label_vi": "Lọc biến dạng mesh khi sculpt",
+      "label_en": "Sculpt mesh deformation filters",
+      "intent_aliases": [
+        "làm trơn sculpt",
+        "phồng mesh",
+        "tăng chi tiết bề mặt",
+        "sculpt mesh filter",
+        "inflate mesh",
+        "surface smooth",
+        "sharpen cavities"
+      ],
+      "summary": "sculpt.mesh_filter modifies the current mesh with filters including smooth, inflate, sphere, random, volume-preserving surface smooth, sharpen and enhance details.",
+      "choose_when": "Apply a sculpt filter whose documented effect matches the intended change.",
+      "do_not_assume": [
+        "The API does not confirm operation in every background context; the operator guide requires context/poll checks."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.ops.sculpt.html#bpy.ops.sculpt.mesh_filter",
+          "supports": "Apply a filter to the current mesh; list and describe filter types."
+        },
+        {
+          "ref": "info_gotchas_operators.html",
+          "supports": "Operators use context and can fail poll."
+        }
+      ],
+      "api_refs": [
+        "bpy.ops.sculpt.html#bpy.ops.sculpt.mesh_filter"
+      ],
+      "next_queries": [
+        "bpy.ops.sculpt.html#bpy.ops.sculpt.mesh_filter",
+        "info_gotchas_operators.html"
+      ]
+    },
+    {
+      "id": "sculpt-masks-face-sets",
+      "domain": "sculpt-paint",
+      "label_vi": "Lọc mask và tạo face set trong sculpt",
+      "label_en": "Sculpt mask filters and face sets",
+      "intent_aliases": [
+        "mở rộng mask sculpt",
+        "thu nhỏ mask",
+        "làm mềm mask",
+        "tạo face set",
+        "mask filter",
+        "grow shrink mask",
+        "face sets"
+      ],
+      "summary": "mask_filter smooths, sharpens, grows, shrinks or changes mask contrast; face_sets_create creates face sets from a mask, visible region, whole mesh or Edit Mode selection.",
+      "choose_when": "Adjust a mask or group faces from an existing selection source.",
+      "do_not_assume": [
+        "Masks and face sets are different outputs; select the operation matching the requested output.",
+        "Both APIs are operators and require a valid context."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.ops.sculpt.html#bpy.ops.sculpt.mask_filter",
+          "supports": "Filter the current mask with listed filter_type values."
+        },
+        {
+          "ref": "bpy.ops.sculpt.html#bpy.ops.sculpt.face_sets_create",
+          "supports": "Create face sets from masked, visible, all or selected faces."
+        },
+        {
+          "ref": "info_gotchas_operators.html",
+          "supports": "Operators use context."
+        }
+      ],
+      "api_refs": [
+        "bpy.ops.sculpt.html#bpy.ops.sculpt.mask_filter",
+        "bpy.ops.sculpt.html#bpy.ops.sculpt.face_sets_create"
+      ],
+      "next_queries": [
+        "bpy.ops.sculpt.html#bpy.ops.sculpt.mask_filter",
+        "bpy.ops.sculpt.html#bpy.ops.sculpt.face_sets_create",
+        "info_gotchas_operators.html"
+      ]
+    },
+    {
+      "id": "sculpt-brush-strokes",
+      "domain": "sculpt-paint",
+      "label_vi": "Áp nét cọ sculpt lên geometry",
+      "label_en": "Sculpt brush strokes",
+      "intent_aliases": [
+        "nét cọ sculpt",
+        "điêu khắc bằng brush",
+        "sculpt stroke",
+        "brush sculpt",
+        "sculpt brush stroke"
+      ],
+      "summary": "sculpt.brush_stroke applies a geometry stroke using OperatorStrokeElement data, normal/invert mode, brush toggle and pen flip.",
+      "choose_when": "The task requires brush strokes and can supply stroke data with an appropriate context.",
+      "do_not_assume": [
+        "The page describes stroke and mouse_event but does not provide an editor-context setup for background CLI use."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.ops.sculpt.html#bpy.ops.sculpt.brush_stroke",
+          "supports": "Apply a sculpt stroke using OperatorStrokeElement; override_location can be recomputed from mouse_event."
+        },
+        {
+          "ref": "info_gotchas_operators.html",
+          "supports": "Operators obtain their working data from context."
+        }
+      ],
+      "api_refs": [
+        "bpy.ops.sculpt.html#bpy.ops.sculpt.brush_stroke",
+        "bpy.types.OperatorStrokeElement.html"
+      ],
+      "next_queries": [
+        "bpy.ops.sculpt.html#bpy.ops.sculpt.brush_stroke",
+        "bpy.types.OperatorStrokeElement.html",
+        "bpy.types.Brush.html",
+        "info_gotchas_operators.html"
+      ]
+    },
+    {
+      "id": "paint-vertex-weights",
+      "domain": "sculpt-paint",
+      "label_vi": "Gán trọng số vertex group",
+      "label_en": "Assign vertex group weights",
+      "intent_aliases": [
+        "gán weight",
+        "trọng số đỉnh",
+        "vertex group weights",
+        "weight paint fill",
+        "assign vertex weights"
+      ],
+      "summary": "VertexGroup.add assigns weights to vertex indices with replace/add/subtract modes; paint.weight_set fills the active group with the current paint weight.",
+      "choose_when": "Use VertexGroup.add for explicit indexed weights; inspect weight_set to fill the active group using the current paint weight.",
+      "do_not_assume": [
+        "VertexGroup.add does not infer appropriate weights; weight_set uses the active group and current paint weight."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.VertexGroup.html#bpy.types.VertexGroup.add",
+          "supports": "Add vertices by index with weight 0..1 and REPLACE/ADD/SUBTRACT."
+        },
+        {
+          "ref": "bpy.ops.paint.html#bpy.ops.paint.weight_set",
+          "supports": "Fill the active vertex group with the current paint weight."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.VertexGroup.html#bpy.types.VertexGroup.add",
+        "bpy.ops.paint.html#bpy.ops.paint.weight_set"
+      ],
+      "next_queries": [
+        "bpy.types.VertexGroup.html#bpy.types.VertexGroup.add",
+        "bpy.types.VertexGroups.html",
+        "bpy.ops.paint.html#bpy.ops.paint.weight_set",
+        "info_gotchas_operators.html"
+      ]
+    },
+    {
+      "id": "paint-vertex-color-fill",
+      "domain": "sculpt-paint",
+      "label_vi": "Tô màu toàn lớp vertex color hiện hành",
+      "label_en": "Fill active vertex color layer",
+      "intent_aliases": [
+        "tô màu vertex",
+        "fill màu vertex",
+        "vertex color fill",
+        "paint vertex color",
+        "active color layer"
+      ],
+      "summary": "paint.vertex_color_set fills the active vertex color layer using the current paint color; use_alpha selects opaque or existing alpha.",
+      "choose_when": "Fill the active color layer with the paint color and choose alpha handling.",
+      "do_not_assume": [
+        "The source only describes the active layer and current paint color; it does not establish layer creation or render material setup."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.ops.paint.html#bpy.ops.paint.vertex_color_set",
+          "supports": "Fill the active vertex color layer; use_alpha selects opaque alpha or preserves existing alpha."
+        },
+        {
+          "ref": "info_gotchas_operators.html",
+          "supports": "The operator works through context."
+        }
+      ],
+      "api_refs": [
+        "bpy.ops.paint.html#bpy.ops.paint.vertex_color_set"
+      ],
+      "next_queries": [
+        "bpy.ops.paint.html#bpy.ops.paint.vertex_color_set",
+        "bpy.types.Attribute.html",
+        "info_gotchas_operators.html"
+      ]
+    },
+    {
+      "id": "paint-image-strokes",
+      "domain": "sculpt-paint",
+      "label_vi": "Vẽ nét cọ vào ảnh",
+      "label_en": "Paint strokes into an image",
+      "intent_aliases": [
+        "vẽ texture bằng cọ",
+        "nét cọ lên ảnh",
+        "image paint stroke",
+        "texture painting",
+        "paint image"
+      ],
+      "summary": "paint.image_paint paints a stroke into an image using OperatorStrokeElement data, normal/invert mode, brush toggle and pen flip.",
+      "choose_when": "Apply an image paint stroke with specified stroke data and context.",
+      "do_not_assume": [
+        "The operator page does not provide a complete background CLI paint context; it does not establish that stroke data alone is sufficient."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.ops.paint.html#bpy.ops.paint.image_paint",
+          "supports": "Paint a stroke into an image with stroke, mode, brush_toggle and pen_flip."
+        },
+        {
+          "ref": "info_gotchas_operators.html",
+          "supports": "Operators use context and can fail poll."
+        }
+      ],
+      "api_refs": [
+        "bpy.ops.paint.html#bpy.ops.paint.image_paint",
+        "bpy.types.OperatorStrokeElement.html"
+      ],
+      "next_queries": [
+        "bpy.ops.paint.html#bpy.ops.paint.image_paint",
+        "bpy.types.OperatorStrokeElement.html",
+        "bpy.types.ImagePaint.html",
+        "info_gotchas_operators.html"
+      ]
+    }
+  ]
+}

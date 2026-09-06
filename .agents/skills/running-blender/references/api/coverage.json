@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "documentation_version": "5.2",
+  "source_label": "blender_python_reference_5_2",
+  "source_index": "index.html",
+  "generated_utc": "2026-09-05T06:46:18.892797+00:00",
+  "source_files": 4397,
+  "source_bytes": 974212072,
+  "html_pages": 2192,
+  "indexed_pages": 2192,
+  "reachable_html_from_index": 2192,
+  "orphan_html_pages": [],
+  "empty_main_articles": [],
+  "categories": {
+    "bpy.ops": 78,
+    "bpy.types": 1790,
+    "enum-items": 210,
+    "guides": 16,
+    "indices": 32,
+    "modules": 66
+  },
+  "inventory_entries": 26775,
+  "inventory_roles": {
+    "py:attribute": 9195,
+    "py:class": 2123,
+    "py:data": 2160,
+    "py:function": 2906,
+    "py:method": 7854,
+    "py:module": 143,
+    "std:doc": 2161,
+    "std:label": 233
+  },
+  "indexed_anchors": 33696,
+  "extracted_characters": 22467200,
+  "unresolved_inventory_targets": [],
+  "missing_local_targets": [
+    {
+      "target": "blender_python_reference_5_2.zip",
+      "referring_pages": 1,
+      "examples": [
+        "index.html"
+      ]
+    }
+  ],
+  "external_link_count": 4649,
+  "scope": "All files in the supplied offline Python API snapshot. External websites are not recursively downloaded. Presence in docs does not prove background-mode or runtime support.",
+  "inventory_header": [
+    "# Sphinx inventory version 2",
+    "# Project: Blender 5.2.1 LTS Python API",
+    "# Version: 5.2",
+    "# The remainder of this file is compressed using zlib."
+  ]
+}

@@ -1,0 +1,3 @@
+interface:
+  display_name: "Blender CLI"
+  short_description: "Choose Blender features from bundled evidence before CLI"

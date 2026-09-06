@@ -33,7 +33,7 @@ export type StudioAsset = {
   triangles: number;
   submeshes: number;
   thumbnail: string | null;
-  category: "world" | "scenery" | "stock" | "festival" | "original";
+  category: "world" | "scenery" | "stock" | "festival" | "original" | "imported";
   pose: "static" | "bind";
   collisionBoxes?: { center: Point3; size: Point3 }[];
 };
@@ -73,7 +73,7 @@ export function parseTwinkleDocument(value: unknown): TwinkleDocument {
     if (!/^[a-zA-Z0-9-]+$/.test(id) || id.startsWith("fixed-") || ids.has(id)) throw new Error("Duplicate or invalid object ID.");
     ids.add(id);
     const file = text(entry.file, 200);
-    if (!/^Res\/(?:[A-Za-z0-9_]+\/)+[A-Za-z0-9_]+\.dat$/.test(file) && !isOriginalModel(file)) throw new Error("Invalid asset path.");
+    if (!/^Res\/(?:[A-Za-z0-9_]+\/)+[A-Za-z0-9_]+\.dat$/.test(file) && !isOriginalModel(file) && !isImportedModel(file)) throw new Error("Invalid asset path.");
     if (!Array.isArray(entry.position) || entry.position.length !== 3 || typeof entry.visible !== "boolean") {
       throw new Error("Invalid position or visibility.");
     }
@@ -95,6 +95,10 @@ export function parseTwinkleDocument(value: unknown): TwinkleDocument {
 
 export function courtClearance(placement: Placement): boolean {
   return placement.visible && Math.abs(placement.position[0]) < 70 && Math.abs(placement.position[2]) < 130;
+}
+
+export function isImportedModel(file: string): boolean {
+  return /^Studio\/Imported\/[a-f0-9]{64}\.glb$/.test(file);
 }
 
 export function isOriginalModel(file: string): boolean {

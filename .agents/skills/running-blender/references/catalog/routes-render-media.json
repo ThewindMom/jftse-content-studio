@@ -1,0 +1,1244 @@
+{
+  "schema_version": 1,
+  "routes": [
+    {
+      "id": "surface-principled-material",
+      "domain": "shading",
+      "label_vi": "Vật liệu bề mặt theo mô hình OpenPBR",
+      "label_en": "Principled surface material",
+      "intent_aliases": [
+        "vật liệu bề mặt",
+        "shader vật lý",
+        "surface material",
+        "principled",
+        "OpenPBR"
+      ],
+      "summary": "ShaderNodeBsdfPrincipled is described as a physically based surface shader based on OpenPBR; Material.node_tree holds the material's node tree.",
+      "choose_when": "Use a physically based surface shader; read subsurface or scattering methods when those properties are required.",
+      "do_not_assume": [
+        "The class page does not list all inputs or a complete material recipe. Read node/socket data and probe the runtime; do not supply remembered socket names, values or links."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.ShaderNodeBsdfPrincipled.html#bpy.types.ShaderNodeBsdfPrincipled",
+          "supports": "Describe an OpenPBR-based physically based surface shader."
+        },
+        {
+          "ref": "bpy.types.Material.html#bpy.types.Material.node_tree",
+          "supports": "Expose the node tree of a node-based material."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.ShaderNodeBsdfPrincipled.html",
+        "bpy.types.Material.html#bpy.types.Material.node_tree"
+      ],
+      "next_queries": [
+        "bpy.types.ShaderNodeBsdfPrincipled.html",
+        "bpy.types.Material.html",
+        "bpy.types.Nodes.html",
+        "bpy.types.NodeLinks.html"
+      ]
+    },
+    {
+      "id": "image-texture-sampling",
+      "domain": "shading",
+      "label_vi": "Dùng tệp ảnh làm texture",
+      "label_en": "Image texture sampling",
+      "intent_aliases": [
+        "texture ảnh",
+        "dán ảnh lên vật thể",
+        "image texture",
+        "texture projection",
+        "image mapping"
+      ],
+      "summary": "ShaderNodeTexImage samples an image file as a texture, with documented extension, interpolation and FLAT, BOX, SPHERE and TUBE projection modes.",
+      "choose_when": "Use an image file in a shader network and select projection from its documented contract.",
+      "do_not_assume": [
+        "Projection documentation does not establish UV availability, a loaded image or shader connections. Inspect inputs before choosing links."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.ShaderNodeTexImage.html#bpy.types.ShaderNodeTexImage",
+          "supports": "Sample an image as a texture; projection describes ways to project a 2D image."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.ShaderNodeTexImage.html"
+      ],
+      "next_queries": [
+        "bpy.types.ShaderNodeTexImage.html",
+        "bpy.types.BlendDataImages.html",
+        "bpy.types.NodeLinks.html"
+      ]
+    },
+    {
+      "id": "procedural-noise-texture",
+      "domain": "shading",
+      "label_vi": "Texture nhiễu Perlin dạng fractal",
+      "label_en": "Procedural fractal Perlin noise",
+      "intent_aliases": [
+        "texture nhiễu",
+        "nhiễu thủ tục",
+        "vân ngẫu nhiên",
+        "noise texture",
+        "Perlin",
+        "fractal noise"
+      ],
+      "summary": "ShaderNodeTexNoise generates fractal Perlin noise in one to four dimensions; noise types describe sharp peaks, peaks/valleys and terrain-like signals.",
+      "choose_when": "Supply noise to a shader network. Terrain wording describes the signal, not a terrain geometry recipe.",
+      "do_not_assume": [
+        "A noise name does not establish a complete node network or terrain mesh. Read noise_type, dimensions and actual sockets before connecting."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.ShaderNodeTexNoise.html#bpy.types.ShaderNodeTexNoise",
+          "supports": "Generate fractal Perlin noise; noise_dimensions and noise_type describe dimensionality and noise forms."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.ShaderNodeTexNoise.html"
+      ],
+      "next_queries": [
+        "bpy.types.ShaderNodeTexNoise.html",
+        "bpy.types.Node.html#bpy.types.Node.inputs"
+      ]
+    },
+    {
+      "id": "bump-from-height",
+      "domain": "shading",
+      "label_vi": "Giả chi tiết bề mặt bằng height texture",
+      "label_en": "Bump mapping from height texture",
+      "intent_aliases": [
+        "bump",
+        "bump mapping",
+        "height texture",
+        "giả gồ ghề",
+        "giả chi tiết bề mặt"
+      ],
+      "summary": "ShaderNodeBump perturbs normals from a height texture to simulate surface detail; invert points bumps into the surface.",
+      "choose_when": "Use a height texture to simulate surface detail through normals.",
+      "do_not_assume": [
+        "The description establishes normal changes, not geometry or silhouette changes. Confirm relevant sockets from skill data/runtime."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.ShaderNodeBump.html#bpy.types.ShaderNodeBump",
+          "supports": "Generate a perturbed normal from a height texture to simulate detailed surfaces."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.ShaderNodeBump.html"
+      ],
+      "next_queries": [
+        "bpy.types.ShaderNodeBump.html",
+        "bpy.types.ShaderNodeTexImage.html",
+        "bpy.types.NodeLinks.html"
+      ]
+    },
+    {
+      "id": "normal-map-surface-detail",
+      "domain": "shading",
+      "label_vi": "Giả chi tiết bằng ảnh normal RGB",
+      "label_en": "RGB normal map surface detail",
+      "intent_aliases": [
+        "normal map",
+        "bản đồ pháp tuyến",
+        "RGB normal",
+        "DirectX normal",
+        "OpenGL normal"
+      ],
+      "summary": "ShaderNodeNormalMap perturbs normals from an RGB normal image; the API describes OpenGL/DirectX conventions, normal spaces and tangent-space UV maps.",
+      "choose_when": "The input is an RGB normal map; choose convention and space from the actual image data.",
+      "do_not_assume": [
+        "Do not guess image convention or normal space. This route describes normals that simulate detail, not mesh changes."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.ShaderNodeNormalMap.html#bpy.types.ShaderNodeNormalMap",
+          "supports": "Generate perturbed normals from an RGB normal map; describe convention, space and uv_map."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.ShaderNodeNormalMap.html"
+      ],
+      "next_queries": [
+        "bpy.types.ShaderNodeNormalMap.html",
+        "bpy.types.ShaderNodeTexImage.html"
+      ]
+    },
+    {
+      "id": "principled-volume-shading",
+      "domain": "shading",
+      "label_vi": "Gộp các thành phần shading thể tích",
+      "label_en": "Principled volume shading",
+      "intent_aliases": [
+        "shading thể tích",
+        "vật liệu thể tích",
+        "volume shading",
+        "principled volume"
+      ],
+      "summary": "ShaderNodeVolumePrincipled combines volume-shading components in one node.",
+      "choose_when": "Discover a source-supported volume shader configuration.",
+      "do_not_assume": [
+        "The description does not supply smoke/fire simulation or a fog recipe. Do not assign those workflows without related evidence; inspect sockets and engine support."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.ShaderNodeVolumePrincipled.html#bpy.types.ShaderNodeVolumePrincipled",
+          "supports": "Combine all volume-shading components in one node."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.ShaderNodeVolumePrincipled.html"
+      ],
+      "next_queries": [
+        "bpy.types.ShaderNodeVolumePrincipled.html",
+        "bpy.types.Node.html#bpy.types.Node.inputs",
+        "bpy.types.ShaderNodeOutputMaterial.html"
+      ]
+    },
+    {
+      "id": "emission-shader",
+      "domain": "shading",
+      "label_vi": "Shader phát xạ Lambertian",
+      "label_en": "Lambertian emission shader",
+      "intent_aliases": [
+        "shader phát xạ",
+        "vật liệu phát sáng",
+        "emission shader",
+        "Lambertian emission"
+      ],
+      "summary": "ShaderNodeEmission is described as a Lambertian emission shader.",
+      "choose_when": "Add an emission component to a shader; consider compositor glare when the request specifically concerns halos around bright image regions.",
+      "do_not_assume": [
+        "This description does not establish automatic halos or illumination of other objects in every engine. Do not fill unsupported details from memory."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.ShaderNodeEmission.html#bpy.types.ShaderNodeEmission",
+          "supports": "Describe a Lambertian emission shader."
+        },
+        {
+          "ref": "bpy.types.CompositorNodeGlare.html#bpy.types.CompositorNodeGlare",
+          "supports": "Glare separately adds flares, fog and glow around bright image regions."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.ShaderNodeEmission.html"
+      ],
+      "next_queries": [
+        "bpy.types.ShaderNodeEmission.html",
+        "bpy.types.ShaderNodeOutputMaterial.html",
+        "bpy.types.CompositorNodeGlare.html"
+      ]
+    },
+    {
+      "id": "scene-shadow-ray-controls",
+      "domain": "lights-shadows",
+      "label_vi": "Bóng vật thể trong cảnh và shadow rays",
+      "label_en": "Scene object shadow-ray controls",
+      "intent_aliases": [
+        "đổ bóng",
+        "bóng vật thể",
+        "bóng xuống sàn",
+        "bóng mềm",
+        "cast shadow",
+        "soft shadow",
+        "shadow rays"
+      ],
+      "summary": "Object.visible_shadow controls visibility to shadow rays. AreaLight.shadow_soft_size describes light size for ray-traced shadow sampling; Light.use_shadow has only type/default information in the source.",
+      "choose_when": "Explore scene-object, light or shadow-ray controls; continue reading object, light and engine evidence.",
+      "do_not_assume": [
+        "Light.use_shadow does not document a complete shadow algorithm. Do not assume increasing AreaLight.shadow_soft_size guarantees softer shadows in every engine; AreaLight.size describes source area separately. This corpus does not supply a complete soft-shadow recipe; implement supported parts and report remaining evidence gaps."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.Object.html#bpy.types.Object.visible_shadow",
+          "supports": "Control object visibility to shadow rays."
+        },
+        {
+          "ref": "bpy.types.AreaLight.html#bpy.types.AreaLight.shadow_soft_size",
+          "supports": "Set light size for ray-traced shadow sampling without a complete engine-specific softness contract."
+        },
+        {
+          "ref": "bpy.types.AreaLight.html#bpy.types.AreaLight.size",
+          "supports": "Set area-light size, or X dimension for rectangular lights."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.Object.html#bpy.types.Object.visible_shadow",
+        "bpy.types.Light.html#bpy.types.Light.use_shadow",
+        "bpy.types.AreaLight.html#bpy.types.AreaLight.shadow_soft_size",
+        "bpy.types.AreaLight.html#bpy.types.AreaLight.size"
+      ],
+      "next_queries": [
+        "bpy.types.Object.html#bpy.types.Object.visible_shadow",
+        "bpy.types.Light.html",
+        "bpy.types.AreaLight.html",
+        "bpy.types.RenderSettings.html#bpy.types.RenderSettings.engine"
+      ]
+    },
+    {
+      "id": "shadow-catcher-real-footage",
+      "domain": "lights-shadows",
+      "label_vi": "Bắt bóng và phản xạ để ghép vào footage thật",
+      "label_en": "Shadow catcher for real footage",
+      "intent_aliases": [
+        "đổ bóng",
+        "bắt bóng",
+        "ghép model vào footage",
+        "ghép vào ảnh thật",
+        "shadow catcher",
+        "real footage",
+        "compositing shadows"
+      ],
+      "summary": "Object.is_shadow_catcher renders only shadows and reflections on an object for compositing into real footage. Flagged objects are considered present in the footage; unflagged objects are synthetic additions.",
+      "choose_when": "Composite synthetic objects into footage where an existing surface should receive rendered shadows/reflections.",
+      "do_not_assume": [
+        "The anchor does not establish supported engines or a camera, lighting and compositing recipe. A flag alone does not complete the composite; read further and verify runtime/render output."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.Object.html#bpy.types.Object.is_shadow_catcher",
+          "supports": "Render shadows and reflections for real-footage compositing; describe the roles of flagged and unflagged objects."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.Object.html#bpy.types.Object.is_shadow_catcher"
+      ],
+      "next_queries": [
+        "bpy.types.Object.html#bpy.types.Object.is_shadow_catcher",
+        "bpy.types.RenderSettings.html#bpy.types.RenderSettings.film_transparent",
+        "bpy.types.CompositorNodeAlphaOver.html",
+        "bpy.types.RenderSettings.html#bpy.types.RenderSettings.engine"
+      ]
+    },
+    {
+      "id": "light-linking-and-blockers",
+      "domain": "lights-shadows",
+      "label_vi": "Quan hệ nhận sáng và chặn sáng theo collection",
+      "label_en": "Light linking and blocker collections",
+      "intent_aliases": [
+        "light linking",
+        "shadow linking",
+        "chặn ánh sáng",
+        "vật nhận sáng",
+        "blocker collection",
+        "receiver collection"
+      ],
+      "summary": "ObjectLightLinking.receiver_collection defines an emitter's light-linking relationships; blocker_collection defines objects blocking that emitter's light.",
+      "choose_when": "Control emitter relationships with receiver collections or light-blocker collections.",
+      "do_not_assume": [
+        "The source does not establish support in every engine. Read collection contracts and editing APIs and check the actual engine before promising an effect."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.ObjectLightLinking.html#bpy.types.ObjectLightLinking.receiver_collection",
+          "supports": "A collection defines emitter light-linking relationships."
+        },
+        {
+          "ref": "bpy.types.ObjectLightLinking.html#bpy.types.ObjectLightLinking.blocker_collection",
+          "supports": "A collection defines objects blocking light from the emitter."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.Object.html#bpy.types.Object.light_linking",
+        "bpy.types.ObjectLightLinking.html"
+      ],
+      "next_queries": [
+        "bpy.types.ObjectLightLinking.html",
+        "bpy.types.CollectionLightLinking.html",
+        "bpy.types.RenderSettings.html#bpy.types.RenderSettings.engine"
+      ]
+    },
+    {
+      "id": "choose-light-source-shape",
+      "domain": "lights-shadows",
+      "label_vi": "Chọn nguồn sáng điểm, tia song song, nón hoặc diện tích",
+      "label_en": "Point, sun, spot and area light sources",
+      "intent_aliases": [
+        "tạo đèn",
+        "nguồn sáng",
+        "đèn điểm",
+        "đèn rọi",
+        "đèn diện tích",
+        "point light",
+        "sun light",
+        "spot light",
+        "area light"
+      ],
+      "summary": "The source describes POINT as omnidirectional, SUN as fixed-direction parallel rays, SPOT as a directional cone and AREA as a directional area source. BlendDataLights.new creates a light data-block.",
+      "choose_when": "Choose a light-source shape before reading PointLight, SunLight, SpotLight or AreaLight properties.",
+      "do_not_assume": [
+        "Source shape does not provide appropriate power, position, exposure or shadow settings. Derive these from the request, supplied evidence and output checks."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy_types_enum_items/light_type_items.html",
+          "supports": "Describe POINT, SUN, SPOT and AREA source shapes."
+        },
+        {
+          "ref": "bpy.types.BlendDataLights.html#bpy.types.BlendDataLights.new",
+          "supports": "Create a light data-block using the type enum."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.BlendDataLights.html#bpy.types.BlendDataLights.new",
+        "bpy_types_enum_items/light_type_items.html"
+      ],
+      "next_queries": [
+        "bpy_types_enum_items/light_type_items.html",
+        "bpy.types.BlendDataLights.html#bpy.types.BlendDataLights.new",
+        "bpy.types.AreaLight.html",
+        "bpy.types.SpotLight.html",
+        "bpy.types.PointLight.html",
+        "bpy.types.SunLight.html"
+      ]
+    },
+    {
+      "id": "render-still-or-animation",
+      "domain": "render",
+      "label_vi": "Render ảnh hoặc dải frame",
+      "label_en": "Still and animation rendering",
+      "intent_aliases": [
+        "render ảnh",
+        "render animation",
+        "xuất frame",
+        "render still",
+        "render animation range",
+        "write still"
+      ],
+      "summary": "bpy.ops.render.render parameters describe animation rendering over a scene frame range; write_still saves to the output path when animation is off; frame_start/frame_end bound animation rendering.",
+      "choose_when": "Render a still or frame range; read RenderSettings for requested paths, dimensions and formats.",
+      "do_not_assume": [
+        "The operator introduction says Undocumented, but parameters have descriptions. The engine enum lists only BLENDER_EEVEE in this snapshot; it is not a complete runtime inventory and does not justify remembered Cycles settings."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.ops.render.html#bpy.ops.render.render",
+          "supports": "Describe animation, write_still, frame_start, frame_end and scene."
+        },
+        {
+          "ref": "bpy.types.RenderSettings.html#bpy.types.RenderSettings.engine",
+          "supports": "Expose engine with the snapshot's BLENDER_EEVEE enum."
+        }
+      ],
+      "api_refs": [
+        "bpy.ops.render.html#bpy.ops.render.render",
+        "bpy.types.RenderSettings.html"
+      ],
+      "next_queries": [
+        "bpy.ops.render.html#bpy.ops.render.render",
+        "bpy.types.RenderSettings.html",
+        "bpy.types.ImageFormatSettings.html"
+      ]
+    },
+    {
+      "id": "shadow-render-pass",
+      "domain": "render",
+      "label_vi": "Xuất shadow pass",
+      "label_en": "Shadow render pass",
+      "intent_aliases": [
+        "đổ bóng",
+        "lớp bóng",
+        "xuất bóng riêng",
+        "shadow pass",
+        "shadow render pass"
+      ],
+      "summary": "ViewLayer.use_pass_shadow is described as delivering a shadow pass.",
+      "choose_when": "Obtain a separate shadow layer for later rendering/compositing.",
+      "do_not_assume": [
+        "The source does not define pixel values, compositing formulas or engine availability. Enabling the flag does not prove correct pass data; read pass access APIs and inspect a real render."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.ViewLayer.html#bpy.types.ViewLayer.use_pass_shadow",
+          "supports": "Deliver a shadow pass."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.ViewLayer.html#bpy.types.ViewLayer.use_pass_shadow"
+      ],
+      "next_queries": [
+        "bpy.types.ViewLayer.html#bpy.types.ViewLayer.use_pass_shadow",
+        "bpy.types.RenderPass.html",
+        "bpy.types.CompositorNodeRLayers.html",
+        "bpy.types.CompositorNodeOutputFile.html"
+      ]
+    },
+    {
+      "id": "transparent-world-background",
+      "domain": "render",
+      "label_vi": "Render nền world trong suốt",
+      "label_en": "Transparent world background",
+      "intent_aliases": [
+        "nền trong suốt",
+        "render alpha",
+        "transparent background",
+        "transparent film",
+        "tách nền render"
+      ],
+      "summary": "RenderSettings.film_transparent makes the world background transparent for compositing over another background.",
+      "choose_when": "Composite the rendered world background over another image.",
+      "do_not_assume": [
+        "The property does not establish alpha-capable file output, remove scene background geometry or supply a compositing recipe. Read output-format and scene-data contracts."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.RenderSettings.html#bpy.types.RenderSettings.film_transparent",
+          "supports": "Make the world background transparent for compositing over another background."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.RenderSettings.html#bpy.types.RenderSettings.film_transparent"
+      ],
+      "next_queries": [
+        "bpy.types.RenderSettings.html#bpy.types.RenderSettings.film_transparent",
+        "bpy.types.ImageFormatSettings.html",
+        "bpy.types.CompositorNodeAlphaOver.html"
+      ]
+    },
+    {
+      "id": "bake-selected-object-textures",
+      "domain": "render",
+      "label_vi": "Bake image texture của vật thể được chọn",
+      "label_en": "Bake selected-object image textures",
+      "intent_aliases": [
+        "bake texture",
+        "bake normal",
+        "bake vật liệu",
+        "bake image textures",
+        "selected to active"
+      ],
+      "summary": "bpy.ops.object.bake bakes selected-object image textures; use_selected_to_active bakes selected objects' shading onto the active object; type describes passes and engine limitations.",
+      "choose_when": "Bake textures with identified source objects, active object and required pass type.",
+      "do_not_assume": [
+        "Read pass/target enums and confirm selection, active object and engine support. Do not supply remembered high-poly/low-poly recipes or pass choices."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.ops.object.html#bpy.ops.object.bake",
+          "supports": "Bake image textures with selected-to-active behavior, pass engine limitations and target/save_mode parameters."
+        }
+      ],
+      "api_refs": [
+        "bpy.ops.object.html#bpy.ops.object.bake"
+      ],
+      "next_queries": [
+        "bpy.ops.object.html#bpy.ops.object.bake",
+        "bpy_types_enum_items/bake_pass_type_items.html",
+        "bpy_types_enum_items/bake_target_items.html",
+        "bpy.types.BakeSettings.html"
+      ]
+    },
+    {
+      "id": "display-color-management",
+      "domain": "render",
+      "label_vi": "Exposure, gamma và chuyển đổi màu hiển thị",
+      "label_en": "Display color management",
+      "intent_aliases": [
+        "quản lý màu",
+        "exposure",
+        "gamma",
+        "white balance",
+        "cân bằng trắng",
+        "view transform",
+        "color management"
+      ],
+      "summary": "ColorManagedViewSettings controls image display; exposure scales by 2^exposure before the display transform and gamma applies afterward, with white-balance and view_transform properties.",
+      "choose_when": "Adjust display color transformation, exposure or white balance rather than surface shader properties.",
+      "do_not_assume": [
+        "The snapshot's view_transform enum lists only NONE; do not choose AgX, Filmic or looks from memory. Inspect runtime color configurations; exposure changes are not light-power changes."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.ColorManagedViewSettings.html#bpy.types.ColorManagedViewSettings",
+          "supports": "Describe display color management, exposure/gamma order, white balance and view transforms."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.ColorManagedViewSettings.html"
+      ],
+      "next_queries": [
+        "bpy.types.ColorManagedViewSettings.html",
+        "bpy.types.Scene.html#bpy.types.Scene.view_settings"
+      ]
+    },
+    {
+      "id": "compositor-image-blur",
+      "domain": "compositor",
+      "label_vi": "Làm mờ ảnh bằng compositor",
+      "label_en": "Compositor image blur",
+      "intent_aliases": [
+        "làm mờ ảnh",
+        "blur ảnh",
+        "image blur",
+        "compositor blur"
+      ],
+      "summary": "CompositorNodeBlur blurs images with multiple blur modes.",
+      "choose_when": "Blur an image in the compositor.",
+      "do_not_assume": [
+        "The class description does not enumerate sockets or detailed modes. Do not use remembered older blur properties; read supplied metadata and inspect runtime sockets."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.CompositorNodeBlur.html#bpy.types.CompositorNodeBlur",
+          "supports": "Blur images with multiple modes."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.CompositorNodeBlur.html",
+        "bpy.types.Scene.html#bpy.types.Scene.compositing_node_group"
+      ],
+      "next_queries": [
+        "bpy.types.CompositorNodeBlur.html",
+        "bpy.types.Scene.html#bpy.types.Scene.compositing_node_group",
+        "bpy.types.NodeLinks.html"
+      ]
+    },
+    {
+      "id": "compositor-glare-glow",
+      "domain": "compositor",
+      "label_vi": "Quầng sáng, flare và fog quanh vùng sáng của ảnh",
+      "label_en": "Glare, flares and glow in an image",
+      "intent_aliases": [
+        "quầng sáng",
+        "glow",
+        "glare",
+        "lens flare",
+        "bloom",
+        "phát sáng quanh vùng sáng"
+      ],
+      "summary": "CompositorNodeGlare adds lens flares, fog and glow around bright image regions.",
+      "choose_when": "Create effects around bright image regions, often requested as glow or bloom.",
+      "do_not_assume": [
+        "The bloom alias maps intent; it does not establish a BLOOM enum or Eevee bloom property. Obtain modes, thresholds and sockets from skill data/runtime."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.CompositorNodeGlare.html#bpy.types.CompositorNodeGlare",
+          "supports": "Add lens flares, fog and glow around bright image regions."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.CompositorNodeGlare.html"
+      ],
+      "next_queries": [
+        "bpy.types.CompositorNodeGlare.html",
+        "bpy.types.Scene.html#bpy.types.Scene.compositing_node_group",
+        "bpy.types.Node.html#bpy.types.Node.inputs"
+      ]
+    },
+    {
+      "id": "compositor-chroma-key-despill",
+      "domain": "compositor",
+      "label_vi": "Tách phông theo màu và khử ám màu phông",
+      "label_en": "Chroma keying and despill",
+      "intent_aliases": [
+        "tách phông xanh",
+        "xóa phông màu",
+        "chroma key",
+        "green screen",
+        "despill",
+        "khử ám màu"
+      ],
+      "summary": "CompositorNodeKeying removes a backdrop through chroma keying and corrects backdrop color spill.",
+      "choose_when": "Remove a backdrop by color and optionally correct its color cast.",
+      "do_not_assume": [
+        "The source does not promise arbitrary background removal or automatic key-color detection. Inspect image data and supported sockets/values; do not infer semantic segmentation."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.CompositorNodeKeying.html#bpy.types.CompositorNodeKeying",
+          "supports": "Remove a backdrop through chroma keying and correct its color cast with despill."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.CompositorNodeKeying.html"
+      ],
+      "next_queries": [
+        "bpy.types.CompositorNodeKeying.html",
+        "bpy.types.CompositorNodeImage.html",
+        "bpy.types.CompositorNodeAlphaOver.html"
+      ]
+    },
+    {
+      "id": "compositor-foreground-over-background",
+      "domain": "compositor",
+      "label_vi": "Ghép ảnh foreground lên background",
+      "label_en": "Foreground over background compositing",
+      "intent_aliases": [
+        "ghép ảnh",
+        "ghép nền",
+        "alpha over",
+        "overlay foreground",
+        "composite foreground background"
+      ],
+      "summary": "CompositorNodeAlphaOver overlays a foreground image on a background.",
+      "choose_when": "Combine identified foreground and background images.",
+      "do_not_assume": [
+        "The description does not establish socket index order, straight/premultiplied handling or background removal. Read socket and alpha-source contracts before linking."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.CompositorNodeAlphaOver.html#bpy.types.CompositorNodeAlphaOver",
+          "supports": "Overlay a foreground image on a background image."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.CompositorNodeAlphaOver.html"
+      ],
+      "next_queries": [
+        "bpy.types.CompositorNodeAlphaOver.html",
+        "bpy.types.CompositorNodeImage.html",
+        "bpy.types.NodeLinks.html"
+      ]
+    },
+    {
+      "id": "compositor-file-output",
+      "domain": "compositor",
+      "label_vi": "Ghi ảnh từ compositor ra tệp",
+      "label_en": "Compositor image file output",
+      "intent_aliases": [
+        "xuất ảnh compositor",
+        "file output",
+        "ghi ảnh",
+        "output passes",
+        "write image file"
+      ],
+      "summary": "CompositorNodeOutputFile writes image files; this snapshot exposes directory, file_name, file_output_items and format.",
+      "choose_when": "Save compositor output with specified paths and formats.",
+      "do_not_assume": [
+        "Do not use remembered base_path/file_slots properties when this snapshot documents directory/file_output_items. Path-template documentation is external and unbundled; do not invent missing template syntax."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.CompositorNodeOutputFile.html#bpy.types.CompositorNodeOutputFile",
+          "supports": "Write image files with this version's directory, file_name, file_output_items and format properties."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.CompositorNodeOutputFile.html"
+      ],
+      "next_queries": [
+        "bpy.types.CompositorNodeOutputFile.html",
+        "bpy.types.NodeCompositorFileOutputItems.html",
+        "bpy.types.ImageFormatSettings.html"
+      ]
+    },
+    {
+      "id": "compositor-render-denoise",
+      "domain": "compositor",
+      "label_vi": "Khử nhiễu ảnh render ray tracing",
+      "label_en": "Ray-traced render denoising",
+      "intent_aliases": [
+        "khử nhiễu",
+        "denoise",
+        "render noise",
+        "ảnh render nhiễu"
+      ],
+      "summary": "CompositorNodeDenoise is described as denoising Cycles and other ray-traced renders.",
+      "choose_when": "Denoise a ray-traced render in the compositor.",
+      "do_not_assume": [
+        "The class does not fully document required sockets, auxiliary passes or denoiser libraries. Read available data and verify the runtime instead of supplying remembered Cycles configuration."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.CompositorNodeDenoise.html#bpy.types.CompositorNodeDenoise",
+          "supports": "Denoise Cycles and other ray-traced renders."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.CompositorNodeDenoise.html"
+      ],
+      "next_queries": [
+        "bpy.types.CompositorNodeDenoise.html",
+        "bpy.types.CompositorNodeRLayers.html",
+        "bpy.types.Node.html#bpy.types.Node.inputs"
+      ]
+    },
+    {
+      "id": "compositor-depth-of-field",
+      "domain": "compositor",
+      "label_vi": "Độ sâu trường ảnh 2D từ Z depth hoặc mask",
+      "label_en": "2D depth of field from depth or mask",
+      "intent_aliases": [
+        "xóa phông theo độ sâu",
+        "defocus",
+        "depth of field",
+        "bokeh",
+        "Z depth blur"
+      ],
+      "summary": "CompositorNodeDefocus applies 2D depth of field using a Z-depth map or mask, with documented bokeh, f_stop, blur_max and use_zbuffer.",
+      "choose_when": "Apply depth of field during image processing using depth or mask data.",
+      "do_not_assume": [
+        "This is not camera optics configuration or proof that depth/mask data exists. Read the distinction between Z-buffer and image inputs and inspect the data."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.CompositorNodeDefocus.html#bpy.types.CompositorNodeDefocus",
+          "supports": "Apply 2D depth of field using a Z-depth map or mask, with bokeh and f_stop."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.CompositorNodeDefocus.html"
+      ],
+      "next_queries": [
+        "bpy.types.CompositorNodeDefocus.html",
+        "bpy.types.ViewLayer.html#bpy.types.ViewLayer.use_pass_z",
+        "bpy.types.CompositorNodeRLayers.html"
+      ]
+    },
+    {
+      "id": "cryptomatte-object-material-masks",
+      "domain": "compositor",
+      "label_vi": "Tạo matte riêng cho object hoặc material",
+      "label_en": "Cryptomatte object and material masks",
+      "intent_aliases": [
+        "mask vật thể",
+        "mask vật liệu",
+        "cryptomatte",
+        "object matte",
+        "material matte",
+        "tách vật thể compositing"
+      ],
+      "summary": "CompositorNodeCryptomatteV2 creates object/material mattes from Cryptomatte render passes; ViewLayer.use_pass_cryptomatte_object outputs a pass for object isolation.",
+      "choose_when": "Create object/material mattes from a render or image containing Cryptomatte passes.",
+      "do_not_assume": [
+        "This is not object recognition in arbitrary images. Confirm passes and IDs, read source/layer_name and verify engine support."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.CompositorNodeCryptomatteV2.html#bpy.types.CompositorNodeCryptomatteV2",
+          "supports": "Create individual object/material mattes from Cryptomatte passes with RENDER or IMAGE sources."
+        },
+        {
+          "ref": "bpy.types.ViewLayer.html#bpy.types.ViewLayer.use_pass_cryptomatte_object",
+          "supports": "Render an object pass for isolation during compositing."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.CompositorNodeCryptomatteV2.html",
+        "bpy.types.ViewLayer.html#bpy.types.ViewLayer.use_pass_cryptomatte_object"
+      ],
+      "next_queries": [
+        "bpy.types.CompositorNodeCryptomatteV2.html",
+        "bpy.types.ViewLayer.html#bpy.types.ViewLayer.use_pass_cryptomatte_object",
+        "bpy.types.ViewLayer.html#bpy.types.ViewLayer.use_pass_cryptomatte_material"
+      ]
+    },
+    {
+      "id": "sequencer-text-titles",
+      "domain": "video-audio",
+      "label_vi": "Thêm chữ vào video bằng text strip",
+      "label_en": "Sequencer text titles",
+      "intent_aliases": [
+        "chữ trong video",
+        "tiêu đề video",
+        "text strip",
+        "video title",
+        "phụ đề bằng text"
+      ],
+      "summary": "TextStrip generates text with content, font, size, position, alignment, outline and box properties. StripsTopLevel.new_effect includes TEXT for adding a text strip.",
+      "choose_when": "Add text over specified intervals in a video sequence.",
+      "do_not_assume": [
+        "The source does not establish speech recognition or automatic subtitle timing. The default font falls back to a UI font; inspect the supplied font and required glyph rendering."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.TextStrip.html#bpy.types.TextStrip",
+          "supports": "A sequence strip generates text and exposes text-display properties."
+        },
+        {
+          "ref": "bpy.types.StripsTopLevel.html#bpy.types.StripsTopLevel.new_effect",
+          "supports": "The TEXT effect adds a simple text strip."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.TextStrip.html",
+        "bpy.types.StripsTopLevel.html#bpy.types.StripsTopLevel.new_effect"
+      ],
+      "next_queries": [
+        "bpy.types.TextStrip.html",
+        "bpy.types.StripsTopLevel.html#bpy.types.StripsTopLevel.new_effect",
+        "bpy.types.Scene.html#bpy.types.Scene.sequence_editor_create"
+      ]
+    },
+    {
+      "id": "sequencer-text-drop-shadow",
+      "domain": "video-audio",
+      "label_vi": "Bóng phía sau chữ trong video",
+      "label_en": "Text strip drop shadow",
+      "intent_aliases": [
+        "đổ bóng",
+        "bóng chữ",
+        "đổ bóng chữ",
+        "text shadow",
+        "text drop shadow",
+        "bóng chữ video"
+      ],
+      "summary": "TextStrip.use_shadow displays a shadow behind text; the class also exposes shadow_angle, shadow_blur, shadow_color and shadow_offset with types/ranges.",
+      "choose_when": "Apply a shadow to Video Sequencer text, distinct from 3D shadow rays or footage shadow catchers.",
+      "do_not_assume": [
+        "shadow_blur/offset have type/range information without complete pixel-unit semantics. Do not transfer CSS numbers or 3D light controls by assumption."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.TextStrip.html#bpy.types.TextStrip.use_shadow",
+          "supports": "Display a shadow behind text."
+        },
+        {
+          "ref": "bpy.types.TextStrip.html#bpy.types.TextStrip",
+          "supports": "TextStrip generates text and exposes shadow parameters with types/ranges."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.TextStrip.html#bpy.types.TextStrip.use_shadow",
+        "bpy.types.TextStrip.html#bpy.types.TextStrip.shadow_blur",
+        "bpy.types.TextStrip.html#bpy.types.TextStrip.shadow_offset",
+        "bpy.types.TextStrip.html#bpy.types.TextStrip.shadow_color"
+      ],
+      "next_queries": [
+        "bpy.types.TextStrip.html",
+        "bpy.types.StripsTopLevel.html#bpy.types.StripsTopLevel.new_effect"
+      ]
+    },
+    {
+      "id": "sequencer-load-trim-video",
+      "domain": "video-audio",
+      "label_vi": "Nạp video và trim nội dung strip",
+      "label_en": "Load and trim sequencer video",
+      "intent_aliases": [
+        "dựng video",
+        "nạp video",
+        "cắt đầu cuối clip",
+        "movie strip",
+        "trim video",
+        "load video"
+      ],
+      "summary": "MovieStrip loads video; StripsTopLevel.new_movie adds a clip by file, channel and frame_start. content_trim_start/end skip source frames and turn corresponding time into holds.",
+      "choose_when": "Load a clip into the timeline or adjust source content at its ends according to the documented trimming semantics.",
+      "do_not_assume": [
+        "The source marks animation_offset_start/end deprecated since 5.10 in favor of content_trim_start/end. Do not assume source trimming shortens the timeline; read frame ranges and inspect results."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.MovieStrip.html#bpy.types.MovieStrip",
+          "supports": "A sequence strip loads video; document content trimming and deprecation."
+        },
+        {
+          "ref": "bpy.types.StripsTopLevel.html#bpy.types.StripsTopLevel.new_movie",
+          "supports": "Add a movie strip with filepath, channel and frame_start."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.MovieStrip.html",
+        "bpy.types.StripsTopLevel.html#bpy.types.StripsTopLevel.new_movie"
+      ],
+      "next_queries": [
+        "bpy.types.MovieStrip.html",
+        "bpy.types.StripsTopLevel.html#bpy.types.StripsTopLevel.new_movie",
+        "bpy.types.Strip.html"
+      ]
+    },
+    {
+      "id": "sequencer-timed-sound",
+      "domain": "video-audio",
+      "label_vi": "Âm thanh theo timeline và volume",
+      "label_en": "Timed audio strips and playback volume",
+      "intent_aliases": [
+        "thêm âm thanh",
+        "nhạc nền",
+        "sound strip",
+        "audio timeline",
+        "volume âm thanh",
+        "pan âm thanh"
+      ],
+      "summary": "SoundStrip plays audio over an interval; volume controls level, pan applies to mono sources and sound_offset is measured in seconds. StripsTopLevel.new_sound adds a sound strip.",
+      "choose_when": "Place audio on the timeline and adjust timing, volume or pan as documented.",
+      "do_not_assume": [
+        "A sound strip does not establish codec or mixdown support. Pan is limited to mono sources; inspect media and audio output separately."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.SoundStrip.html#bpy.types.SoundStrip",
+          "supports": "Describe timed audio, volume, mono pan and sound_offset in seconds."
+        },
+        {
+          "ref": "bpy.types.StripsTopLevel.html#bpy.types.StripsTopLevel.new_sound",
+          "supports": "Add a sound strip from a file at a timeline position."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.SoundStrip.html",
+        "bpy.types.StripsTopLevel.html#bpy.types.StripsTopLevel.new_sound"
+      ],
+      "next_queries": [
+        "bpy.types.SoundStrip.html",
+        "bpy.types.StripsTopLevel.html#bpy.types.StripsTopLevel.new_sound",
+        "bpy.ops.sound.html"
+      ]
+    },
+    {
+      "id": "sequencer-transitions-effects",
+      "domain": "video-audio",
+      "label_vi": "Chuyển cảnh, blend, blur và đổi tốc độ strip",
+      "label_en": "Sequencer transitions and effects",
+      "intent_aliases": [
+        "chuyển cảnh",
+        "crossfade",
+        "wipe",
+        "video glow",
+        "timewarp",
+        "đổi tốc độ video",
+        "blend strips"
+      ],
+      "summary": "StripsTopLevel.new_effect describes CROSS fading, WIPE transitions, GLOW on bright regions, SPEED playback time-warping, GAUSSIAN_BLUR detail softening and blending effects.",
+      "choose_when": "Create timeline strip effects or transitions, selecting types from new_effect descriptions.",
+      "do_not_assume": [
+        "Read each effect's inputs and settings; do not assume every effect takes two strips or uses older properties. SPEED does not establish optical-flow interpolation."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.StripsTopLevel.html#bpy.types.StripsTopLevel.new_effect",
+          "supports": "Describe CROSS, WIPE, GLOW, SPEED, GAUSSIAN_BLUR and blending effects."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.StripsTopLevel.html#bpy.types.StripsTopLevel.new_effect"
+      ],
+      "next_queries": [
+        "bpy.types.StripsTopLevel.html#bpy.types.StripsTopLevel.new_effect",
+        "bpy.types.EffectStrip.html",
+        "bpy.types.SpeedControlStrip.html",
+        "bpy.types.WipeStrip.html"
+      ]
+    },
+    {
+      "id": "grease-pencil-shadow-effect",
+      "domain": "grease-pencil-freestyle",
+      "label_vi": "Hiệu ứng bóng cho Grease Pencil",
+      "label_en": "Grease Pencil shadow effect",
+      "intent_aliases": [
+        "đổ bóng",
+        "bóng Grease Pencil",
+        "bóng nét vẽ",
+        "Grease Pencil shadow",
+        "ShaderFxShadow",
+        "bóng 2D"
+      ],
+      "summary": "ShaderFx affects Grease Pencil objects. ShaderFxShadow provides shadow offset, color, scale, rotation and pixel blur; ObjectShaderFx.new adds an effect.",
+      "choose_when": "Apply the documented shadow effect to an existing Grease Pencil object.",
+      "do_not_assume": [
+        "A request for a 2D shadow does not extend this route to arbitrary images or meshes. Verify object type, effect enum and render behavior; the source is not a complete recipe."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.ShaderFx.html#bpy.types.ShaderFx",
+          "supports": "Effects apply to Grease Pencil objects."
+        },
+        {
+          "ref": "bpy.types.ShaderFxShadow.html#bpy.types.ShaderFxShadow",
+          "supports": "Describe a shadow effect with offset, shadow_color, scale, rotation and pixel blur."
+        },
+        {
+          "ref": "bpy.types.ObjectShaderFx.html#bpy.types.ObjectShaderFx.new",
+          "supports": "Add a shader effect by name and type."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.ShaderFxShadow.html",
+        "bpy.types.ObjectShaderFx.html#bpy.types.ObjectShaderFx.new"
+      ],
+      "next_queries": [
+        "bpy.types.ShaderFx.html",
+        "bpy.types.ShaderFxShadow.html",
+        "bpy.types.ObjectShaderFx.html#bpy.types.ObjectShaderFx.new",
+        "bpy_types_enum_items/object_shaderfx_type_items.html"
+      ]
+    },
+    {
+      "id": "grease-pencil-glow-effect",
+      "domain": "grease-pencil-freestyle",
+      "label_vi": "Hiệu ứng glow của Grease Pencil",
+      "label_en": "Grease Pencil glow effect",
+      "intent_aliases": [
+        "glow Grease Pencil",
+        "quầng sáng nét vẽ",
+        "Grease Pencil glow",
+        "ShaderFxGlow"
+      ],
+      "summary": "ShaderFxGlow is a Grease Pencil effect with glow_color, mode, opacity, size and a color-selection threshold; use_glow_under has a Regular blend-mode limitation.",
+      "choose_when": "Apply glow to a Grease Pencil object rather than a compositor image or emission shader.",
+      "do_not_assume": [
+        "The glow name does not determine mode or size. Read blending rules and verify the runtime; the source does not support use_glow_under with Regular blend mode."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.ShaderFx.html#bpy.types.ShaderFx",
+          "supports": "ShaderFx affects Grease Pencil objects."
+        },
+        {
+          "ref": "bpy.types.ShaderFxGlow.html#bpy.types.ShaderFxGlow",
+          "supports": "Describe glow parameters and the use_glow_under limitation with Regular blend mode."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.ShaderFxGlow.html"
+      ],
+      "next_queries": [
+        "bpy.types.ShaderFxGlow.html",
+        "bpy.types.ObjectShaderFx.html#bpy.types.ObjectShaderFx.new",
+        "bpy_types_enum_items/object_shaderfx_type_items.html"
+      ]
+    },
+    {
+      "id": "freestyle-edge-lines",
+      "domain": "grease-pencil-freestyle",
+      "label_vi": "Đường viền, silhouette và cạnh Freestyle",
+      "label_en": "Freestyle contours, silhouettes and edges",
+      "intent_aliases": [
+        "đường viền vật thể",
+        "silhouette",
+        "Freestyle",
+        "render nét",
+        "contour lines",
+        "crease edges"
+      ],
+      "summary": "FreestyleLineSet associates lines with styles and selects contours, silhouettes, creases and other edges; FreestyleSettings offers scripting/parameter-editor modes and a separate render pass.",
+      "choose_when": "Select and render documented edge/contour types through FreestyleLineSet.",
+      "do_not_assume": [
+        "This is not every Grease Pencil workflow or a guarantee of any cartoon style. Read edge selection, style and engine contracts; the snapshot is not a complete artistic recipe."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.FreestyleLineSet.html#bpy.types.FreestyleLineSet",
+          "supports": "Select contours, silhouettes, creases and material boundaries and reference a linestyle."
+        },
+        {
+          "ref": "bpy.types.FreestyleSettings.html#bpy.types.FreestyleSettings",
+          "supports": "Configure Freestyle per ViewLayer with SCRIPT/EDITOR modes and as_render_pass."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.FreestyleLineSet.html",
+        "bpy.types.FreestyleSettings.html"
+      ],
+      "next_queries": [
+        "bpy.types.FreestyleLineSet.html",
+        "bpy.types.FreestyleSettings.html",
+        "bpy.types.FreestyleLineStyle.html",
+        "freestyle.html"
+      ]
+    },
+    {
+      "id": "movie-clip-marker-tracking",
+      "domain": "tracking",
+      "label_vi": "Theo dõi marker trong footage",
+      "label_en": "Movie clip marker tracking",
+      "intent_aliases": [
+        "tracking marker",
+        "theo dõi điểm",
+        "motion tracking",
+        "track markers",
+        "theo dõi footage"
+      ],
+      "summary": "MovieTracking holds match-moving data; bpy.ops.clip.track_markers tracks selected markers backward or across a sequence rather than one image.",
+      "choose_when": "Track markers in footage; inspect clip/tracking data before invoking the operator.",
+      "do_not_assume": [
+        "Marker tracking is not arbitrary object recognition. It requires suitable context and selection; do not promise background CLI operation without a successful poll in that context."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.MovieTracking.html#bpy.types.MovieTracking",
+          "supports": "Expose match-moving data for tracking."
+        },
+        {
+          "ref": "bpy.ops.clip.html#bpy.ops.clip.track_markers",
+          "supports": "Track selected markers backward or across a sequence."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.MovieClip.html",
+        "bpy.types.MovieTracking.html",
+        "bpy.ops.clip.html#bpy.ops.clip.track_markers"
+      ],
+      "next_queries": [
+        "bpy.types.MovieClip.html",
+        "bpy.types.MovieTracking.html",
+        "bpy.types.MovieTrackingTracks.html",
+        "bpy.ops.clip.html#bpy.ops.clip.track_markers"
+      ]
+    },
+    {
+      "id": "movie-clip-two-dimensional-stabilization",
+      "domain": "tracking",
+      "label_vi": "Ổn định footage 2D dựa trên marker",
+      "label_en": "Marker-based 2D footage stabilization",
+      "intent_aliases": [
+        "ổn định video",
+        "chống rung",
+        "2D stabilization",
+        "stabilize footage",
+        "marker stabilization"
+      ],
+      "summary": "MovieTrackingStabilization stabilizes footage in 2D using markers, with location/rotation/scale influence, an anchor frame and automatic scaling to cover gaps.",
+      "choose_when": "Stabilize 2D footage using existing tracking data.",
+      "do_not_assume": [
+        "This does not establish correction of all shake or rolling shutter. Suitable tracks and output checks are required; the route does not automatically create tracking input."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.MovieTrackingStabilization.html#bpy.types.MovieTrackingStabilization",
+          "supports": "Describe marker-based 2D stabilization with anchor frame, location/rotation/scale and autoscale."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.MovieTrackingStabilization.html"
+      ],
+      "next_queries": [
+        "bpy.types.MovieTrackingStabilization.html",
+        "bpy.types.MovieTracking.html",
+        "bpy.types.CompositorNodeStabilize.html"
+      ]
+    },
+    {
+      "id": "camera-motion-solve-from-tracks",
+      "domain": "tracking",
+      "label_vi": "Giải chuyển động camera từ tracks",
+      "label_en": "Camera motion solving from tracks",
+      "intent_aliases": [
+        "camera tracking",
+        "solve camera",
+        "match moving",
+        "giải camera",
+        "khôi phục chuyển động camera"
+      ],
+      "summary": "bpy.ops.clip.solve_camera solves camera motion from tracks. MovieTrackingReconstruction stores solved cameras, average_error and is_valid.",
+      "choose_when": "Solve camera motion from existing tracks and inspect reconstruction validity/error.",
+      "do_not_assume": [
+        "The source does not guarantee a solve for all footage or supply complete calibration/background-context requirements. Report success only when the actual operator and reconstruction support it."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.ops.clip.html#bpy.ops.clip.solve_camera",
+          "supports": "Solve camera motion from tracks."
+        },
+        {
+          "ref": "bpy.types.MovieTrackingReconstruction.html#bpy.types.MovieTrackingReconstruction",
+          "supports": "Expose reconstruction cameras, average_error and is_valid."
+        }
+      ],
+      "api_refs": [
+        "bpy.ops.clip.html#bpy.ops.clip.solve_camera",
+        "bpy.types.MovieTrackingReconstruction.html"
+      ],
+      "next_queries": [
+        "bpy.ops.clip.html#bpy.ops.clip.solve_camera",
+        "bpy.types.MovieTrackingReconstruction.html",
+        "bpy.types.MovieTrackingSettings.html",
+        "bpy.types.MovieTrackingCamera.html"
+      ]
+    }
+  ]
+}

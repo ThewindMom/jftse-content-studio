@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { TwinkleViewport, type CameraView } from "./TwinkleViewport.tsx";
-import { assetLabel, courtClearance, isOriginalModel, parseMapDesign, parseTwinkleDocument, type MapDesign, type Placement, type TwinkleDocument, type TwinkleManifest } from "./twinkleDocument.ts";
+import { assetLabel, courtClearance, isImportedModel, isOriginalModel, parseMapDesign, parseTwinkleDocument, type MapDesign, type Placement, type StudioAsset, type TwinkleDocument, type TwinkleManifest } from "./twinkleDocument.ts";
 
 async function request(path: string, init?: RequestInit) {
   const response = await fetch(path, init);
@@ -56,8 +56,10 @@ export function TwinkleStudio({ mapId = "twinkle" }: { mapId?: MapDesign }) {
   const [retry, setRetry] = useState(0);
   const [testClient, setTestClient] = useState<TestClient | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  const glbInput = useRef<HTMLInputElement>(null);
   const doc = history?.current;
   const hasOriginals = doc?.objects.some((obj) => obj.visible && isOriginalModel(obj.file));
+  const hasImports = doc?.objects.some((obj) => isImportedModel(obj.file));
   const chosen = doc?.objects.find((o) => o.id === selected);
   const chosenAsset = manifest?.assets.find((a) => a.file === chosen?.file);
   const supported = new Set(manifest?.assets.filter((asset) => !asset.fixed).map((asset) => asset.file));
@@ -113,6 +115,22 @@ export function TwinkleStudio({ mapId = "twinkle" }: { mapId?: MapDesign }) {
       download(await response.blob(), `${mapId}-layout.zip`);
       setStatus("ZIP checked. Installation steps are in README.txt. Copy its Res folder to a separate test client; select Twinkle Town.");
       setError("");
+    } catch (error) { setError(String(error)); }
+    finally { setBusy(false); }
+  }
+  async function importGlb(file: File) {
+    if (!manifest) return;
+    setBusy(true); setError(""); setStatus("Validating Blender GLB…");
+    try {
+      if (file.size > 16 * 1024 * 1024) throw new Error("Maximum GLB upload is 16 MiB.");
+      const name = file.name.replace(/\.glb$/i, "").replace(/[_-]/g, " ");
+      const response = await request(`/api/twinkle/import?name=${encodeURIComponent(name)}`, {
+        method: "POST", headers: { "content-type": "model/gltf-binary" }, body: file,
+      });
+      const asset: StudioAsset = await response.json();
+      setManifest({ ...manifest, assets: [...manifest.assets.filter((old) => old.file !== asset.file), asset] });
+      setCategory("imported"); setLibraryQuery("");
+      setStatus(`${asset.name} imported (${asset.triangles.toLocaleString()} triangles). Select it in the library to place it. Studio-only; no native export or collision.`);
     } catch (error) { setError(String(error)); }
     finally { setBusy(false); }
   }
@@ -195,7 +213,7 @@ export function TwinkleStudio({ mapId = "twinkle" }: { mapId?: MapDesign }) {
       <div className="tw-actions"><button disabled={!history?.past.length} onClick={undo} title="Undo · Ctrl Z">Undo</button>
         <button disabled={!history?.future.length} onClick={redo} title="Redo · Ctrl Shift Z">Redo</button>
         <button disabled={busy || !doc} onClick={() => void save()}>Save layout</button>
-        <button className="tw-primary" disabled={busy || !doc} title={hasOriginals ? "Build DAT/TEX and collision additions for a separate test client. Native compatibility remains unverified." : undefined} onClick={() => void exportPack()}>{busy ? "Working…" : "Export stage ZIP"}</button></div>
+        <button className="tw-primary" disabled={busy || !doc || hasImports} title={hasImports ? "Blender imports are Studio-only; native conversion is not implemented." : hasOriginals ? "Build DAT/TEX and collision additions for a separate test client. Native compatibility remains unverified." : undefined} onClick={() => void exportPack()}>{busy ? "Working…" : "Export stage ZIP"}</button></div>
     </header>
     {error && <div className="tw-error tw-banner" role="alert">{error} {!doc && <button onClick={() => { setError(""); setRetry((n) => n + 1); }}>Retry loading</button>}</div>}
     {!doc || !manifest ? <div className="tw-loading" role="status">{status}<p>Preparing private stock meshes and textures. No game client is required.</p></div> : <>
@@ -219,7 +237,7 @@ export function TwinkleStudio({ mapId = "twinkle" }: { mapId?: MapDesign }) {
             <details><summary>Install in a test client</summary>
               {!testClient?.configured ? <p>One-time setup: set JFTSE_STUDIO_TEST_ROOT to a separate empty directory on the Studio server. JFTSE_STOCK_CLIENT must contain ServerInfo.ini and Res.</p> : <>
                 <p>Build the current layout into a fresh local-server test copy, with a pristine backup. Nothing is launched. Close any test client before switching copies.</p>
-                <button disabled={busy || !doc} onClick={() => void updateTestClient("install")}>Install in fresh test copy</button>
+                <button disabled={busy || !doc || hasImports} onClick={() => void updateTestClient("install")}>Install in fresh test copy</button>
                 <button disabled={busy || !testClient.receipt || testClient.receipt.restored} onClick={() => void updateTestClient("restore")}>Restore pristine test copy</button>
                 {testClient.receipt && <div className="tw-test-receipt" role="status">
                   <p>{testClient.receipt.restored ? "Pristine test backup selected." : `${testClient.receipt.installed.length} resource archives installed.`}</p>
@@ -230,6 +248,7 @@ export function TwinkleStudio({ mapId = "twinkle" }: { mapId?: MapDesign }) {
                 <p>Native rendering and collision still need an in-game test. Both designs replace Twinkle Town, map 2.</p>
               </>}
             </details>
+            {hasImports && <p className="tw-notice">Blender imports are saved in this Studio, not native game assets. Native export/install is disabled while imported placements remain. No imported collision is generated.</p>}
             {hasOriginals && <p className="tw-notice">Export builds native DAT/TEX files and coarse collision additions for original props. Requires pristine Collision.res. Use a separate test client: loading, shading and collision response are not yet verified in-game.</p>}
             <button onClick={() => download(new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" }), "twinkle-layout.json")}>Download layout JSON</button>
             <button onClick={() => input.current?.click()}>Import layout JSON</button>
@@ -259,6 +278,12 @@ export function TwinkleStudio({ mapId = "twinkle" }: { mapId?: MapDesign }) {
             <label><input type="checkbox" checked={lightmaps} onChange={(e) => setLightmaps(e.target.checked)} /> Baked lightmaps</label>
             <label><input type="checkbox" checked={isolate} onChange={(e) => { setIsolate(e.target.checked); if (e.target.checked) frame("selection"); }} /> Isolate selection</label><span>Match camera is approximate</span></div>
           <section className="tw-library" aria-label="Prop library"><div className="tw-section-title">Prop library <span>Actual geometry · animation paused</span></div>
+            <div className="tw-original-actions"><button disabled={busy} onClick={() => glbInput.current?.click()}>Import Blender GLB</button><span>Static meshes + embedded PNG · up to 16 MiB · Studio preview only</span></div>
+            <input hidden ref={glbInput} aria-label="Blender GLB file" type="file" accept=".glb" onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) void importGlb(file);
+            }} />
             {category === "original" && <div className="tw-original-actions"><span>{manifest.assets.filter((asset) => asset.category === "original").length} original models · DAT/TEX + collision export · native test required</span>{mapId === "oktoberfest" && <button onClick={() => {
               const replacements: Record<string, string> = {
                 "Res/StageObj/FestivalHall/BlackSmith_Shop.dat": "BrewersPavilion",
@@ -272,20 +297,21 @@ export function TwinkleStudio({ mapId = "twinkle" }: { mapId?: MapDesign }) {
               setSelected(""); setIsolate(false); frame("court");
               setStatus("Four festival anchors now use original geometry. Undo restores them; save explicitly to keep this design. Export includes native meshes, textures and collision proxies.");
             }}>Use original festival props</button>}</div>}
-            <div className="tw-library-filters"><input aria-label="Search prop library" placeholder="Find a prop or character…" value={libraryQuery} onChange={(e) => setLibraryQuery(e.target.value)} /><select aria-label="Prop category" value={category} onChange={(e) => setCategory(e.target.value)}><option value="all">All assets</option><option value="original">New Oktoberfest models</option><option value="scenery">Scenery</option><option value="stock">Stock characters & props</option><option value="festival">Oktoberfest · stock-based</option></select>
+            <div className="tw-library-filters"><input aria-label="Search prop library" placeholder="Find a prop or character…" value={libraryQuery} onChange={(e) => setLibraryQuery(e.target.value)} /><select aria-label="Prop category" value={category} onChange={(e) => setCategory(e.target.value)}><option value="all">All assets</option><option value="imported">Blender imports · Studio only</option><option value="original">New Oktoberfest models</option><option value="scenery">Scenery</option><option value="stock">Stock characters & props</option><option value="festival">Oktoberfest · stock-based</option></select>
               <a href="/api/twinkle/file?name=oktoberfest-original-models.zip" download>Download GLB / OBJ pack</a></div>
-            <div className="tw-assets">{manifest.assets.filter((asset) => !asset.fixed && (category === "all" || category === asset.category) && assetLabel(asset.file).toLowerCase().includes(libraryQuery.toLowerCase())).map((asset) => <button key={asset.file} aria-label={`Add ${assetLabel(asset.file)}`} onClick={() => {
-              const obj: Placement = { id: crypto.randomUUID(), name: assetLabel(asset.file), file: asset.file,
-                position: [90, 0, 20], rotation: 0, scale: 1, level: 1, visible: true,
+            <div className="tw-assets">{manifest.assets.filter((asset) => !asset.fixed && (category === "all" || category === asset.category) && (asset.category === "imported" ? asset.name : assetLabel(asset.file)).toLowerCase().includes(libraryQuery.toLowerCase())).map((asset) => <button key={asset.file} aria-label={`Add ${asset.category === "imported" ? asset.name : assetLabel(asset.file)}`} onClick={() => {
+              const obj: Placement = { id: crypto.randomUUID(), name: asset.category === "imported" ? asset.name : assetLabel(asset.file), file: asset.file,
+                position: [90, 0, 20], rotation: 0, scale: asset.category === "imported" ? 20 : 1, level: 1, visible: true,
                 animation: asset.pose === "bind" ? 0 : -1, phase: 0 };
               commit({ ...doc, objects: [...doc.objects, obj] }); setSelected(obj.id); setStatus(`${obj.name} added beside the court. Drag its gizmo or edit the inspector.`);
-            }}><div className="tw-asset-image">{thumbnails[asset.file] ? <img src={thumbnails[asset.file]} alt="" /> : <span>Loading…</span>}</div><span>{assetLabel(asset.file)}</span></button>)}</div>
+            }}><div className="tw-asset-image">{thumbnails[asset.file] ? <img src={thumbnails[asset.file]} alt="" /> : <span>Loading…</span>}</div><span>{asset.category === "imported" ? asset.name : assetLabel(asset.file)}</span></button>)}</div>
           </section>
         </section>
         <aside className="tw-inspector" aria-label="Object inspector"><div className="tw-section-title">Inspector <span>{chosen ? "Placement" : "Scene"}</span></div>
           {chosen ? <div className="tw-inspector-body" key={chosen.id}>
             <label>Object name<input aria-label="Object name" defaultValue={chosen.name} onBlur={(e) => transform(chosen.id, { name: e.target.value })} /></label>
-            <p className="tw-asset-source">{assetLabel(chosen.file)}<small>{chosen.file}</small></p>
+            <p className="tw-asset-source">{chosenAsset?.category === "imported" ? chosenAsset.name : assetLabel(chosen.file)}<small>{chosen.file}</small></p>
+            {chosenAsset?.category === "imported" && <p className="tw-notice">Blender GLB · {chosenAsset.triangles.toLocaleString()} triangles. Y-up meters; initial scale is 20 Studio units per meter. Adjust to match nearby stock props. PBR preview lighting is approximate. No native DAT export or collision.</p>}
             {chosenAsset?.category === "original" && <p className="tw-notice">Original geometry and texture atlas. Export converts this placement to DAT/TEX and adds coarse solid collision proxies. Doorways remain open; fine detail is nonblocking. Native compatibility needs a client test. GLB / OBJ remains available for mesh editing.</p>}
             {!supported.has(chosen.file) && <p className="tw-notice">Resource missing or unsupported. Only a guide is shown, not a partial mesh. Placement edits still export.</p>}
             {chosenAsset?.pose === "bind" && <p className="tw-notice">Complete rest pose, not an animation frame. Move, rotate and scale this placement; animation metadata is preserved for export. Native pose and shading still need a client check.</p>}
@@ -294,7 +320,7 @@ export function TwinkleStudio({ mapId = "twinkle" }: { mapId?: MapDesign }) {
             }} />)}</div>
             <NumberField label="Rotation Y" value={chosen.rotation} min={-36000} max={36000} step={15} onCommit={(rotation) => transform(chosen.id, { rotation })} />
             <NumberField label="Uniform scale" value={chosen.scale} min={0.01} max={100} step={0.1} onCommit={(scale) => transform(chosen.id, { scale })} />
-            <label className="tw-check"><input type="checkbox" checked={chosen.visible} onChange={(e) => transform(chosen.id, { visible: e.target.checked })} /> Include in scene & export</label>
+            <label className="tw-check"><input type="checkbox" checked={chosen.visible} onChange={(e) => transform(chosen.id, { visible: e.target.checked })} /> {chosenAsset?.category === "imported" ? "Include in scene" : "Include in scene & export"}</label>
             <label>Client detail level<select aria-label="Client detail level" value={chosen.level} onChange={(e) => transform(chosen.id, { level: Number(e.target.value) })}><option value={0}>Level 0 · default</option><option value={1}>Level 1</option><option value={2}>Level 2</option></select></label>
             {courtClearance(chosen) && <p className="tw-notice" role="status">Inside the court clearance guide. Check play space before export. This is not a collision test.</p>}
             <div className="tw-inspector-buttons"><button onClick={() => frame("selection")}>Frame object <kbd>F</kbd></button><button onClick={duplicate}>Duplicate</button><button className="tw-danger" onClick={remove}>Delete object</button></div>

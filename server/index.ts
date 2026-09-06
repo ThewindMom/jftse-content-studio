@@ -11,6 +11,7 @@ import { join, relative } from "node:path";
 import index from "../web/index.html";
 import mapStudio from "../web/map-studio.html";
 import { twinkleScene, twinkleFile, twinkleDraft, twinkleExport, twinkleClient } from "./twinkleStudio.ts";
+import { importProp } from "./importedProps.ts";
 import {
   BridgeError,
   buildEffect,
@@ -288,6 +289,7 @@ const server = Bun.serve({
     "/map-studio": mapStudio,
     "/api/twinkle/scene": { GET: twinkleScene },
     "/api/twinkle/file": { GET: twinkleFile },
+    "/api/twinkle/import": { POST: importProp },
     "/api/twinkle/draft": { GET: twinkleDraft, PUT: twinkleDraft },
     "/api/twinkle/export": { POST: twinkleExport },
     "/api/twinkle/client": { GET: twinkleClient, POST: twinkleClient },

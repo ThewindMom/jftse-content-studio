@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { config } from "./config.ts";
 import { BridgeError, runBridge, runBridgeWithPayload } from "./bridge.ts";
 import { readJsonObject } from "./requestPolicy.ts";
-import { parseMapDesign, parseTwinkleDocument, type MapDesign } from "../web/twinkleDocument.ts";
+import { isImportedModel, parseMapDesign, parseTwinkleDocument, type MapDesign } from "../web/twinkleDocument.ts";
+import { importedProps, importedPropDirectory, rejectImportedNativeExport } from "./importedProps.ts";
 
 const assets = join(config.tmpDir, "twinkle-assets");
 const preparations = new Map<MapDesign, Promise<unknown>>();
@@ -21,7 +22,9 @@ export async function twinkleScene(req: Request): Promise<Response> {
       preparations.set(map, preparation);
     }
     await preparation;
-    return new Response(Bun.file(join(assets, `manifest-${map}.json`)), {
+    const manifest = await Bun.file(join(assets, `manifest-${map}.json`)).json();
+    manifest.assets.push(...await importedProps());
+    return Response.json(manifest, {
       headers: { "content-type": "application/json", "cache-control": "private, no-store" },
     });
   } catch (error) {
@@ -31,6 +34,11 @@ export async function twinkleScene(req: Request): Promise<Response> {
 
 export async function twinkleFile(req: Request): Promise<Response> {
   const name = new URL(req.url).searchParams.get("name") ?? "";
+  if (/^import-[a-f0-9]{64}\.glb$/.test(name)) {
+    const file = Bun.file(join(importedPropDirectory, name.slice(7)));
+    if (!await file.exists()) return new Response("Imported prop not found", { status: 404 });
+    return new Response(file, { headers: { "content-type": "model/gltf-binary", "cache-control": "private, max-age=3600" } });
+  }
   if (name === "oktoberfest-original-models.zip") {
     const file = Bun.file(join(assets, name));
     if (!await file.exists()) return new Response("Open a map first", { status: 404 });
@@ -55,6 +63,11 @@ export async function twinkleDraft(req: Request): Promise<Response> {
     }
     const doc = parseTwinkleDocument(await readJsonObject(req, 256_000));
     if (parseMapDesign(doc.mapId) !== map) throw new Error("Layout belongs to another map design.");
+    for (const obj of doc.objects) {
+      if (isImportedModel(obj.file) && !await Bun.file(join(importedPropDirectory, obj.file.split("/").at(-1)!)).exists()) {
+        throw new Error(`Import the missing Blender GLB before saving: ${obj.name}`);
+      }
+    }
     mkdirSync(config.exportsDir, { recursive: true });
     const temporary = `${draft}.${crypto.randomUUID()}.tmp`;
     try {
@@ -73,6 +86,7 @@ export async function twinkleExport(req: Request): Promise<Response> {
   const out = join(config.tmpDir, `twinkle-export-${crypto.randomUUID()}`);
   try {
     const doc = parseTwinkleDocument(await readJsonObject(req, 256_000));
+    rejectImportedNativeExport(doc);
     await runBridgeWithPayload("twinkle-layout", doc, (payload) => [
       "twinkle-export", "--payload", payload, "--out-dir", out,
     ]);
@@ -92,8 +106,10 @@ export async function twinkleClient(req: Request): Promise<Response> {
   try {
     const action = req.method === "GET" ? "status" : new URL(req.url).searchParams.get("action");
     if (action !== "status" && action !== "install" && action !== "restore") throw new Error("Invalid test-client action");
-    const result = action === "install"
-      ? await runBridgeWithPayload("twinkle-test-client", parseTwinkleDocument(await readJsonObject(req, 256_000)),
+    const doc = action === "install" ? parseTwinkleDocument(await readJsonObject(req, 256_000)) : null;
+    if (doc) rejectImportedNativeExport(doc);
+    const result = doc
+      ? await runBridgeWithPayload("twinkle-test-client", doc,
           (payload) => ["twinkle-client", "--action", "install", "--payload", payload])
       : await runBridge(["twinkle-client", "--action", action]);
     if (req.method === "GET" && new URL(req.url).searchParams.has("receipt")) {

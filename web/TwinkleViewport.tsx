@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { isOriginalModel, type Placement, type StudioAsset, type TwinkleDocument } from "./twinkleDocument.ts";
 
 type MeshPart = {
@@ -53,6 +54,13 @@ export function TwinkleViewport(props: Props) {
     host.appendChild(renderer.domElement);
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#98baca");
+    function previewLighting(target: THREE.Scene) {
+      target.add(new THREE.HemisphereLight(0xfff5df, 0x697781, 2));
+      const key = new THREE.DirectionalLight(0xffe4bb, 2.5);
+      key.position.set(-120, 250, 180);
+      target.add(key);
+    }
+    previewLighting(scene);
     const camera = new THREE.PerspectiveCamera(45, 1, 0.5, 10000);
     const orbit = new OrbitControls(camera, renderer.domElement);
     orbit.enableDamping = true;
@@ -230,6 +238,26 @@ export function TwinkleViewport(props: Props) {
         await Promise.all(props.assets.map(async (asset, assetIndex) => {
           const response = await fetch(assetUrl(asset.geometry), { signal: abort.signal });
           if (!response.ok) throw new Error(`Cannot load ${asset.name}`);
+          if (asset.category === "imported") {
+            const gltf = await new GLTFLoader().parseAsync(await response.arrayBuffer(), "");
+            gltf.scene.traverse((node) => {
+              if (!(node instanceof THREE.Mesh)) return;
+              const owned = new Set<{ dispose(): void }>([node.geometry]);
+              const materials = Array.isArray(node.material) ? node.material : [node.material];
+              for (const material of materials) {
+                owned.add(material);
+                for (const value of Object.values(material)) if (value instanceof THREE.Texture) owned.add(value);
+              }
+              owned.forEach((resource) => disposed ? resource.dispose() : resources.add(resource));
+            });
+            if (disposed) return;
+            const group = new THREE.Group();
+            // glTF is right-handed Y-up; cancel the stock world's Z reflection.
+            gltf.scene.scale.z *= -1;
+            group.add(gltf.scene);
+            templates.set(asset.file, group);
+            return;
+          }
           const parts: MeshPart[] = await response.json();
           const group = new THREE.Group();
           await Promise.all(parts.map(async (part) => {
@@ -282,6 +310,7 @@ export function TwinkleViewport(props: Props) {
         thumbRenderer.outputColorSpace = THREE.SRGBColorSpace;
         for (const [file, model] of templates) {
           const thumbScene = new THREE.Scene();
+          previewLighting(thumbScene);
           thumbScene.add(model.clone(true));
           const box = new THREE.Box3().setFromObject(model);
           const center = box.getCenter(new THREE.Vector3());

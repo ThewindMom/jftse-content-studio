@@ -1,0 +1,1505 @@
+{
+  "schema_version": 1,
+  "routes": [
+    {
+      "id": "property-keyframes",
+      "domain": "animation-rigging",
+      "label_vi": "Đặt keyframe cho thuộc tính",
+      "label_en": "Property keyframes",
+      "intent_aliases": [
+        "keyframe",
+        "đặt khóa chuyển động",
+        "animate thuộc tính",
+        "chuyển động theo frame",
+        "thay đổi theo mốc thời gian",
+        "đổi vị trí theo các mốc thời gian",
+        "property animation"
+      ],
+      "summary": "Insert a property value at a frame; keyframe_insert creates F-Curves and animation data when needed.",
+      "choose_when": "Represent a property changing at specified times.",
+      "do_not_assume": [
+        "The valid, animatable data_path for the actual object is not yet known; read the property and probe before insertion.",
+        "Keyframes alone do not prove that motion or rendered images meet the request."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.bpy_struct.html#bpy.types.bpy_struct.keyframe_insert",
+          "supports": "Insert a property keyframe, creating F-Curves and animation data as needed; accept data_path and frame."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.bpy_struct.html#bpy.types.bpy_struct.keyframe_insert"
+      ],
+      "next_queries": [
+        "bpy.types.bpy_struct.html#bpy.types.bpy_struct.keyframe_insert",
+        "bpy.types.Scene.html#bpy.types.Scene.frame_set"
+      ]
+    },
+    {
+      "id": "property-drivers",
+      "domain": "animation-rigging",
+      "label_vi": "Điều khiển thuộc tính bằng driver",
+      "label_en": "Property drivers",
+      "intent_aliases": [
+        "driver",
+        "liên kết tham số",
+        "thuộc tính phụ thuộc thuộc tính khác",
+        "scripted expression",
+        "property relationship"
+      ],
+      "summary": "A Driver controls a property; DriverVariable supplies inputs from RNA properties, transforms, distances between bones/objects or angles between bones.",
+      "choose_when": "Make a value depend on another input or expression instead of setting individual keyframes.",
+      "do_not_assume": [
+        "The data_path, variable sources and expression execution in the current runtime are not yet verified.",
+        "Valid expression syntax does not prove the absence of dependency cycles."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.bpy_struct.html#bpy.types.bpy_struct.driver_add",
+          "supports": "driver_add adds a driver to the property specified by path."
+        },
+        {
+          "ref": "bpy.types.DriverVariable.html#bpy.types.DriverVariable",
+          "supports": "Driver variables use RNA properties, transforms, angular differences, distances or context properties."
+        },
+        {
+          "ref": "bpy.types.Driver.html#bpy.types.Driver.expression",
+          "supports": "expression stores a Scripted Expression."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.bpy_struct.html#bpy.types.bpy_struct.driver_add",
+        "bpy.types.DriverVariable.html",
+        "bpy.types.Driver.html#bpy.types.Driver.expression"
+      ],
+      "next_queries": [
+        "bpy.types.bpy_struct.html#bpy.types.bpy_struct.driver_add",
+        "bpy.types.DriverVariable.html",
+        "bpy.types.DriverTarget.html"
+      ]
+    },
+    {
+      "id": "animation-curve-interpolation",
+      "domain": "animation-rigging",
+      "label_vi": "Nội suy và đánh giá đường cong chuyển động",
+      "label_en": "F-Curve interpolation and evaluation",
+      "intent_aliases": [
+        "nội suy",
+        "easing",
+        "đường cong chuyển động",
+        "F-Curve",
+        "interpolation",
+        "giá trị tại frame"
+      ],
+      "summary": "Keyframe.interpolation controls interpolation to the next keyframe; FCurve.evaluate returns the value at a frame.",
+      "choose_when": "Adjust transitions between keyframes or inspect numerical animation values at specific frames.",
+      "do_not_assume": [
+        "Do not select interpolation enums from memory; read the linked enum list and verify the runtime.",
+        "An individual F-Curve value does not prove the final result after constraints, drivers or blending."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.Keyframe.html#bpy.types.Keyframe.interpolation",
+          "supports": "Set the interpolation method for the F-Curve segment from this keyframe to the next."
+        },
+        {
+          "ref": "bpy.types.FCurve.html#bpy.types.FCurve.evaluate",
+          "supports": "evaluate(frame) returns the F-Curve value at the requested frame."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.Keyframe.html#bpy.types.Keyframe.interpolation",
+        "bpy.types.FCurve.html#bpy.types.FCurve.evaluate"
+      ],
+      "next_queries": [
+        "bpy.types.Keyframe.html",
+        "bpy_types_enum_items/beztriple_interpolation_mode_items.html",
+        "bpy.types.FCurve.html"
+      ]
+    },
+    {
+      "id": "actions-nla-composition",
+      "domain": "animation-rigging",
+      "label_vi": "Tổ chức, phối hợp và lặp Action",
+      "label_en": "Actions and NLA composition",
+      "intent_aliases": [
+        "Action",
+        "NLA",
+        "clip animation",
+        "trộn chuyển động",
+        "lặp chuyển động",
+        "repeat action",
+        "blend actions"
+      ],
+      "summary": "An Action contains F-Curves; NlaStrip references an Action and controls repetition and blending with other strips.",
+      "choose_when": "Reuse, repeat or combine existing animation segments.",
+      "do_not_assume": [
+        "The 5.2 source includes Action slots and layers; do not use a remembered older Action layout.",
+        "Compatibility of the Action slot with the target and the blending result remain unverified."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.Action.html#bpy.types.Action",
+          "supports": "An Action is a collection of animation F-Curves."
+        },
+        {
+          "ref": "bpy.types.NlaStrip.html#bpy.types.NlaStrip",
+          "supports": "NlaStrip references an existing Action and has action_slot."
+        },
+        {
+          "ref": "bpy.types.NlaStrip.html#bpy.types.NlaStrip.repeat",
+          "supports": "repeat sets the number of repetitions of the Action range."
+        },
+        {
+          "ref": "bpy.types.NlaStrip.html#bpy.types.NlaStrip.blend_type",
+          "supports": "REPLACE, COMBINE, ADD, SUBTRACT and MULTIPLY combine strip results."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.Action.html",
+        "bpy.types.NlaStrip.html"
+      ],
+      "next_queries": [
+        "bpy.types.Action.html#bpy.types.Action.slots",
+        "bpy.types.Action.html#bpy.types.Action.layers",
+        "bpy.types.NlaStrips.html",
+        "bpy.types.NlaStrip.html"
+      ]
+    },
+    {
+      "id": "armature-bone-hierarchy",
+      "domain": "animation-rigging",
+      "label_vi": "Tạo hệ xương Armature",
+      "label_en": "Armature bone hierarchy",
+      "intent_aliases": [
+        "hệ xương",
+        "rig nhân vật",
+        "armature",
+        "bone hierarchy",
+        "tạo bone",
+        "skeleton"
+      ],
+      "summary": "Armature contains a bone hierarchy, commonly used for character rigging; ArmatureEditBones.new creates an edit bone.",
+      "choose_when": "Create or edit a rig's bone structure.",
+      "do_not_assume": [
+        "EditBone belongs to Edit Mode; verify mode/context before creating or editing.",
+        "A bone structure does not prove mesh deformation bindings or correct weights."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.Armature.html#bpy.types.Armature",
+          "supports": "An Armature data-block contains a bone hierarchy, commonly used for character rigging."
+        },
+        {
+          "ref": "bpy.types.EditBone.html#bpy.types.EditBone",
+          "supports": "EditBone is a bone in an Armature data-block's Edit Mode."
+        },
+        {
+          "ref": "bpy.types.ArmatureEditBones.html#bpy.types.ArmatureEditBones.new",
+          "supports": "new(name) adds a bone and returns EditBone."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.Armature.html",
+        "bpy.types.EditBone.html",
+        "bpy.types.ArmatureEditBones.html#bpy.types.ArmatureEditBones.new"
+      ],
+      "next_queries": [
+        "bpy.types.Armature.html",
+        "bpy.types.ArmatureEditBones.html",
+        "info_gotchas_armatures_and_bones.html"
+      ]
+    },
+    {
+      "id": "bone-pose-control",
+      "domain": "animation-rigging",
+      "label_vi": "Điều khiển tư thế bone",
+      "label_en": "Pose bone control",
+      "intent_aliases": [
+        "pose",
+        "tư thế nhân vật",
+        "xoay bone",
+        "pose bone",
+        "bone transform"
+      ],
+      "summary": "PoseBone holds bone pose data; matrix_basis accesses location, scale and rotation relative to the parent and the bone's rest state.",
+      "choose_when": "Set or animate pose data on an existing armature.",
+      "do_not_assume": [
+        "Do not equate pose coordinates with world space or EditBone data; read each property's coordinate-space contract.",
+        "API documentation does not supply scene bone names or joint limits; inspect the actual scene."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.PoseBone.html#bpy.types.PoseBone",
+          "supports": "PoseBone is a channel defining bone pose data within a Pose."
+        },
+        {
+          "ref": "bpy.types.PoseBone.html#bpy.types.PoseBone.matrix_basis",
+          "supports": "matrix_basis accesses transforms relative to the parent and the bone's own rest state."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.PoseBone.html",
+        "bpy.types.PoseBone.html#bpy.types.PoseBone.matrix_basis"
+      ],
+      "next_queries": [
+        "bpy.types.Pose.html",
+        "bpy.types.PoseBone.html",
+        "bpy.types.bpy_struct.html#bpy.types.bpy_struct.keyframe_insert"
+      ]
+    },
+    {
+      "id": "copy-transform-constraint",
+      "domain": "animation-rigging",
+      "label_vi": "Ràng buộc sao chép transform",
+      "label_en": "Copy transforms constraint",
+      "intent_aliases": [
+        "copy transforms",
+        "sao chép transform",
+        "đi theo đối tượng",
+        "constraint transform",
+        "ràng buộc chuyển động"
+      ],
+      "summary": "CopyTransformsConstraint copies a target's full transform and provides modes for combining it with the existing transform.",
+      "choose_when": "An object or bone needs the transform of a specified target.",
+      "do_not_assume": [
+        "Do not select mix_mode, target space or owner space from memory; read this constraint's contract.",
+        "The documentation warns that some matrix combinations produce shear with rotation and non-uniform scale."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.CopyTransformsConstraint.html#bpy.types.CopyTransformsConstraint",
+          "supports": "Copy all transforms; describe mix_mode order and shear caveats."
+        },
+        {
+          "ref": "bpy.types.ObjectConstraints.html#bpy.types.ObjectConstraints.new",
+          "supports": "ObjectConstraints.new adds a constraint by type."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.CopyTransformsConstraint.html",
+        "bpy.types.ObjectConstraints.html#bpy.types.ObjectConstraints.new",
+        "bpy.types.PoseBoneConstraints.html#bpy.types.PoseBoneConstraints.new"
+      ],
+      "next_queries": [
+        "bpy.types.CopyTransformsConstraint.html",
+        "bpy.types.Constraint.html",
+        "bpy.types.ObjectConstraints.html"
+      ]
+    },
+    {
+      "id": "inverse-kinematics-chain",
+      "domain": "animation-rigging",
+      "label_vi": "Điều khiển chuỗi bone bằng IK",
+      "label_en": "Inverse kinematics constraint",
+      "intent_aliases": [
+        "IK",
+        "inverse kinematics",
+        "động học ngược",
+        "chuỗi xương",
+        "IK constraint"
+      ],
+      "summary": "KinematicConstraint provides inverse kinematics; chain_count sets the affected bone count and iterations limits solver iterations.",
+      "choose_when": "Control an IK relationship within a bone chain.",
+      "do_not_assume": [
+        "The API establishes IK parameters, not a complete rig for a particular character.",
+        "Read target, pole, chain and constraint spaces; solver convergence and the desired pose remain unproven."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.KinematicConstraint.html#bpy.types.KinematicConstraint",
+          "supports": "Describe inverse kinematics; chain_count=0 uses all bones and iterations limits solving."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.KinematicConstraint.html",
+        "bpy.types.PoseBoneConstraints.html#bpy.types.PoseBoneConstraints.new"
+      ],
+      "next_queries": [
+        "bpy.types.KinematicConstraint.html",
+        "bpy.types.PoseBoneConstraints.html",
+        "bpy.types.Constraint.html"
+      ]
+    },
+    {
+      "id": "motion-follow-path",
+      "domain": "animation-rigging",
+      "label_vi": "Chuyển động theo đường Curve",
+      "label_en": "Follow path motion",
+      "intent_aliases": [
+        "chạy theo đường",
+        "bay theo curve",
+        "camera theo đường",
+        "follow path",
+        "path animation"
+      ],
+      "summary": "FollowPathConstraint locks motion to a target Curve, with frame-relative offset or curve-length offset_factor and curve-following orientation.",
+      "choose_when": "Move an object or camera along a specified Curve.",
+      "do_not_assume": [
+        "This route does not supply a Curve, keyframes or axis configuration; establish these from scene data and relevant sources.",
+        "The name Follow Path does not establish constant speed; measure positions by frame when required."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.FollowPathConstraint.html#bpy.types.FollowPathConstraint",
+          "supports": "Lock motion to a Curve target; offset_factor follows length and use_curve_follow follows curve heading/banking."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.FollowPathConstraint.html"
+      ],
+      "next_queries": [
+        "bpy.types.FollowPathConstraint.html",
+        "bpy.types.ObjectConstraints.html",
+        "bpy.types.bpy_struct.html#bpy.types.bpy_struct.keyframe_insert"
+      ]
+    },
+    {
+      "id": "shape-key-values",
+      "domain": "animation-rigging",
+      "label_vi": "Tạo và điều khiển Shape Key",
+      "label_en": "Shape key creation and values",
+      "intent_aliases": [
+        "shape key",
+        "blend shape",
+        "trộn hình dạng",
+        "animate shape key",
+        "morph"
+      ],
+      "summary": "Object.shape_key_add creates a shape key, optionally from the current shape mix; ShapeKey.value gives its value at the current frame.",
+      "choose_when": "Create or animate shape keys for an identified object.",
+      "do_not_assume": [
+        "Object support, compatible topology and the existence of the target shape are not yet established.",
+        "ShapeKey.points does not support legacy Curve shape keys; choose accessors for the actual data type."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.Object.html#bpy.types.Object.shape_key_add",
+          "supports": "Add a shape key; from_mix creates the shape from the current mix."
+        },
+        {
+          "ref": "bpy.types.ShapeKey.html#bpy.types.ShapeKey.value",
+          "supports": "value is the shape-key value at the current frame."
+        },
+        {
+          "ref": "bpy.types.ShapeKey.html#bpy.types.ShapeKey",
+          "supports": "ShapeKey.points provides optimized access but excludes legacy Curve shape keys."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.Object.html#bpy.types.Object.shape_key_add",
+        "bpy.types.ShapeKey.html"
+      ],
+      "next_queries": [
+        "bpy.types.ShapeKey.html",
+        "bpy.types.Key.html",
+        "bpy.types.bpy_struct.html#bpy.types.bpy_struct.keyframe_insert"
+      ]
+    },
+    {
+      "id": "animation-bake-action",
+      "domain": "animation-rigging",
+      "label_vi": "Bake chuyển động thành Action",
+      "label_en": "Bake animation to an Action",
+      "intent_aliases": [
+        "bake animation",
+        "bake constraint",
+        "chốt chuyển động thành keyframe",
+        "visual keying",
+        "bake action"
+      ],
+      "summary": "nla.bake records selected objects' location/scale/rotation animation into an Action; visual_keying uses final transforms including constraints.",
+      "choose_when": "Record evaluated motion into an Action over a specified frame range.",
+      "do_not_assume": [
+        "This bakes animation, not necessarily simulation caches.",
+        "clear_constraints, clear_parents and use_current_action modify existing data; use them only within the requested scope.",
+        "Check selection, mode, poll and the resulting Action after baking."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.ops.nla.html#bpy.ops.nla.bake",
+          "supports": "Bake transform animation into an Action; visual_keying uses final transforms; document constraint/parent removal and writing to an existing Action."
+        }
+      ],
+      "api_refs": [
+        "bpy.ops.nla.html#bpy.ops.nla.bake"
+      ],
+      "next_queries": [
+        "bpy.ops.nla.html#bpy.ops.nla.bake",
+        "bpy.ops.html",
+        "bpy.types.Action.html"
+      ]
+    },
+    {
+      "id": "rigid-body-simulation",
+      "domain": "simulation",
+      "label_vi": "Mô phỏng vật thể rắn",
+      "label_en": "Rigid body simulation",
+      "intent_aliases": [
+        "rigid body",
+        "vật thể rắn",
+        "vật rơi va chạm",
+        "rigid collision",
+        "mô phỏng va chạm"
+      ],
+      "summary": "RigidBodyObject stores participant settings; RigidBodyWorld contains the simulation environment, participating collection, substeps and solver iterations.",
+      "choose_when": "Simulate objects with the Rigid Body system, collision settings and a shared environment.",
+      "do_not_assume": [
+        "Creating settings does not mean simulation has run or caches have been baked.",
+        "Check the participating collection, collision shapes, frame range, runtime and evaluated results."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.RigidBodyObject.html#bpy.types.RigidBodyObject",
+          "supports": "Store rigid-body participant settings including collision shape and damping."
+        },
+        {
+          "ref": "bpy.types.RigidBodyWorld.html#bpy.types.RigidBodyWorld",
+          "supports": "Define a self-contained environment; collection selects participants, while solver_iterations and substeps_per_frame trade accuracy for speed."
+        },
+        {
+          "ref": "bpy.ops.rigidbody.html#bpy.ops.rigidbody.object_add",
+          "supports": "Add the active object as a Rigid Body."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.RigidBodyObject.html",
+        "bpy.types.RigidBodyWorld.html",
+        "bpy.ops.rigidbody.html#bpy.ops.rigidbody.object_add"
+      ],
+      "next_queries": [
+        "bpy.types.RigidBodyObject.html",
+        "bpy.types.RigidBodyWorld.html",
+        "bpy.types.PointCache.html",
+        "bpy.ops.ptcache.html"
+      ]
+    },
+    {
+      "id": "rigid-body-joints",
+      "domain": "simulation",
+      "label_vi": "Ràng buộc giữa vật thể rắn",
+      "label_en": "Rigid body constraints",
+      "intent_aliases": [
+        "rigid body constraint",
+        "khớp vật lý",
+        "giới hạn góc vật lý",
+        "ràng buộc có thể đứt",
+        "physics joints"
+      ],
+      "summary": "RigidBodyConstraint affects objects in Rigid Body Simulation, with an impulse breaking threshold and angular limits.",
+      "choose_when": "Create physical constraints between rigid-body simulation participants.",
+      "do_not_assume": [
+        "These are distinct from pose/object transform constraints.",
+        "The route name does not verify joint types, endpoints or a working simulation; read type and probe."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.RigidBodyConstraint.html#bpy.types.RigidBodyConstraint",
+          "supports": "Constrain rigid-body objects; breaking_threshold is the breaking impulse and angular limits are available."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.RigidBodyConstraint.html"
+      ],
+      "next_queries": [
+        "bpy.types.RigidBodyConstraint.html",
+        "bpy.ops.rigidbody.html",
+        "bpy.types.RigidBodyWorld.html"
+      ]
+    },
+    {
+      "id": "cloth-simulation",
+      "domain": "simulation",
+      "label_vi": "Mô phỏng vải và va chạm vải",
+      "label_en": "Cloth simulation and collision",
+      "intent_aliases": [
+        "cloth",
+        "vải",
+        "rèm",
+        "mô phỏng vải",
+        "cloth collision",
+        "self collision"
+      ],
+      "summary": "ClothSettings defines cloth simulation parameters including bending stiffness; ClothCollisionSettings manages self-collision and collisions with other objects.",
+      "choose_when": "Use Cloth simulation and adjust its collision response.",
+      "do_not_assume": [
+        "A curtain keyword identifies a Cloth candidate; the source does not supply a curtain recipe or real-world material parameters.",
+        "Verify modifiers, geometry, caches and output frames; settings alone are not simulation proof."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.ClothSettings.html#bpy.types.ClothSettings",
+          "supports": "Define cloth bending models, stiffness and damping."
+        },
+        {
+          "ref": "bpy.types.ClothCollisionSettings.html#bpy.types.ClothCollisionSettings",
+          "supports": "Configure self-collision and object collision; collision_quality trades time for quality."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.ClothSettings.html",
+        "bpy.types.ClothCollisionSettings.html"
+      ],
+      "next_queries": [
+        "bpy.types.ClothModifier.html",
+        "bpy.types.ClothSettings.html",
+        "bpy.types.ClothCollisionSettings.html",
+        "bpy.types.PointCache.html"
+      ]
+    },
+    {
+      "id": "soft-body-simulation",
+      "domain": "simulation",
+      "label_vi": "Mô phỏng vật thể mềm",
+      "label_en": "Soft body simulation",
+      "intent_aliases": [
+        "soft body",
+        "vật thể mềm",
+        "mô phỏng đàn hồi",
+        "soft body collision"
+      ],
+      "summary": "SoftBodySettings exposes soft-body simulation settings including bending stiffness, collision damping and aerodynamic interaction.",
+      "choose_when": "Simulate an object with the Soft Body system.",
+      "do_not_assume": [
+        "The settings API does not provide suitable physical parameters for every material or topology.",
+        "Verify modifiers, colliders, frame evaluation and caches before claiming a working effect."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.SoftBodySettings.html#bpy.types.SoftBodySettings",
+          "supports": "Define object soft-body settings including bending stiffness, collision damping and aerodynamic interaction."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.SoftBodySettings.html"
+      ],
+      "next_queries": [
+        "bpy.types.SoftBodyModifier.html",
+        "bpy.types.SoftBodySettings.html",
+        "bpy.types.PointCache.html"
+      ]
+    },
+    {
+      "id": "fluid-liquid-simulation",
+      "domain": "simulation",
+      "label_vi": "Mô phỏng chất lỏng",
+      "label_en": "Liquid fluid simulation",
+      "intent_aliases": [
+        "chất lỏng",
+        "nước",
+        "liquid",
+        "fluid simulation",
+        "inflow",
+        "outflow"
+      ],
+      "summary": "FluidDomainSettings provides a LIQUID domain; FluidFlowSettings provides LIQUID flow with inflow, outflow or geometry behavior.",
+      "choose_when": "Explore liquid simulation using a Fluid domain and flow.",
+      "do_not_assume": [
+        "flow_source lists only NONE in this snapshot; do not invent additional enums from memory.",
+        "Domain/flow configuration does not create a simulation or baked water surface; inspect baking, caches and actual results.",
+        "A water keyword does not establish a need for simulation; compare supported geometry/material routes for still-image requirements."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.FluidDomainSettings.html#bpy.types.FluidDomainSettings.domain_type",
+          "supports": "LIQUID creates a liquid domain; GAS creates a gas domain."
+        },
+        {
+          "ref": "bpy.types.FluidFlowSettings.html#bpy.types.FluidFlowSettings",
+          "supports": "flow_type=LIQUID adds liquid; flow_behavior includes INFLOW, OUTFLOW and GEOMETRY; flow_source lists only NONE."
+        },
+        {
+          "ref": "bpy.ops.fluid.html#bpy.ops.fluid.bake_all",
+          "supports": "bake_all bakes the entire Fluid Simulation."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.FluidDomainSettings.html",
+        "bpy.types.FluidFlowSettings.html",
+        "bpy.ops.fluid.html#bpy.ops.fluid.bake_all"
+      ],
+      "next_queries": [
+        "bpy.types.FluidModifier.html",
+        "bpy.types.FluidDomainSettings.html",
+        "bpy.types.FluidFlowSettings.html",
+        "bpy.types.FluidEffectorSettings.html",
+        "bpy.ops.fluid.html"
+      ]
+    },
+    {
+      "id": "fluid-smoke-fire-simulation",
+      "domain": "simulation",
+      "label_vi": "Mô phỏng khói và lửa",
+      "label_en": "Smoke and fire simulation",
+      "intent_aliases": [
+        "khói",
+        "lửa",
+        "smoke",
+        "fire",
+        "gas simulation",
+        "fire and smoke"
+      ],
+      "summary": "Fluid provides a GAS domain and SMOKE, FIRE or BOTH flow; domain parameters control density/heat buoyancy and combustion rate.",
+      "choose_when": "Simulate smoke or fire over time using Fluid.",
+      "do_not_assume": [
+        "Simulation parameters alone do not establish shading or flame appearance.",
+        "Current build support, completed baking and valid caches are unverified; probe and inspect outputs."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.FluidDomainSettings.html#bpy.types.FluidDomainSettings.domain_type",
+          "supports": "GAS creates a gas domain."
+        },
+        {
+          "ref": "bpy.types.FluidFlowSettings.html#bpy.types.FluidFlowSettings.flow_type",
+          "supports": "SMOKE adds smoke, FIRE adds fire and BOTH adds both."
+        },
+        {
+          "ref": "bpy.types.FluidDomainSettings.html#bpy.types.FluidDomainSettings",
+          "supports": "alpha and beta control buoyancy from smoke density/heat; burning_rate controls combustion rate."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.FluidDomainSettings.html",
+        "bpy.types.FluidFlowSettings.html#bpy.types.FluidFlowSettings.flow_type"
+      ],
+      "next_queries": [
+        "bpy.types.FluidModifier.html",
+        "bpy.types.FluidDomainSettings.html",
+        "bpy.types.FluidFlowSettings.html",
+        "bpy.ops.fluid.html"
+      ]
+    },
+    {
+      "id": "physics-force-fields",
+      "domain": "simulation",
+      "label_vi": "Trường lực, gió và nhiễu động",
+      "label_en": "Physics force fields",
+      "intent_aliases": [
+        "gió",
+        "trường lực",
+        "wind",
+        "force field",
+        "turbulence",
+        "vortex",
+        "lực cản"
+      ],
+      "summary": "FieldSettings.type distinguishes WIND along local Z, TURBULENCE noise, VORTEX rotation and DRAG that reduces movement.",
+      "choose_when": "Select a candidate force for a compatible simulation system.",
+      "do_not_assume": [
+        "Do not assume every object responds to FieldSettings; read the target simulation and effector weights.",
+        "WIND is described along local Z; inspect transforms and results instead of assuming a world axis."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.FieldSettings.html#bpy.types.FieldSettings.type",
+          "supports": "Describe WIND, TURBULENCE, VORTEX, DRAG and other force-field enum values."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.FieldSettings.html#bpy.types.FieldSettings.type"
+      ],
+      "next_queries": [
+        "bpy.types.FieldSettings.html",
+        "bpy.types.EffectorWeights.html"
+      ]
+    },
+    {
+      "id": "dynamic-paint-canvas",
+      "domain": "simulation",
+      "label_vi": "Dynamic Paint với canvas và brush",
+      "label_en": "Dynamic Paint canvas and brush",
+      "intent_aliases": [
+        "dynamic paint",
+        "vệt sơn",
+        "canvas",
+        "brush simulation",
+        "wet paint",
+        "sơn động"
+      ],
+      "summary": "DynamicPaintSurface is a canvas surface layer with a brush collection, influence and wet-paint color spreading speed.",
+      "choose_when": "Explore Dynamic Paint brush/canvas interaction.",
+      "do_not_assume": [
+        "surface_type lists only PAINT in this snapshot; do not supply other modes from memory.",
+        "These parameters do not provide a complete paint-trail or baking recipe; read modifier/settings contracts and verify the runtime."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.DynamicPaintSurface.html#bpy.types.DynamicPaintSurface",
+          "supports": "A canvas surface selects brushes with brush_collection and controls wet-paint mixing with color_spread_speed."
+        },
+        {
+          "ref": "bpy.types.DynamicPaintSurface.html#bpy.types.DynamicPaintSurface.surface_type",
+          "supports": "The snapshot's surface_type enum contains only PAINT."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.DynamicPaintSurface.html"
+      ],
+      "next_queries": [
+        "bpy.types.DynamicPaintModifier.html",
+        "bpy.types.DynamicPaintCanvasSettings.html",
+        "bpy.types.DynamicPaintBrushSettings.html",
+        "bpy.types.DynamicPaintSurface.html",
+        "bpy.ops.dpaint.html"
+      ]
+    },
+    {
+      "id": "particle-system-settings",
+      "domain": "simulation",
+      "label_vi": "Thiết lập hệ hạt Particle",
+      "label_en": "Particle system settings",
+      "intent_aliases": [
+        "particle",
+        "hệ hạt",
+        "particle emitter",
+        "particle hair",
+        "phát hạt"
+      ],
+      "summary": "ParticleSettings can be shared across particle systems; the snapshot's type enum includes EMITTER and HAIR.",
+      "choose_when": "Control a Particle System identified in the supplied source or scene.",
+      "do_not_assume": [
+        "Do not equate particle HAIR with all hair systems or Geometry Nodes; read the correct data type.",
+        "EMITTER/HAIR establish enum values, not motion, rendering or cache recipes for a particular effect."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.ParticleSettings.html#bpy.types.ParticleSettings",
+          "supports": "Settings can be reused by multiple particle systems."
+        },
+        {
+          "ref": "bpy.types.ParticleSettings.html#bpy.types.ParticleSettings.type",
+          "supports": "type includes EMITTER and HAIR; the anchor does not explain their workflows."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.ParticleSettings.html",
+        "bpy.types.ParticleSystem.html"
+      ],
+      "next_queries": [
+        "bpy.types.ParticleSettings.html",
+        "bpy.types.ParticleSystem.html",
+        "bpy.types.PointCache.html"
+      ]
+    },
+    {
+      "id": "physics-cache-baking",
+      "domain": "simulation",
+      "label_vi": "Bake và kiểm tra cache vật lý",
+      "label_en": "Physics cache baking and inspection",
+      "intent_aliases": [
+        "bake physics",
+        "cache mô phỏng",
+        "bake cache",
+        "point cache",
+        "kiểm tra cache"
+      ],
+      "summary": "PointCache exposes physics cache paths, frame ranges and is_baked/is_baking; ptcache.bake is a physics baking operator.",
+      "choose_when": "Execute or verify caches for a simulation using PointCache.",
+      "do_not_assume": [
+        "ptcache.bake is not universal; Fluid has separate baking operators.",
+        "Distinguish FINISHED, is_baked and actual cache/frame data; no single signal proves the complete result."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.PointCache.html#bpy.types.PointCache",
+          "supports": "PointCache is the active physics cache, with filepath, frame_start/end, is_baked/is_baking and skipped-frame status."
+        },
+        {
+          "ref": "bpy.ops.ptcache.html#bpy.ops.ptcache.bake",
+          "supports": "The operator is described as Bake physics."
+        },
+        {
+          "ref": "bpy.ops.fluid.html#bpy.ops.fluid.bake_all",
+          "supports": "Fluid has a separate operator for baking the entire simulation."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.PointCache.html",
+        "bpy.ops.ptcache.html#bpy.ops.ptcache.bake"
+      ],
+      "next_queries": [
+        "bpy.types.PointCache.html",
+        "bpy.ops.ptcache.html",
+        "bpy.ops.html"
+      ]
+    },
+    {
+      "id": "blend-file-open-save",
+      "domain": "files-assets",
+      "label_vi": "Mở và lưu dự án .blend",
+      "label_en": "Open and save blend files",
+      "intent_aliases": [
+        "mở blend",
+        "lưu blend",
+        "save scene",
+        "open blend file",
+        "dự án Blender"
+      ],
+      "summary": "wm.open_mainfile opens a Blender file; wm.save_as_mainfile saves the current file to a specified location.",
+      "choose_when": "Load a .blend project or save a script's output as .blend.",
+      "do_not_assume": [
+        "Opening a file replaces current data; identify the requested input and output files.",
+        "Do not enable use_scripts or overwrite unrelated files automatically; read load/save options and inspect the created file."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.ops.wm.html#bpy.ops.wm.open_mainfile",
+          "supports": "Open a Blender file with load_ui and use_scripts options."
+        },
+        {
+          "ref": "bpy.ops.wm.html#bpy.ops.wm.save_as_mainfile",
+          "supports": "Save the current file with copy, compress and relative_remap options."
+        }
+      ],
+      "api_refs": [
+        "bpy.ops.wm.html#bpy.ops.wm.open_mainfile",
+        "bpy.ops.wm.html#bpy.ops.wm.save_as_mainfile"
+      ],
+      "next_queries": [
+        "bpy.ops.wm.html#bpy.ops.wm.open_mainfile",
+        "bpy.ops.wm.html#bpy.ops.wm.save_as_mainfile",
+        "bpy.path.html"
+      ]
+    },
+    {
+      "id": "blend-library-datablocks",
+      "domain": "files-assets",
+      "label_vi": "Link, append và ghi thư viện data-block",
+      "label_en": "Blend library linking and appending",
+      "intent_aliases": [
+        "append",
+        "link library",
+        "thư viện blend",
+        "lấy object từ file khác",
+        "data-block library"
+      ],
+      "summary": "BlendDataLibraries.load exposes available data-block names and links/appends selected names when its context ends; write saves selected data-blocks and indirect references.",
+      "choose_when": "Reuse part of another .blend file or package data-blocks as a library.",
+      "do_not_assume": [
+        "Treat context-manager input as read-only and place selected names in its output as documented.",
+        "Choose link/append and paths according to the request; loading a data-block does not prove collection membership."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.BlendDataLibraries.html#bpy.types.BlendDataLibraries.load",
+          "supports": "The context manager returns input/output; output names are linked or appended on exit and input is read-only."
+        },
+        {
+          "ref": "bpy.types.BlendDataLibraries.html#bpy.types.BlendDataLibraries.write",
+          "supports": "Write data-blocks to a blend file, expanding indirectly referenced data-blocks."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.BlendDataLibraries.html#bpy.types.BlendDataLibraries.load",
+        "bpy.types.BlendDataLibraries.html#bpy.types.BlendDataLibraries.write"
+      ],
+      "next_queries": [
+        "bpy.types.BlendDataLibraries.html",
+        "bpy.types.CollectionObjects.html",
+        "bpy.path.html#bpy.path.abspath"
+      ]
+    },
+    {
+      "id": "asset-metadata-marking",
+      "domain": "files-assets",
+      "label_vi": "Đánh dấu asset và gắn metadata",
+      "label_en": "Asset marking and metadata",
+      "intent_aliases": [
+        "asset",
+        "asset browser",
+        "tạo thư viện asset",
+        "asset metadata",
+        "gắn tag",
+        "catalog asset"
+      ],
+      "summary": "ID.asset_mark enables data-block reuse through the Asset Browser; AssetMetaData stores description, author, tags and a catalog identifier.",
+      "choose_when": "Mark a reusable data-block and prepare asset metadata.",
+      "do_not_assume": [
+        "Marking an asset does not establish library configuration or publication.",
+        "catalog_id must meet the source's UUID requirement; a catalog name is not its ID."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.types.ID.html#bpy.types.ID.asset_mark",
+          "supports": "Enable reuse through the Asset Browser with previews, descriptions and tags."
+        },
+        {
+          "ref": "bpy.types.AssetMetaData.html#bpy.types.AssetMetaData",
+          "supports": "Metadata includes author, description and catalog_id; catalog_id must be an RFC4122 UUID."
+        }
+      ],
+      "api_refs": [
+        "bpy.types.ID.html#bpy.types.ID.asset_mark",
+        "bpy.types.AssetMetaData.html"
+      ],
+      "next_queries": [
+        "bpy.types.ID.html#bpy.types.ID.asset_mark",
+        "bpy.types.AssetMetaData.html",
+        "bpy.types.BlendDataLibraries.html"
+      ]
+    },
+    {
+      "id": "obj-stl-exchange",
+      "domain": "files-assets",
+      "label_vi": "Nhập và xuất OBJ hoặc STL",
+      "label_en": "OBJ and STL file exchange",
+      "intent_aliases": [
+        "OBJ",
+        "STL",
+        "nhập mesh",
+        "xuất obj",
+        "xuất stl",
+        "Wavefront"
+      ],
+      "summary": "wm.obj_import loads Wavefront OBJ scenes; wm operators import/export OBJ and STL with scale, axis and object-selection parameters.",
+      "choose_when": "Exchange files in OBJ or STL format.",
+      "do_not_assume": [
+        "Successful STL export does not prove printability or watertightness.",
+        "Read scale, axes and modifier options and verify runtime operators; do not use remembered older operator names."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.ops.wm.html#bpy.ops.wm.obj_import",
+          "supports": "Load a Wavefront OBJ scene with scale and forward/up axes."
+        },
+        {
+          "ref": "bpy.ops.wm.html#bpy.ops.wm.obj_export",
+          "supports": "OBJ export declares export_selected_objects, apply_modifiers, scale and axes."
+        },
+        {
+          "ref": "bpy.ops.wm.html#bpy.ops.wm.stl_import",
+          "supports": "Import STL as an object."
+        },
+        {
+          "ref": "bpy.ops.wm.html#bpy.ops.wm.stl_export",
+          "supports": "Save the scene as an STL file."
+        }
+      ],
+      "api_refs": [
+        "bpy.ops.wm.html#bpy.ops.wm.obj_import",
+        "bpy.ops.wm.html#bpy.ops.wm.obj_export",
+        "bpy.ops.wm.html#bpy.ops.wm.stl_import",
+        "bpy.ops.wm.html#bpy.ops.wm.stl_export"
+      ],
+      "next_queries": [
+        "bpy.ops.wm.html#bpy.ops.wm.obj_import",
+        "bpy.ops.wm.html#bpy.ops.wm.obj_export",
+        "bpy.ops.wm.html#bpy.ops.wm.stl_import",
+        "bpy.ops.wm.html#bpy.ops.wm.stl_export"
+      ]
+    },
+    {
+      "id": "gltf-file-exchange",
+      "domain": "files-assets",
+      "label_vi": "Nhập và xuất glTF 2.0",
+      "label_en": "glTF 2.0 file exchange",
+      "intent_aliases": [
+        "glTF",
+        "GLB",
+        "gltf 2.0",
+        "xuất glb",
+        "nhập gltf"
+      ],
+      "summary": "import_scene.gltf loads glTF 2.0; export_scene.gltf exports scenes with documented geometry, material, animation, skin and morph options.",
+      "choose_when": "Exchange glTF/GLB or inspect glTF 2.0 transfer options.",
+      "do_not_assume": [
+        "Export options do not guarantee faithful transfer of every shader, constraint or animation.",
+        "Verify operator registration, read the actual export_format enum and validate the file in a suitable consumer."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.ops.import_scene.html#bpy.ops.import_scene.gltf",
+          "supports": "Import glTF 2.0 with glb/gltf filters."
+        },
+        {
+          "ref": "bpy.ops.export_scene.html#bpy.ops.export_scene.gltf",
+          "supports": "Export a scene to glTF 2.0 with export_animations, export_skins and export_morph parameters."
+        }
+      ],
+      "api_refs": [
+        "bpy.ops.import_scene.html#bpy.ops.import_scene.gltf",
+        "bpy.ops.export_scene.html#bpy.ops.export_scene.gltf"
+      ],
+      "next_queries": [
+        "bpy.ops.import_scene.html#bpy.ops.import_scene.gltf",
+        "bpy.ops.export_scene.html#bpy.ops.export_scene.gltf"
+      ]
+    },
+    {
+      "id": "fbx-file-exchange",
+      "domain": "files-assets",
+      "label_vi": "Nhập và xuất FBX",
+      "label_en": "FBX file exchange",
+      "intent_aliases": [
+        "FBX",
+        "xuất fbx",
+        "nhập fbx",
+        "fbx animation",
+        "fbx armature"
+      ],
+      "summary": "import_scene.fbx loads FBX; export_scene.fbx writes FBX with object, axis, armature and animation-baking options.",
+      "choose_when": "Exchange files in FBX format.",
+      "do_not_assume": [
+        "The documentation warns that some importers do not support scaled armatures; verify the target consumer.",
+        "Default bake/axis/bone options do not guarantee correctness; read parameters and validate by re-import or target consumer."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.ops.import_scene.html#bpy.ops.import_scene.fbx",
+          "supports": "Import FBX with animation and bone-orientation options."
+        },
+        {
+          "ref": "bpy.ops.export_scene.html#bpy.ops.export_scene.fbx",
+          "supports": "Write FBX with bake_anim and armature options; global_scale warns about importer support for scaled armatures."
+        }
+      ],
+      "api_refs": [
+        "bpy.ops.import_scene.html#bpy.ops.import_scene.fbx",
+        "bpy.ops.export_scene.html#bpy.ops.export_scene.fbx"
+      ],
+      "next_queries": [
+        "bpy.ops.import_scene.html#bpy.ops.import_scene.fbx",
+        "bpy.ops.export_scene.html#bpy.ops.export_scene.fbx"
+      ]
+    },
+    {
+      "id": "usd-scene-exchange",
+      "domain": "files-assets",
+      "label_vi": "Nhập và xuất USD scene",
+      "label_en": "USD scene exchange",
+      "intent_aliases": [
+        "USD",
+        "USDZ",
+        "USD stage",
+        "xuất usd",
+        "nhập usd"
+      ],
+      "summary": "wm.usd_import imports a USD stage into the scene; wm.usd_export writes a USD archive with geometry, light, camera, material, animation and unit options.",
+      "choose_when": "Exchange USD scenes or inspect source-documented USDZ export options.",
+      "do_not_assume": [
+        "USDZ parameters do not establish compatibility with every target consumer; read the options and test.",
+        "Verify USD build support and exported/imported scene content, including units and material conversion."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.ops.wm.html#bpy.ops.wm.usd_import",
+          "supports": "Import a USD stage with camera, light, geometry, skeleton and material options."
+        },
+        {
+          "ref": "bpy.ops.wm.html#bpy.ops.wm.usd_export",
+          "supports": "Export a USD archive; the signature includes export_animation, convert_scene_units and usdz_downscale_size."
+        }
+      ],
+      "api_refs": [
+        "bpy.ops.wm.html#bpy.ops.wm.usd_import",
+        "bpy.ops.wm.html#bpy.ops.wm.usd_export"
+      ],
+      "next_queries": [
+        "bpy.ops.wm.html#bpy.ops.wm.usd_import",
+        "bpy.ops.wm.html#bpy.ops.wm.usd_export",
+        "bpy.app.html#bpy.app.build_options"
+      ]
+    },
+    {
+      "id": "alembic-archive-exchange",
+      "domain": "files-assets",
+      "label_vi": "Nhập và xuất Alembic archive",
+      "label_en": "Alembic archive exchange",
+      "intent_aliases": [
+        "Alembic",
+        "ABC",
+        "xuất abc",
+        "nhập abc",
+        "alembic archive"
+      ],
+      "summary": "wm.alembic_import loads Alembic archives; wm.alembic_export writes scenes with frame ranges, transform/geometry samples and data options.",
+      "choose_when": "Exchange Alembic files or inspect frame-range scene export to this archive format.",
+      "do_not_assume": [
+        "The API does not prove preservation of every Blender data type; verify the required fields.",
+        "as_background_job does not guarantee operation in every CLI context; probe operators/build and inspect output files."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.ops.wm.html#bpy.ops.wm.alembic_import",
+          "supports": "Load an Alembic archive with set_frame_range and as_background_job."
+        },
+        {
+          "ref": "bpy.ops.wm.html#bpy.ops.wm.alembic_export",
+          "supports": "Export an Alembic archive with start/end, xsamples, gsamples and UV, normal, hair and particle options."
+        }
+      ],
+      "api_refs": [
+        "bpy.ops.wm.html#bpy.ops.wm.alembic_import",
+        "bpy.ops.wm.html#bpy.ops.wm.alembic_export"
+      ],
+      "next_queries": [
+        "bpy.ops.wm.html#bpy.ops.wm.alembic_import",
+        "bpy.ops.wm.html#bpy.ops.wm.alembic_export",
+        "bpy.app.html#bpy.app.build_options"
+      ]
+    },
+    {
+      "id": "external-assets-paths-pack",
+      "domain": "files-assets",
+      "label_vi": "Đường dẫn và đóng gói tài nguyên ngoài",
+      "label_en": "External paths and packed resources",
+      "intent_aliases": [
+        "pack assets",
+        "đóng gói texture",
+        "file phụ thuộc",
+        "relative path",
+        "unpack",
+        "thiếu texture"
+      ],
+      "summary": "blend_paths lists external .blend references; abspath resolves // paths; pack_all/unpack_all pack or extract .blend resources.",
+      "choose_when": "Audit resource paths or move between packed and external resources.",
+      "do_not_assume": [
+        "A path list does not prove file existence or content correctness; inspect required resources.",
+        "Unpack modes write external files; use only requested destinations and behavior."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.utils.html#bpy.utils.blend_paths",
+          "supports": "List external paths referenced by the loaded .blend."
+        },
+        {
+          "ref": "bpy.path.html#bpy.path.abspath",
+          "supports": "Resolve // paths relative to the blend file or library."
+        },
+        {
+          "ref": "bpy.ops.file.html#bpy.ops.file.pack_all",
+          "supports": "Pack used external files into the .blend."
+        },
+        {
+          "ref": "bpy.ops.file.html#bpy.ops.file.unpack_all",
+          "supports": "Unpack resources using the selected method."
+        }
+      ],
+      "api_refs": [
+        "bpy.utils.html#bpy.utils.blend_paths",
+        "bpy.path.html#bpy.path.abspath",
+        "bpy.ops.file.html#bpy.ops.file.pack_all",
+        "bpy.ops.file.html#bpy.ops.file.unpack_all"
+      ],
+      "next_queries": [
+        "bpy.utils.html#bpy.utils.blend_paths",
+        "bpy.path.html",
+        "bpy.ops.file.html#bpy.ops.file.pack_all",
+        "bpy.ops.file.html#bpy.ops.file.unpack_all"
+      ]
+    },
+    {
+      "id": "runtime-build-context-inspection",
+      "domain": "integration-gpu",
+      "label_vi": "Kiểm tra runtime, build và background context",
+      "label_en": "Runtime, build and context inspection",
+      "intent_aliases": [
+        "phiên bản Blender",
+        "background",
+        "headless",
+        "build options",
+        "operator poll",
+        "kiểm tra runtime"
+      ],
+      "summary": "bpy.app exposes version, background state and build options; context depends on the accessed area and operators need suitable context.",
+      "choose_when": "Inspect API, engine and operator availability in the running Blender before CLI implementation.",
+      "do_not_assume": [
+        "Documented build_options describe the documentation build; inspect the actual runtime.",
+        "No exception does not establish success: operators can return CANCELLED without raising."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.app.html#bpy.app.version",
+          "supports": "version returns a major/minor/micro tuple."
+        },
+        {
+          "ref": "bpy.app.html#bpy.app.background",
+          "supports": "background is True when started without a UI using -b."
+        },
+        {
+          "ref": "bpy.app.html#bpy.app.build_options",
+          "supports": "The snapshot exposes build options including fluid, usd, alembic and cycles."
+        },
+        {
+          "ref": "bpy.ops.html",
+          "supports": "Wrong context may raise RuntimeError; poll helps check it and CANCELLED may not raise."
+        },
+        {
+          "ref": "bpy.context.html",
+          "supports": "Available context members depend on the accessed area."
+        }
+      ],
+      "api_refs": [
+        "bpy.app.html",
+        "bpy.ops.html",
+        "bpy.context.html"
+      ],
+      "next_queries": [
+        "bpy.app.html",
+        "bpy.ops.html",
+        "bpy.types.Context.html"
+      ]
+    },
+    {
+      "id": "application-event-handlers",
+      "domain": "integration-gpu",
+      "label_vi": "Callback theo sự kiện ứng dụng",
+      "label_en": "Application event handlers",
+      "intent_aliases": [
+        "handler",
+        "frame change",
+        "load post",
+        "callback Blender",
+        "sự kiện nạp file",
+        "sự kiện đổi frame"
+      ],
+      "summary": "bpy.app.handlers provides callback lists; persistent retains callbacks when another file is loaded.",
+      "choose_when": "Run logic on frame events or Blender load/render lifecycle events.",
+      "do_not_assume": [
+        "Handlers are removed on file load by default; persistent is a separate choice.",
+        "The source warns that simultaneous handler data changes and render/viewport access can crash; read the warning and choose appropriate synchronization."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.app.handlers.html",
+          "supports": "Provide callback lists including frame_change_pre/load_post, with warnings about changing data during rendering."
+        },
+        {
+          "ref": "bpy.app.handlers.html#bpy.app.handlers.persistent",
+          "supports": "A decorator retains callbacks across file loads."
+        }
+      ],
+      "api_refs": [
+        "bpy.app.handlers.html"
+      ],
+      "next_queries": [
+        "bpy.app.handlers.html",
+        "info_gotchas_threading.html"
+      ]
+    },
+    {
+      "id": "application-timer-callbacks",
+      "domain": "integration-gpu",
+      "label_vi": "Hẹn và lặp callback trong ứng dụng",
+      "label_en": "Application timers",
+      "intent_aliases": [
+        "timer",
+        "chạy sau vài giây",
+        "callback định kỳ",
+        "application timer",
+        "lặp callback"
+      ],
+      "summary": "bpy.app.timers.register calls a function after a delay; return a float to schedule the next call or None to unregister.",
+      "choose_when": "Schedule callbacks within a Blender process that remains running.",
+      "do_not_assume": [
+        "Timers do not run after the CLI process exits and are not an external scheduler.",
+        "Do not substitute remembered Python threads that access Blender data; read the separate threading limitations."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.app.timers.html#bpy.app.timers.register",
+          "supports": "Register a no-argument function with first_interval in seconds; None unregisters and a float sets the next delay."
+        },
+        {
+          "ref": "info_gotchas_threading.html",
+          "supports": "Python integration is not thread-safe; the source limits threading and discusses multiprocessing for Blender-independent code."
+        }
+      ],
+      "api_refs": [
+        "bpy.app.timers.html#bpy.app.timers.register"
+      ],
+      "next_queries": [
+        "bpy.app.timers.html",
+        "info_gotchas_threading.html"
+      ]
+    },
+    {
+      "id": "rna-property-notifications",
+      "domain": "integration-gpu",
+      "label_vi": "Nhận thông báo thay đổi RNA property",
+      "label_en": "RNA property message bus",
+      "intent_aliases": [
+        "message bus",
+        "msgbus",
+        "theo dõi property",
+        "RNA notification",
+        "property change callback"
+      ],
+      "summary": "bpy.msgbus receives RNA property-change notifications; subscribe_rna registers callbacks for a property or struct/property pair.",
+      "choose_when": "Respond to property changes made through the Python data API or UI fields.",
+      "do_not_assume": [
+        "Animation and object movement in the 3D Viewport do not trigger msgbus according to the source; select another route for those events.",
+        "Loading another blend clears subscriptions; msgbus PERSISTENT preserves ID remapping, not file-load subscriptions."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.msgbus.html",
+          "supports": "Receive RNA/Python/UI field changes, excluding animation and viewport movement; callbacks are deferred until after operators."
+        },
+        {
+          "ref": "bpy.msgbus.html#bpy.msgbus.subscribe_rna",
+          "supports": "Subscribe to notifications; file loads clear subscriptions and PERSISTENT preserves ID remapping."
+        }
+      ],
+      "api_refs": [
+        "bpy.msgbus.html#bpy.msgbus.subscribe_rna"
+      ],
+      "next_queries": [
+        "bpy.msgbus.html",
+        "bpy.app.handlers.html"
+      ]
+    },
+    {
+      "id": "custom-operators-properties-ui",
+      "domain": "integration-gpu",
+      "label_vi": "Mở rộng operator, property và UI",
+      "label_en": "Custom operators, properties and UI",
+      "intent_aliases": [
+        "custom operator",
+        "custom property",
+        "addon panel",
+        "bảng điều khiển",
+        "mở rộng Blender",
+        "đăng ký class"
+      ],
+      "summary": "bpy.utils.register_class registers Blender subclasses; bpy.props defines their properties; Panel contains UI elements.",
+      "choose_when": "Create reusable operators/properties or controls inside Blender.",
+      "do_not_assume": [
+        "A Panel is UI; class creation does not establish display or interaction in background -b.",
+        "Assign bpy.props results to registered classes rather than using them directly; property callbacks may run in threaded contexts."
+      ],
+      "evidence": [
+        {
+          "ref": "bpy.utils.html#bpy.utils.register_class",
+          "supports": "Register supported subclasses including Operator, Panel, PropertyGroup and Node."
+        },
+        {
+          "ref": "bpy.props.html",
+          "supports": "Define properties for registered classes; avoid direct use and observe callback threading warnings."
+        },
+        {
+          "ref": "bpy.types.Panel.html#bpy.types.Panel",
+          "supports": "Panel contains UI elements; the snapshot leaves context/region/space combinations as a TODO under bl_context."
+        }
+      ],
+      "api_refs": [
+        "bpy.utils.html#bpy.utils.register_class",
+        "bpy.props.html",
+        "bpy.types.Operator.html",
+        "bpy.types.Panel.html"
+      ],
+      "next_queries": [
+        "bpy.utils.html#bpy.utils.register_class",
+        "bpy.props.html",
+        "bpy.types.Operator.html",
+        "bpy.types.Panel.html",
+        "bpy.ops.html"
+      ]
+    },
+    {
+      "id": "gpu-drawing-offscreen",
+      "domain": "integration-gpu",
+      "label_vi": "Vẽ GPU và buffer ngoài màn hình",
+      "label_en": "GPU drawing and offscreen buffers",
+      "intent_aliases": [
+        "GPU offscreen",
+        "vẽ GPU",
+        "offscreen buffer",
+        "shader drawing",
+        "GPU batch",
+        "viewport texture"
+      ],
+      "summary": "gpu exposes GPU wrappers, geometry batches and GPUOffScreen; the 5.2 source includes gpu.init for background initialization.",
+      "choose_when": "Draw through the GPU API, process offscreen buffers or render a 3D View into a texture.",
+      "do_not_assume": [
+        "GPU use is not necessarily UI-only: gpu.init documents background use but may raise SystemError.",
+        "GPUOffScreen.draw_view3d still requires SpaceView3D and Region; do not assume they exist in -b.",
+        "Initialize shader uniforms explicitly; freeing offscreen resources makes framebuffer, texture and render objects inaccessible."
+      ],
+      "evidence": [
+        {
+          "ref": "gpu.html",
+          "supports": "Expose GPU wrappers and geometry batches with vertex/index buffers."
+        },
+        {
+          "ref": "gpu.html#gpu.init",
+          "supports": "Initialize the GPU for background use; failure raises SystemError."
+        },
+        {
+          "ref": "gpu.types.html#gpu.types.GPUOffScreen",
+          "supports": "Access offscreen buffers; draw_view3d needs a scene, view layer, SpaceView3D and Region."
+        },
+        {
+          "ref": "gpu.shader.html",
+          "supports": "Initialize shader uniforms to avoid retaining earlier values."
+        },
+        {
+          "ref": "gpu.types.html#gpu.types.GPUOffScreen.free",
+          "supports": "Freeing offscreen resources makes associated framebuffer, texture and render objects inaccessible."
+        }
+      ],
+      "api_refs": [
+        "gpu.html#gpu.init",
+        "gpu.types.html#gpu.types.GPUOffScreen",
+        "gpu_extras.batch.html#gpu_extras.batch.batch_for_shader"
+      ],
+      "next_queries": [
+        "gpu.html",
+        "gpu.shader.html",
+        "gpu.types.html#gpu.types.GPUOffScreen",
+        "gpu_extras.batch.html"
+      ]
+    },
+    {
+      "id": "gpu-compute-dispatch",
+      "domain": "integration-gpu",
+      "label_vi": "Compute shader trên GPU",
+      "label_en": "GPU compute shaders",
+      "intent_aliases": [
+        "compute shader",
+        "GPU compute",
+        "GLSL compute",
+        "dispatch GPU",
+        "tính toán GPU"
+      ],
+      "summary": "GPUShaderCreateInfo accepts GLSL compute source; create_from_info creates a shader; gpu.compute.dispatch runs workgroup dimensions and capabilities reports support.",
+      "choose_when": "Use compute shaders directly through Blender's GPU API.",
+      "do_not_assume": [
+        "The name GPU does not establish compute availability; check compute_shader_support_get and initialize the runtime.",
+        "GLSL cross-compilation documentation is linked outside the corpus; do not fill that missing content from memory.",
+        "A dispatch API does not prove shader correctness, input/output data, synchronization or numerical results."
+      ],
+      "evidence": [
+        {
+          "ref": "gpu.types.html#gpu.types.GPUShaderCreateInfo.compute_source",
+          "supports": "Accept GLSL compute shader source; include examples and an external cross-compilation documentation link."
+        },
+        {
+          "ref": "gpu.shader.html#gpu.shader.create_from_info",
+          "supports": "Create GPUShader from GPUShaderCreateInfo."
+        },
+        {
+          "ref": "gpu.compute.html#gpu.compute.dispatch",
+          "supports": "Dispatch compute work using a shader and x/y/z group counts."
+        },
+        {
+          "ref": "gpu.capabilities.html#gpu.capabilities.compute_shader_support_get",
+          "supports": "Return whether compute shaders are supported."
+        }
+      ],
+      "api_refs": [
+        "gpu.types.html#gpu.types.GPUShaderCreateInfo.compute_source",
+        "gpu.shader.html#gpu.shader.create_from_info",
+        "gpu.compute.html#gpu.compute.dispatch",
+        "gpu.capabilities.html#gpu.capabilities.compute_shader_support_get"
+      ],
+      "next_queries": [
+        "gpu.html#gpu.init",
+        "gpu.capabilities.html",
+        "gpu.types.html#gpu.types.GPUShaderCreateInfo",
+        "gpu.compute.html"
+      ]
+    }
+  ]
+}
