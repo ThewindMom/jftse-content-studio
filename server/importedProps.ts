@@ -2,8 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { config } from "./config.ts";
-import type { StudioAsset, TwinkleDocument } from "../web/twinkleDocument.ts";
-import { isImportedModel } from "../web/twinkleDocument.ts";
+import type { StudioAsset } from "../web/twinkleDocument.ts";
 
 export const importedPropDirectory = join(config.exportsDir, "imported-props");
 export const MAX_GLB_BYTES = 16 * 1024 * 1024;
@@ -208,8 +207,4 @@ export async function importProp(req: Request): Promise<Response> {
     } finally { await rm(temporary, { force: true }); }
     return Response.json(asset);
   } catch (error) { return Response.json({ error: String(error) }, { status: 400 }); }
-}
-
-export function rejectImportedNativeExport(doc: TwinkleDocument): void {
-  if (doc.objects.some((obj) => isImportedModel(obj.file))) throw new Error("Blender imports are Studio-only. Remove imported placements before native export/install; DAT conversion and collision are not implemented.");
 }

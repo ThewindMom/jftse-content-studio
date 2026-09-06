@@ -52,5 +52,6 @@ export function bridgeEnv(): Record<string, string> {
     JFTSE_STOCK_CLIENT: config.stockClient,
     JFTSE_LOCAL_CLIENT: config.localClient,
     JFTSE_STUDIO_EXPORTS: config.exportsDir,
+    JFTSE_IMPORTED_PROPS: resolve(config.exportsDir, "imported-props"),
   };
 }

@@ -114,10 +114,10 @@ def native_mesh(model, template):
     return rebuild_static(template, vertices, triangle_strip(triangles), name=model.name, texture=ATLAS)
 
 
-def native_texture():
+def native_texture(png=None):
     # The native control hangs on uncompressed DDS. Match observed opaque stock
     # DXT1 headers and the complete mip chain; DX9 support alone is not evidence.
-    image = Image.open(io.BytesIO(atlas())).convert("RGBA")
+    image = Image.open(io.BytesIO(atlas() if png is None else png)).convert("RGBA")
     if image.getchannel("A").getextrema() != (255, 255):
         raise ValueError("Native DXT1 atlas must be opaque")
     image = image.convert("RGB")

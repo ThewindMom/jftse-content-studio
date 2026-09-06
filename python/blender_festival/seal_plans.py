@@ -24,8 +24,8 @@ groups={
         'reason':'Source Camera type ORTHO/ortho_scale, Object location and Euler rotation, area-light energy/size, Scene render settings, render write_still, save_as_mainfile, selection and glTF export support the preview/save/export pass. open_mainfile reopens the saved editable source. Object type/name/hide_render and Mesh polygons/materials support reported mesh and triangle checks. GLB and Principled socket identifiers were observed in the existing beer-cart runtime probe on this same Blender 5.2.1 executable, not inferred from undocumented defaults.'
     }
 }
-groups['mesh']['refs'] += ['bpy.types.Float2AttributeValue.html#bpy.types.Float2AttributeValue.vector']
-groups['mesh']['reason']='Explicit vertex/face mesh creation and validation, database object creation/link, material append, face-corner UV layers and mutable Float2 vector values are supported by the cited mesh/UV sources. Polygon normals and loop ranges select normalized paint islands; the remaining coordinate construction is ordinary Python.'
+groups['mesh']['refs'] += ['bpy.types.Float2AttributeValue.html#bpy.types.Float2AttributeValue.vector','bpy.types.Mesh.html#bpy.types.Mesh.from_pydata']
+groups['mesh']['reason']='Explicit vertex/face mesh creation and validation, database object creation/link, material append, face-corner UV layers and mutable Float2 vector values are supported by the cited mesh/UV sources. from_pydata shade_flat=True marks faces flat-shaded; false opts out for rounded flowers and fabric, with the visible shading checked in actual preview renders. Polygon normals and loop ranges select normalized paint islands; coordinate mapping is ordinary Python.'
 
 for script in sorted(Path(__file__).parent.glob('*.py')):
     if script.name=='seal_plans.py': continue

@@ -7,6 +7,10 @@ folder=Path(__file__).resolve().parent
 sys.path.insert(0,str(folder))
 slug=sys.argv[sys.argv.index('--')+1]
 allowed={'pretzel-stand','food-stand','beer-garden','beer-garden-festive','gingerbread-stand','gingerbread-heart','barrel-display','maypole','festival-arch'}
+allowed.update({'festival-fence','festival-banner','flower-barrel','hay-bale','chalkboard-beer','chalkboard-pretzel','chalkboard-tennis','pennant-line','festival-arch-leafy'})
+allowed.add('festival-fence-curved')
+allowed.add('festival-fence-fountain')
+allowed.add('festival-fence-foreground')
 if slug not in allowed:
     raise ValueError(slug)
 runpy.run_path(str(folder/(slug.replace('-','_')+'.py')),run_name='__main__')

@@ -1,10 +1,11 @@
 """Peaked kiosk with faceted counter, suspended pretzels, trays and side barrels."""
 from common import *
 from stall import counter, roof, plaque
+from reference_shapes import billowed_roof, start_reference
 
-start()
+start_reference()
 counter(faceted=True)
-roof('peak')
+billowed_roof()
 plaque()
 for x in (-.94,-.55,.55,.94):
     beam('Pretzel_Hanging_Cord',(x,-.65,2.63),(x,-.65,2.13),.016,'cream')

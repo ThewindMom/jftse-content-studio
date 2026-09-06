@@ -18,6 +18,7 @@ from adu_pose import parse_bind_pose
 from oktoberfest_models import prepare_originals, PREFIX, NAMES
 from oktoberfest_native import native_resources, model_name, ATLAS
 from oktoberfest_costumes import ARCHIVE as COSTUME_ARCHIVE, VARIANTS, SOURCES, build_costumes
+from imported_native import imported_resources
 
 STAGE = "2_Twinkle_Town.set"
 PROPS = ["P0_Barrel01_C01.dat", "P0_Log00_B.dat", "P0_Flower00a.dat",
@@ -209,13 +210,15 @@ def prepare(client: Path, out: Path, map_id: str = "twinkle") -> dict:
     return {"ok": True}
 
 
-def compile_layout(text: str, document: dict) -> str:
+def compile_layout(text: str, document: dict, imported=None) -> str:
+    imported = imported or {}
     original = initial_document(text)
     if document["sourceHash"] != initial_document(text, document.get("mapId", "twinkle"))["sourceHash"]:
         raise ValueError("Stock stage changed. Reopen Twinkle Town before exporting.")
     originals = {obj["id"]: obj for obj in original["objects"]}
     allowed = {obj["file"] for obj in originals.values()} | {f"{a[:-4]}/{n}" for a, n, _, fixed, _ in catalog() if not fixed}
     allowed |= {PREFIX + name + ".glb" for name in NAMES}
+    allowed |= imported.keys()
     if any(obj["file"] not in allowed for obj in document["objects"]):
         raise ValueError("Asset is not in the Twinkle catalog")
     desired = {obj["id"]: {**originals.get(obj["id"], {}), **obj} for obj in document["objects"]}
@@ -235,7 +238,7 @@ def compile_layout(text: str, document: dict) -> str:
     blocks = []
     stock_index = 0
 
-    def replace(block: str, obj: dict) -> str:
+    def replace_one(block: str, obj: dict) -> str:
         changes = {"File": f'"{obj["file"]}"', "Position": ", ".join(f"{v:.6g}" for v in obj["position"]),
                    "Rotation": f'{obj["rotation"]:.6g}', "Scale": f'{obj["scale"]:.6g}',
                    "Level": str(obj["level"])}
@@ -252,6 +255,12 @@ def compile_layout(text: str, document: dict) -> str:
                     else:
                         block += f"{key}= {value}\r\n"
         return block
+
+    def replace(block: str, obj: dict) -> str:
+        if obj['file'] in imported:
+            return ''.join(replace_one(block, {**obj, 'file': part, 'animation': -1, 'phase': 0})
+                           for part in imported[obj['file']])
+        return replace_one(block, obj)
 
     for block in SECTION.split(text):
         if not block.startswith("[DecoObj]"):
@@ -276,12 +285,15 @@ def compile_layout(text: str, document: dict) -> str:
 
 def export_layout(client: Path, document: dict, out: Path) -> dict:
     text = source_text(client)
-    compiled = compile_layout(text, document)
+    imported, imported_files, imported_textures, imported_report = imported_resources(client, document['objects'])
+    compiled = compile_layout(text, document, imported)
     resources, texture = native_resources(client, document["objects"])
     if resources:
         if fields(text).get("Collision", "").strip('"') != "Res/Collision/ColMesh_TT.dat" or fields(text).get("Coll_Chat", "").strip('"') != "Res/Collision/ColMesh_TT_CR.dat":
             raise ValueError("Native collision export requires the original Twinkle collision references")
     additions = {ATLAS+".tex": texture} if texture is not None else {}
+    resources.update(imported_files)
+    additions.update(imported_textures)
     costumes = [Path(obj["file"]).stem for obj in document["objects"] if obj["visible"]
                 and obj["file"].startswith(COSTUME_ARCHIVE[:-4]+"/")]
     if costumes:
@@ -327,9 +339,12 @@ def export_layout(client: Path, document: dict, out: Path) -> dict:
         if resources:
             archive.writestr("native-export.json", json.dumps({
                 "format": "stock-template-static-adumesh", "nativeRuntimeVerified": False,
-                "collision": "coarse solid proxies appended to stock match and chat meshes",
+                "collision": "Imported props are nonblocking; no imported collision is generated. Legacy procedural proxies only, when present.",
+                "imported": imported_report,
                 "placements": [obj["id"] for obj in document["objects"] if obj["visible"] and model_name(obj["file"])],
                 "texture": "Opaque DXT1 DDS/TEX, complete mip chain, same-archive plus Stage/Tex010 registration candidate",
+                "importedShading": "Base color and emission baked in linear RGB then encoded sRGB; metallic/roughness flattened to painted albedo, emission clipped to opaque SDR. Native lighting is not glTF PBR or bloom.",
+                "importedCoordinates": "Node hierarchy baked, GLB Z reflected, inverse-transpose normals, winding reversed for negative determinant; UV0 retained.",
                 "limits": "Loader lookup order, opaque node semantics, native shading and collision response need native verification.",
             }, indent=2))
         archive.writestr("README.txt", "PRIVATE TEST-CLIENT INSTALLATION\n"

@@ -4,7 +4,7 @@ import { config } from "./config.ts";
 import { BridgeError, runBridge, runBridgeWithPayload } from "./bridge.ts";
 import { readJsonObject } from "./requestPolicy.ts";
 import { isImportedModel, parseMapDesign, parseTwinkleDocument, type MapDesign } from "../web/twinkleDocument.ts";
-import { importedProps, importedPropDirectory, rejectImportedNativeExport } from "./importedProps.ts";
+import { importedProps, importedPropDirectory } from "./importedProps.ts";
 
 const assets = join(config.tmpDir, "twinkle-assets");
 const preparations = new Map<MapDesign, Promise<unknown>>();
@@ -86,7 +86,6 @@ export async function twinkleExport(req: Request): Promise<Response> {
   const out = join(config.tmpDir, `twinkle-export-${crypto.randomUUID()}`);
   try {
     const doc = parseTwinkleDocument(await readJsonObject(req, 256_000));
-    rejectImportedNativeExport(doc);
     await runBridgeWithPayload("twinkle-layout", doc, (payload) => [
       "twinkle-export", "--payload", payload, "--out-dir", out,
     ]);
@@ -96,7 +95,7 @@ export async function twinkleExport(req: Request): Promise<Response> {
       "content-disposition": 'attachment; filename="twinkle-layout.zip"',
     } });
   } catch (error) {
-    return Response.json({ error: String(error) }, { status: 400 });
+    return Response.json({ error: error instanceof BridgeError ? error.detail : String(error) }, { status: 400 });
   } finally {
     rmSync(out, { recursive: true, force: true });
   }
@@ -107,7 +106,6 @@ export async function twinkleClient(req: Request): Promise<Response> {
     const action = req.method === "GET" ? "status" : new URL(req.url).searchParams.get("action");
     if (action !== "status" && action !== "install" && action !== "restore") throw new Error("Invalid test-client action");
     const doc = action === "install" ? parseTwinkleDocument(await readJsonObject(req, 256_000)) : null;
-    if (doc) rejectImportedNativeExport(doc);
     const result = doc
       ? await runBridgeWithPayload("twinkle-test-client", doc,
           (payload) => ["twinkle-client", "--action", "install", "--payload", payload])

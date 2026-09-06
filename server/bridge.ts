@@ -86,6 +86,8 @@ async function executeBridge(
       "pillow>=11.2.1",
       "--with",
       "cryptography",
+      "--with",
+      "numpy",
       "python",
       config.pythonBridge,
       ...args,

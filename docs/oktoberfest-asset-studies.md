@@ -236,8 +236,71 @@ acceptance checks. Run its bundled `scripts/verify-glbs.ts` before import. Follo
 the private plans are under `.amp/tmp/festival/`. Paint extracts and generated
 models stay private and are not included in tracked source.
 
-Native DAT/TEX conversion, collision and client acceptance remain unsupported for
-these imports. Export/install stays blocked while imported placements exist.
-No native client was installed or launched, and no 100% stock-style parity is
-claimed. The remaining art work is the full-court density/dressing pass and
-closer comparison of painted materials with the original renderer.
+At this checkpoint, native conversion was blocked. The following dense-dressing
+checkpoint supersedes that restriction; native-client acceptance remains unverified.
+
+## Dense dressing and native export
+
+Nine additional Blender assets provide connected fences, vertical banners, flower
+barrels, hay bales, three chalkboard variants, suspended pennants and a leafy gate.
+Their individual builders and editable sources follow the same stock-paint workflow.
+The final fence is 1.6 times its initial height, with unchanged 2.8-unit post pitch.
+Private hashes and render evidence are in `exports/blender-festival/dressing-manifest.json`.
+
+`python/compose_blender_festival.py` reproducibly composes the saved baseline with
+actual registry identities. The resulting layout contains 119 placements, including
+62 imported placements. Protected stock records remain unchanged. The Festival
+camera frames the gate at the far end, with inward-facing stalls, connected fences
+and clustered perimeter dressing. Imported bounds stay outside the playing surface.
+This is a denser interpretation of the reference, not a claim of exact art parity.
+
+The Studio export action now converts supported static GLBs through
+`python/imported_native.py`, using the server's `JFTSE_IMPORTED_PROPS` registry.
+It verifies SHA-256 identities, transforms hierarchy geometry and normals, reflects
+Z with corrected winding, and splits materials into stock-template DATs. Opaque
+paint is baked into DXT1 TEX mip chains and registered in Tex010. Unsupported
+features and over-budget inputs fail closed; overlapping buffer views share memory.
+
+The saved layout exports to 712 native placements: 669 imported material parts
+from 18 unique imports, backed by 196 DATs and 196 TEXs. Every generated DAT was
+parsed and every TEX decoded; SET names and texture registration bytes resolve.
+Original collision geometry and unrelated archive members are preserved. Existing
+legacy collision proxies remain, but imported props add no blocking collision.
+
+Private evidence is in `.amp/tmp/dense-festival/`: `exported-final.jpg`,
+`native-validation.json` and the native ZIP. The deliverable copy is
+`exports/oktoberfest-native.zip`, alongside the saved `oktoberfest-layout.json`.
+Back up `exports/imported-props/` with that layout; JSON alone contains no meshes.
+
+No native client was installed or launched. Native loader limits, 712-part draw
+cost, lighting, specular and bloom equivalence remain unverified. Emission is baked
+to SDR color and scalar specularity is flattened, not reproduced as a DX9 shader.
+
+## Curved enclosure and composed prop groups
+
+The next refinement replaces rigid silhouettes rather than increasing prop count.
+`reference_shapes.py` supplies softened joinery, substantial gathered drapes,
+rounded foliage and three-opening pretzel crests. The gate is broader and lower;
+the pretzel canopy billows. Dedicated blue/cream paint carries broad fold shading
+so emission-treated materials retain volume under the unchanged Studio lights.
+
+Three genuinely curved Blender models now shape the enclosure: quarter-circle
+corners, a five-bay foreground sweep, and a three-bay inward bow around the stock
+fountain. Their ground origins and exact post-center contracts are recorded in
+`exports/blender-festival/redesign-manifest.json`. Layout tests verify corner
+connections, fountain centerline clearance and pennant endpoints. These are
+static mesh exports, not runtime curves or added collision.
+
+The dressing is composed into small groups inside the enclosure: corner flower
+barrels and hay, chalkboards beside the stalls and judge-side walk, inset foreground
+banners, and low barrel displays between bouquets along the front. Ground heights
+were checked against the actual road triangles. Both stock carriage records and
+their openings remain intact; imported bounds remain outside the playing rectangle.
+The Festival camera frames the result; comparison captures hide only editor chrome.
+
+The layout still contains 119 placements, now with 76 imported placements using
+21 distinct GLBs. Native export produces 734 SET placements and 232 DAT/TEX pairs.
+Private current evidence is in `.amp/tmp/curved-festival/`, including
+`clearance.json`, `native-validation.json` and `grouped-final.jpg`. The exported
+ZIP remains `exports/oktoberfest-native.zip`. Native rendering/performance and
+shader equivalence are still unverified; no client installation or launch occurred.

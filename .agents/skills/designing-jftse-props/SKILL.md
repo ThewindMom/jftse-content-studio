@@ -1,13 +1,42 @@
 ---
 name: designing-jftse-props
-description: "Designs Fantasy Tennis props in Blender from original JFTSE client asset evidence and imports them into Content Studio. Use for Oktoberfest stalls, carts, furniture, banners, arches, map dressing, or fixing assets that look foreign to the game."
+description: "Owns the Blender–JFTSE asset pipeline: design inspiration, reference replication, stock-client research, Blender modeling and paint, Content Studio upload/placement, and native DAT/TEX verification. Use for blender-jftse work, Fantasy Tennis props/items/map dressing, or assets that look foreign to the game."
 ---
 
-# Designing JFTSE props
+# Blender–JFTSE: design, model, compose and export
 
 Build recognizable, editable props that belong beside the original game assets.
 Treat successful export, artistic similarity and native compatibility as separate
 acceptance criteria. Never substitute one for another.
+
+This is the project's end-to-end **blender-jftse** skill; its canonical name stays
+`designing-jftse-props` so existing checker paths and references remain valid.
+Use `design` when requested for design decisions and `running-blender` for every
+Blender API operation. Neither replaces this project's stock-style requirements.
+
+## Workflow and scope
+
+1. **Understand:** inspect the full-scene reference and individual prop references;
+   separate desired design from protected stock geometry and renderer differences.
+2. **Research:** decode comparable original meshes and paint; record provenance.
+3. **Prototype:** build the highest-impact section first, such as foreground fence,
+   drape and bouquet. Inspect it beside stock assets before generating the family.
+4. **Author:** create editable Blender sources, supported GLBs and inspected views.
+5. **Integrate:** upload actual bytes, use returned identities, compose and save.
+6. **Refine:** compare at consistent framing; fix shape, spacing and material issues
+   in their owning builder or layout, not by disguising them with camera or lighting.
+7. **Verify:** reopen sources, reload the Studio layout, export and parse native
+   resources. Report separately what art, file-format and runtime checks establish.
+
+Read [the pipeline runbook](references/pipeline.md) for formats, commands, budgets,
+fingerprint recovery and handoff. Read [replication lessons](references/replication-lessons.md)
+before refining an existing family; it records the failures and their actual fixes.
+These references supplement the instructions below, not a second competing skill.
+
+The proven bridge covers bounded **static decorations**. A request for skinned
+equipment, animated characters, collision, effects or new map topology needs its
+own format research and tests. Do not advertise this GLB route as supporting every
+JFTSE asset family, and do not merely re-export old procedural meshes as “Blender-made.”
 
 ## Start with the requested scene
 
@@ -139,9 +168,48 @@ asset paths. Save via the Studio layout API/UI, not by rewriting a fingerprint.
 - Review the family together: canopy heights, fabric pattern scale, wood values,
   visual density, sightlines, court clearance and repetition. Use the overall
   reference to guide composition, not to justify rearranging unrelated objects.
-- Native export/install is blocked while imported placements remain, even hidden.
-  GLB import currently proves Studio display/save, not DAT/TEX conversion, collision,
-  animation or native-client acceptance. Never bypass that guard to claim completion.
+- For dense dressing, use `python/compose_blender_festival.py` with the saved
+  baseline and actual imported identities. Its tests check repeatability and stock
+  preservation. Compare from the Festival camera before judging the composition.
+- Connect straight fences by their 2.8-unit post-center pitch, not foliage bounds.
+  Curved variants have explicit endpoint contracts in `redesign-manifest.json`.
+  Transform those endpoints with the same Z reflection as the viewport and test
+  the joints. Curved geometry is not interchangeable with rotated straight bays.
+  Hang pennant spans between supports; their normalized origin is not a ground
+  placement instruction. Check transformed bounds against the playing rectangle.
+- Measure stock obstacles, not only the court rectangle. The fountain basin
+  extends to stage X=-100.41 and approximately Z=±54; a straight fence at X=-117.6
+  crosses it. The fountain run bows toward the court while leaving the basin intact.
+- Judge silhouette, drape depth and flower masses at the reference camera scale.
+  More placements do not fix thin cloth or rigid outlines. Avoid stretching an
+  entire prop to change its rail height: remodel proportions and preserve ornaments.
+- Inspect both sides under the same lights. Painted emission needs fold shading
+  in the texture; geometry curvature alone can still read as flat stripes.
+- Fill perimeter gaps with small groups: a bouquet as the main shape, low hay or
+  barrels beside it, and a sign facing the court camera. Vary group size and leave
+  passages open. Check the road height at each new anchor; the raised court-side
+  paving is not interchangeable with the lower market ground at Y=-7.35.
+
+## Convert and verify native resources
+
+Studio exports supported static imports through `python/imported_native.py`.
+`JFTSE_IMPORTED_PROPS` must point at the same content-addressed registry used by
+the server. The converter verifies bytes against each identity, applies hierarchy
+transforms and the viewport's Z reflection, and splits materials into native DATs.
+It writes opaque DXT1 TEX mip chains and registers them in Tex010 as well as the
+imported resource archive. Unsupported GLB features fail closed.
+
+- Run native tests with Pillow, cryptography and NumPy available. Exercise the
+  Studio export action, then parse the resulting DATs, decode every TEX, and resolve
+  SET references. GLB validation alone does not verify this conversion.
+- Compare protected collision and unrelated resource members with the baseline.
+  Imported props are deliberately nonblocking; they add no collision geometry.
+- Report native part counts as well as visible placements. Per-material splitting
+  increases draw overhead; successful parsing does not certify runtime capacity.
+- Painted emission and solid colors are baked to SDR color. Specular, bloom,
+  lightmaps and native shader equivalence remain unverified. Never claim native
+  client acceptance without an authorized client run and inspected evidence.
+- Export verification does not authorize installing resources or launching clients.
 
 ## Acceptance and handoff
 

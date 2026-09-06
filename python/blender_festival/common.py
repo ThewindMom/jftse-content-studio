@@ -14,15 +14,20 @@ PAINT = ROOT / '.amp/tmp/beer-cart/stock-paint'
 OBJECTS = []
 MATS = {}
 POINTS = []
+COORDINATE_MAP = None
 
 
-def material(name, color, texture=None):
+def material(name, color, texture=None, ambient=0):
     mat = bpy.data.materials.new(name)
     nodes = mat.node_tree.nodes
     bsdf = next(n for n in nodes if n.bl_idname == 'ShaderNodeBsdfPrincipled')
     bsdf.inputs['Base Color'].default_value = (*color, 1)
     bsdf.inputs['Roughness'].default_value = 1
     bsdf.inputs['Metallic'].default_value = 0
+    if ambient:
+        bsdf.inputs['Base Color'].default_value = (*(c*(1-ambient) for c in color), 1)
+        bsdf.inputs['Emission Color'].default_value = (*color, 1)
+        bsdf.inputs['Emission Strength'].default_value = ambient
     if texture:
         image = bpy.data.images.load(str(PAINT / texture), check_existing=True)
         image.pack()
@@ -55,9 +60,10 @@ def start():
         MATS[name] = material('Festival_' + name, color, texture)
 
 
-def mesh(name, vertices, faces, mat='wood', uvs=None, preview=False, face_uvs=None):
+def mesh(name, vertices, faces, mat='wood', uvs=None, preview=False, face_uvs=None, smooth=False):
+    mapped_vertices = [COORDINATE_MAP(p) for p in vertices] if COORDINATE_MAP and not preview else vertices
     data = bpy.data.meshes.new(name)
-    data.from_pydata(vertices, [], faces)
+    data.from_pydata(mapped_vertices, [], faces, shade_flat=not smooth)
     assert not data.validate(), name
     obj = bpy.data.objects.new(name, data)
     bpy.context.scene.collection.objects.link(obj)
@@ -80,7 +86,7 @@ def mesh(name, vertices, faces, mat='wood', uvs=None, preview=False, face_uvs=No
             uv.uv[li].vector = pair
     if not preview:
         OBJECTS.append(obj)
-        POINTS.extend(vertices)
+        POINTS.extend(mapped_vertices)
     return obj
 
 
@@ -125,7 +131,7 @@ def lathe(name,p,profile,mat='wood',axis='Z',segments=16):
     return mesh(name,vs,fs,mat,uv)
 
 
-def tube(name,points,r,mat='bread',sides=7):
+def tube(name,points,r,mat='bread',sides=7,smooth=False):
     vs=[]; uv=[]
     for j,p in enumerate(points):
         a=points[max(0,j-1)]; b=points[min(len(points)-1,j+1)]
@@ -137,7 +143,7 @@ def tube(name,points,r,mat='bread',sides=7):
             uv.append((i/sides,j/(len(points)-1)))
     fs=[(j*sides+i,j*sides+(i+1)%sides,(j+1)*sides+(i+1)%sides,(j+1)*sides+i) for j in range(len(points)-1) for i in range(sides)]
     fs += [tuple(range(sides-1,-1,-1)),tuple((len(points)-1)*sides+i for i in range(sides))]
-    return mesh(name,vs,fs,mat,uv)
+    return mesh(name,vs,fs,mat,uv,smooth=smooth)
 
 
 def ring(name,p,r,thick,mat='iron',axis='Z',segments=24):

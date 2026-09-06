@@ -10,7 +10,7 @@ type MeshPart = {
   colors?: number[];
   name: string; slot: number; albedo: string | null; lightmap: string | null;
 };
-export type CameraView = "court" | "overview" | "top" | "player" | "selection";
+export type CameraView = "court" | "overview" | "top" | "player" | "festival" | "selection";
 type Props = {
   assets: StudioAsset[]; document: TwinkleDocument; selected: string;
   mode: "translate" | "rotate"; snap: number; guides: boolean; lightmaps: boolean; isolate: boolean;
@@ -172,10 +172,13 @@ export function TwinkleViewport(props: Props) {
           overview: [[1500, 1550, 1750], [100, 80, -250]],
           top: [[0, 650, 0.01], [0, 0, 0]],
           player: [[0, 165, 300], [0, 0, -20]],
+          festival: [[0, 205, -350], [0, 0, -15]],
         };
         camera.position.fromArray(presets[preset][0]);
         orbit.target.fromArray(presets[preset][1]);
       }
+      camera.zoom = preset === "festival" ? 1.25 : 1;
+      camera.updateProjectionMatrix();
       camera.lookAt(orbit.target);
       orbit.update();
     }
@@ -212,7 +215,7 @@ export function TwinkleViewport(props: Props) {
     });
     resize.observe(host);
     renderer.setAnimationLoop(() => { orbit.update(); renderer.render(scene, camera); });
-    view("court", "");
+    view(latest.current.camera.view, latest.current.selected);
     const texturePromises = new Map<string, Promise<THREE.Texture>>();
     const loader = new THREE.TextureLoader();
     function texture(name: string, lightmap: boolean) {

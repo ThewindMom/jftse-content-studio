@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { inspectStaticGlb, rejectImportedNativeExport, MAX_GLB_BYTES } from "../server/importedProps.ts";
+import { inspectStaticGlb, MAX_GLB_BYTES } from "../server/importedProps.ts";
 import { parseTwinkleDocument } from "../web/twinkleDocument.ts";
 import { twinkleExport, twinkleClient, twinkleFile } from "../server/twinkleStudio.ts";
 import { measureStaticProp } from "../.agents/skills/designing-jftse-props/scripts/verify-glbs.ts";
@@ -63,15 +63,16 @@ describe("bounded Blender prop import", () => {
       expect(() => parseTwinkleDocument({ ...doc, objects: [{ ...doc.objects[0], file }] })).toThrow();
     }
   });
-  test("native export and install fail closed, including invisible imports", async () => {
-    const doc = importedLayout();
-    expect(() => rejectImportedNativeExport(doc)).toThrow("Studio-only");
-    doc.objects[0]!.visible = false;
-    expect(() => rejectImportedNativeExport(doc)).toThrow("Studio-only");
-    for (const handler of [twinkleExport, twinkleClient]) {
-      const result = await handler(new Request("http://localhost/api/twinkle/client?action=install", { method: "POST", body: JSON.stringify(doc) }));
-      expect(result.status).toBe(400);
-      expect((await result.json()).error).toContain("Studio-only");
+  test("native export and install reject unsafe identities before any bridge operation", async () => {
+    for (const visible of [true, false]) {
+      const doc = importedLayout();
+      doc.objects[0]!.file = "Studio/Imported/../../secret.glb";
+      doc.objects[0]!.visible = visible;
+      for (const handler of [twinkleExport, twinkleClient]) {
+        const result = await handler(new Request("http://localhost/api/twinkle/client?action=install", { method: "POST", body: JSON.stringify(doc) }));
+        expect(result.status).toBe(400);
+        expect((await result.json()).error).toContain("Invalid asset path");
+      }
     }
   });
   test("asset serving does not accept paths or arbitrary files", async () => {
